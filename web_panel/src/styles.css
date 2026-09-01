@@ -1757,15 +1757,57 @@ img {
   z-index: 100;
   left: -5px;
   bottom: 50px;
-  width: min(290px, calc(100vw - 24px));
-  max-height: 245px;
-  padding: 9px;
+  width: min(680px, calc(100vw - 24px));
+  height: min(560px, calc(100dvh - 92px));
+  min-height: 340px;
+  padding: 0;
   display: block;
-  overflow-y: auto;
+  overflow: hidden;
   border: 1px solid #dce3e5;
-  border-radius: 12px;
+  border-radius: 18px;
   background: #fff;
   box-shadow: 0 10px 30px #0003;
+}
+.emoji-category-bar {
+  height: 58px;
+  padding: 8px 14px;
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border-bottom: 1px solid #e2e8e9;
+}
+.emoji-category-bar::-webkit-scrollbar {
+  display: none;
+}
+.emoji-category-bar button {
+  position: relative;
+  width: 48px;
+  min-width: 48px;
+  height: 42px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  color: #667781;
+}
+.emoji-category-bar button svg {
+  width: 25px;
+  height: 25px;
+}
+.emoji-category-bar button.active {
+  color: #172b33;
+}
+.emoji-category-bar button.active::after {
+  position: absolute;
+  right: 8px;
+  bottom: -1px;
+  left: 8px;
+  height: 3px;
+  content: "";
+  border-radius: 99px;
+  background: #172b33;
 }
 .emoji-tabs {
   display: grid;
@@ -1791,25 +1833,124 @@ img {
 }
 .emoji-grid {
   display: grid;
-  grid-template-columns: repeat(8, 1fr);
-  gap: 2px;
+  grid-template-columns: repeat(10, minmax(30px, 1fr));
+  gap: 8px;
 }
 .emoji-grid button {
-  width: 31px;
-  height: 31px;
+  width: 100%;
+  height: 42px;
   padding: 0;
-  border-radius: 7px;
+  border-radius: 999px;
   font-family:
     "Noto Color Emoji", "Apple Color Emoji", "Segoe UI Emoji", sans-serif;
-  font-size: 21px;
+  font-size: 30px;
   line-height: 1;
 }
 .emoji-grid button:hover {
   background: #e6f6f0;
 }
 .emoji-menu--media-picker {
-  width: min(340px, calc(100vw - 24px));
-  max-height: 330px;
+  width: min(680px, calc(100vw - 24px));
+  height: min(560px, calc(100dvh - 92px));
+}
+.emoji-search {
+  height: 52px;
+  margin: 0 18px 4px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1.8px solid #172b33;
+  border-radius: 999px;
+  background: #fff;
+}
+.emoji-search svg {
+  width: 20px;
+  height: 20px;
+  color: #667781;
+}
+.emoji-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: #172b33;
+  background: transparent;
+  font-family: inherit;
+  font-size: 16px;
+}
+.emoji-picker-body {
+  height: calc(100% - 58px - 60px - 62px);
+  min-height: 0;
+  padding: 0 18px 12px;
+  overflow-y: auto;
+  scrollbar-color: #c9d2d5 transparent;
+}
+.emoji-picker-body h4 {
+  margin: 14px 0 5px;
+  color: #667781;
+  font-size: 16px;
+  font-weight: 700;
+}
+.emoji-picker-body .emoji-grid--recent {
+  grid-template-columns: repeat(10, minmax(30px, 1fr));
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.emoji-picker-bottom-tabs {
+  height: 62px;
+  padding: 8px 18px 14px;
+  display: flex;
+  justify-content: center;
+  border-top: 1px solid #e2e8e9;
+  background: #fff;
+}
+.emoji-picker-bottom-tabs button {
+  width: 86px;
+  height: 36px;
+  padding: 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  color: #667781;
+  border-right: 1px solid #dce3e5;
+  border-radius: 0;
+  font-family: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.emoji-picker-bottom-tabs button:first-child {
+  border-radius: 999px 0 0 999px;
+}
+.emoji-picker-bottom-tabs button:last-child {
+  border-right: 0;
+  border-radius: 0 999px 999px 0;
+}
+.emoji-picker-bottom-tabs button svg {
+  width: 20px;
+  height: 20px;
+}
+.emoji-picker-bottom-tabs button.active {
+  color: #172b33;
+  background: #eef2f3;
+}
+.emoji-menu--media-picker .giphy-picker-heading {
+  height: 58px;
+  padding: 10px 14px 8px 18px;
+}
+.emoji-menu--media-picker .giphy-search {
+  margin: 0 18px 8px;
+}
+.emoji-menu--media-picker .giphy-grid {
+  height: calc(100% - 58px - 42px - 62px);
+  max-height: none;
+  padding: 0 18px 12px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+.emoji-menu--media-picker .giphy-state {
+  height: calc(100% - 58px - 42px - 62px);
 }
 .emoji-menu .giphy-picker-heading button {
   width: 30px;
@@ -7698,6 +7839,33 @@ img {
     min-height: 63px;
     padding: 7px 6px;
   }
+  .emoji-menu {
+    left: -5px;
+    width: min(680px, calc(100vw - 24px));
+    height: min(560px, calc(100dvh - 86px));
+    min-height: 320px;
+  }
+  .emoji-grid,
+  .emoji-picker-body .emoji-grid--recent {
+    grid-template-columns: repeat(7, minmax(30px, 1fr));
+  }
+  .emoji-picker-body {
+    padding-inline: 14px;
+  }
+  .emoji-search,
+  .emoji-menu--media-picker .giphy-search {
+    margin-inline: 14px;
+  }
+  .emoji-menu--media-picker .giphy-grid {
+    padding-inline: 14px;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+  .emoji-picker-bottom-tabs {
+    padding-inline: 12px;
+  }
+  .emoji-picker-bottom-tabs button {
+    width: 84px;
+  }
   .composer button {
     width: 36px;
     flex-basis: 36px;
@@ -8625,7 +8793,38 @@ img {
   border-color: #35434b;
   background: #233138;
 }
-.theme-dark .emoji-menu button:hover {
+.theme-dark .emoji-category-bar {
+  border-color: #40515a;
+}
+.theme-dark .emoji-category-bar button.active {
+  color: #e9edef;
+}
+.theme-dark .emoji-category-bar button.active::after {
+  background: #e9edef;
+}
+.theme-dark .emoji-search {
+  border-color: #e9edef;
+  background: #111b21;
+}
+.theme-dark .emoji-search input {
+  color: #e9edef;
+}
+.theme-dark .emoji-picker-body h4 {
+  color: #aebac1;
+}
+.theme-dark .emoji-picker-bottom-tabs {
+  border-color: #40515a;
+  background: #233138;
+}
+.theme-dark .emoji-picker-bottom-tabs button {
+  color: #aebac1;
+  border-color: #40515a;
+}
+.theme-dark .emoji-picker-bottom-tabs button.active {
+  color: #e9edef;
+  background: #35434b;
+}
+.theme-dark .emoji-grid button:hover {
   background: #35434b;
 }
 .theme-dark .giphy-picker-heading {
@@ -8646,6 +8845,27 @@ img {
 }
 .theme-dark .giphy-search input {
   color: #e9edef;
+}
+
+/* Picker controls live inside the composer, whose mobile rule gives every
+   button a compact 36px width. Keep the WhatsApp picker tabs and category
+   buttons at their own dimensions instead of inheriting that composer rule. */
+.composer .emoji-category-bar button {
+  width: 48px;
+  min-width: 48px;
+  flex: 0 0 48px;
+}
+.composer .emoji-picker-bottom-tabs button {
+  width: 86px;
+  min-width: 86px;
+  flex: 0 0 86px;
+}
+@media (max-width: 520px) {
+  .composer .emoji-picker-bottom-tabs button {
+    width: 84px;
+    min-width: 84px;
+    flex-basis: 84px;
+  }
 }
 .theme-dark .giphy-item {
   background: #35434b;

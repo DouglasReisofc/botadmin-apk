@@ -14,10 +14,13 @@ import {
   Bell,
   BellRing,
   Bot,
+  CarFront,
   CheckSquare,
   ChevronLeft,
   CircleDashed,
+  Clock3,
   ContactRound,
+  Coins,
   Copy,
   Download,
   Eye,
@@ -31,6 +34,7 @@ import {
   Mic,
   MoreVertical,
   Paperclip,
+  PawPrint,
   Phone,
   Plus,
   RadioTower,
@@ -39,6 +43,8 @@ import {
   Send,
   Settings,
   ShieldCheck,
+  Flag,
+  Lightbulb,
   ShoppingBag,
   Smile,
   Tag,
@@ -2141,6 +2147,53 @@ const composerEmojis = [
   "⚪",
 ];
 
+// The web picker follows the same category order used by Flutter. The
+// catalog is kept in one place so search and category navigation cannot drift
+// apart as new emoji are added.
+const emojiCategoryItems: Array<{
+  label: string;
+  icon: typeof MessageCircle;
+  emojis: string[];
+}> = [
+  { label: "Smileys e pessoas", icon: Smile, emojis: composerEmojis.slice(0, 110) },
+  {
+    label: "Gestos e corpo",
+    icon: UsersRound,
+    emojis: composerEmojis.slice(105, 155),
+  },
+  {
+    label: "Animais e natureza",
+    icon: PawPrint,
+    emojis: ["🐶", "🐱", "🐭", "🐹", "🐰", "🦊", "🐻", "🐼", "🐨", "🐯", "🦁", "🐮", "🐷", "🐸", "🐵", "🙈", "🙉", "🙊", "🐔", "🐧", "🐦", "🦄", "🐝", "🦋", "🐢", "🐠", "🐬", "🐳", "🌸", "🌹", "🌻", "🌈", "🌴", "🍀"],
+  },
+  {
+    label: "Comidas e bebidas",
+    icon: ShoppingBag,
+    emojis: composerEmojis.slice(155, 190),
+  },
+  {
+    label: "Viagens e lugares",
+    icon: CarFront,
+    emojis: ["🚗", "🚕", "🚌", "🚓", "🚑", "🚒", "🚲", "✈️", "🚀", "🏠", "🏢", "⛺", "🌋", "🏖️", "🏟️", "🗺️"],
+  },
+  {
+    label: "Objetos",
+    icon: Lightbulb,
+    emojis: composerEmojis.slice(190, 205),
+  },
+  {
+    label: "Símbolos",
+    icon: Coins,
+    emojis: composerEmojis.slice(205),
+  },
+  {
+    label: "Bandeiras",
+    icon: Flag,
+    emojis: ["🇧🇷", "🇺🇸", "🇵🇹", "🇪🇸", "🇫🇷", "🇮🇹", "🇩🇪", "🇬🇧", "🇯🇵", "🇰🇷", "🇨🇦", "🇦🇺"],
+  },
+];
+const recentComposerEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🔥", "🎉", "💯"];
+
 type MediaSendOptions = {
   mediaKind?: "sticker" | "gif";
   mediaSource?: string;
@@ -2520,6 +2573,8 @@ function Chat({
   const [draft, setDraft] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
   const [emojiOpen, setEmojiOpen] = useState(false);
+  const [emojiCategoryIndex, setEmojiCategoryIndex] = useState(0);
+  const [emojiSearch, setEmojiSearch] = useState("");
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [recording, setRecording] = useState(false);
@@ -3445,14 +3500,80 @@ function Chat({
             >
               {!giphyKind ? (
                 <>
-                  <div className="emoji-tabs" role="tablist" aria-label="Emojis e mídias">
+                  <div className="emoji-category-bar" role="tablist" aria-label="Categorias de emoji">
                     <button
                       type="button"
-                      className="active"
+                      className={emojiCategoryIndex === -1 ? "active" : ""}
                       role="tab"
-                      aria-selected="true"
+                      aria-label="Recentes"
+                      aria-selected={emojiCategoryIndex === -1}
+                      onClick={() => setEmojiCategoryIndex(-1)}
                     >
-                      Emojis
+                      <Clock3 />
+                    </button>
+                    {emojiCategoryItems.map((category, index) => {
+                      const Icon = category.icon;
+                      return (
+                        <button
+                          type="button"
+                          key={category.label}
+                          className={emojiCategoryIndex === index ? "active" : ""}
+                          role="tab"
+                          aria-label={category.label}
+                          aria-selected={emojiCategoryIndex === index}
+                          onClick={() => setEmojiCategoryIndex(index)}
+                        >
+                          <Icon />
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <label className="emoji-search">
+                    <Search />
+                    <input
+                      value={emojiSearch}
+                      onChange={(event) => setEmojiSearch(event.target.value)}
+                      placeholder="Pesquisar emoji"
+                      aria-label="Pesquisar emoji"
+                    />
+                  </label>
+                  <div className="emoji-picker-body">
+                    {!emojiSearch.trim() && (
+                      <>
+                        <h4>Recentes</h4>
+                        <div className="emoji-grid emoji-grid--recent">
+                          {recentComposerEmojis.map((emoji) => (
+                            <button type="button" key={`recent-${emoji}`} onClick={() => insertEmoji(emoji)}>
+                              {emoji}
+                            </button>
+                          ))}
+                        </div>
+                      </>
+                    )}
+                    <h4>
+                      {emojiSearch.trim()
+                        ? "Resultado da busca"
+                        : emojiCategoryIndex < 0
+                          ? "Smileys e pessoas"
+                          : emojiCategoryItems[emojiCategoryIndex]?.label || "Smileys e pessoas"}
+                    </h4>
+                    <div className="emoji-grid">
+                      {(emojiSearch.trim()
+                        ? composerEmojis.filter((emoji) => emoji.includes(emojiSearch.trim()))
+                        : emojiCategoryIndex < 0
+                          ? emojiCategoryItems[0].emojis
+                          : emojiCategoryItems[emojiCategoryIndex]?.emojis || composerEmojis
+                      ).map((emoji, index) => (
+                        <button type="button" key={`${emoji}-${index}`} onClick={() => insertEmoji(emoji)}>
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="emoji-picker-bottom-tabs" role="tablist" aria-label="Tipo de conteúdo">
+                    <button type="button" className="active" role="tab" aria-selected="true">
+                      <Smile />
+                      <span>Emoji</span>
                     </button>
                     <button
                       type="button"
@@ -3464,7 +3585,7 @@ function Chat({
                         setGiphyKind("gifs");
                       }}
                     >
-                      GIFs
+                      <span>GIF</span>
                     </button>
                     <button
                       type="button"
@@ -3476,15 +3597,9 @@ function Chat({
                         setGiphyKind("stickers");
                       }}
                     >
-                      Figurinhas
+                      <Image />
+                      <span>Figurinhas</span>
                     </button>
-                  </div>
-                  <div className="emoji-grid">
-                    {composerEmojis.map((emoji) => (
-                      <button type="button" key={emoji} onClick={() => insertEmoji(emoji)}>
-                        {emoji}
-                      </button>
-                    ))}
                   </div>
                 </>
               ) : (
@@ -3507,22 +3622,6 @@ function Chat({
                       }}
                     >
                       <X />
-                    </button>
-                  </div>
-                  <div className="giphy-tabs" role="tablist" aria-label="Tipo de mídia">
-                    <button
-                      type="button"
-                      className={giphyKind === "gifs" ? "active" : ""}
-                      onClick={() => setGiphyKind("gifs")}
-                    >
-                      GIFs
-                    </button>
-                    <button
-                      type="button"
-                      className={giphyKind === "stickers" ? "active" : ""}
-                      onClick={() => setGiphyKind("stickers")}
-                    >
-                      Figurinhas
                     </button>
                   </div>
                   <label className="giphy-search">
@@ -3558,6 +3657,39 @@ function Chat({
                   ) : (
                     <div className="giphy-state">Nenhuma mídia encontrada.</div>
                   )}
+                  <div className="emoji-picker-bottom-tabs" role="tablist" aria-label="Tipo de conteúdo">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
+                      onClick={() => {
+                        setGiphyKind(null);
+                        setEmojiSearch("");
+                      }}
+                    >
+                      <Smile />
+                      <span>Emoji</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={giphyKind === "gifs" ? "active" : ""}
+                      role="tab"
+                      aria-selected={giphyKind === "gifs"}
+                      onClick={() => setGiphyKind("gifs")}
+                    >
+                      <span>GIF</span>
+                    </button>
+                    <button
+                      type="button"
+                      className={giphyKind === "stickers" ? "active" : ""}
+                      role="tab"
+                      aria-selected={giphyKind === "stickers"}
+                      onClick={() => setGiphyKind("stickers")}
+                    >
+                      <Image />
+                      <span>Figurinhas</span>
+                    </button>
+                  </div>
                 </>
               )}
             </div>
