@@ -959,6 +959,7 @@ class _InlineAudioPlayerState extends ConsumerState<InlineAudioPlayer>
     if (_error != null) {
       return _AudioFallbackPlayer(
         title: widget.title,
+        errorMessage: _error,
         compact: widget.compact,
         onRetry: () => unawaited(_load()),
       );
@@ -1123,11 +1124,13 @@ class _InlineAudioPlayerState extends ConsumerState<InlineAudioPlayer>
 class _AudioFallbackPlayer extends StatelessWidget {
   const _AudioFallbackPlayer({
     required this.title,
+    this.errorMessage,
     required this.compact,
     this.onRetry,
   });
 
   final String? title;
+  final String? errorMessage;
   final bool compact;
   final VoidCallback? onRetry;
 
@@ -1172,8 +1175,8 @@ class _AudioFallbackPlayer extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  'Toque para tentar de novo',
-                  maxLines: 1,
+                  _friendlyAudioError(errorMessage),
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                     color: Color(0xFF667781),
@@ -1194,6 +1197,17 @@ class _AudioFallbackPlayer extends StatelessWidget {
       ),
     );
   }
+}
+
+String _friendlyAudioError(String? value) {
+  final normalized = (value ?? '').toLowerCase();
+  if (normalized.contains('expired') ||
+      normalized.contains('whatsapp_media_expired') ||
+      normalized.contains('status code 403') ||
+      normalized.contains('invalid media hmac')) {
+    return 'Mídia expirada no WhatsApp. Peça para reenviar.';
+  }
+  return 'Não foi possível carregar. Toque para tentar novamente.';
 }
 
 class _MediaErrorState extends StatelessWidget {

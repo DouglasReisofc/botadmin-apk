@@ -746,6 +746,37 @@ export async function GET(request: Request, context: Context) {
     if (error instanceof BotInstanceError) {
       return NextResponse.json({ message: error.message }, { status: error.status });
     }
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    // WhatsApp media is encrypted at rest and its CDN URLs expire. Once the
+    // CDN returns 403 (or the device reports an invalid HMAC), retrying the
+    // same envelope cannot restore the bytes. Return a stable, actionable
+    // status instead of a generic 500 so Flutter/web can keep the bubble in
+    // the history and present a useful message to the user.
+    const mediaExpired =
+      /invalid media hmac|status code 403|media(?: file)? expired|not available/i.test(
+        errorMessage,
+      );
+    if (mediaExpired) {
+      console.info("WhatsApp media is no longer available from the CDN", {
+        instanceId,
+        chatJid,
+        messageKey: messageKey.slice(0, 12),
+      });
+      return NextResponse.json(
+        {
+          message:
+            "Esta mídia não está mais disponível no WhatsApp. Peça para reenviar o áudio.",
+          code: "WHATSAPP_MEDIA_EXPIRED",
+        },
+        {
+          status: 410,
+          headers: {
+            "Cache-Control": "no-store",
+            "X-BotAdmin-Media-Expired": "1",
+          },
+        },
+      );
+    }
     console.error("Failed to load WhatsApp message media", error);
     return NextResponse.json(
       { message: "Não foi possível carregar a mídia." },
