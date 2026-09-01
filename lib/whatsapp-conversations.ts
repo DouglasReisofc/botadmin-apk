@@ -1292,12 +1292,15 @@ export const listWhatsappMessageReceipts = async (params: {
   if (!chatJid) return [] as WhatsappMessageReceipt[];
   const key = params.messageKey.trim();
   const numericId = Number.parseInt(key, 10);
+  const hasNumericId = Number.isFinite(numericId) && numericId > 0;
   const db = getDb();
   const [rows] = await db.query<(RowDataPacket & { id: number })[]>(
     `SELECT id FROM bot_whatsapp_messages
      WHERE user_id = ? AND instance_id = ? AND chat_jid = ?
-       AND (message_id = ? OR (? > 0 AND id = ?)) LIMIT 1`,
-    [params.userId, params.instanceId, chatJid, key, numericId, numericId],
+       AND (message_id = ?${hasNumericId ? " OR id = ?" : ""}) LIMIT 1`,
+    hasNumericId
+      ? [params.userId, params.instanceId, chatJid, key, numericId]
+      : [params.userId, params.instanceId, chatJid, key],
   );
   const id = Number(rows?.[0]?.id ?? 0);
   if (!id) return [] as WhatsappMessageReceipt[];
@@ -1329,6 +1332,7 @@ const resolveWhatsappMessageRecordId = async (params: {
 }) => {
   const key = params.messageKey.trim();
   const numericId = Number.parseInt(key, 10);
+  const hasNumericId = Number.isFinite(numericId) && numericId > 0;
   const [rows] = await getDb().query<(RowDataPacket & {
     id: number;
     direction: string;
@@ -1339,8 +1343,10 @@ const resolveWhatsappMessageRecordId = async (params: {
     `SELECT id, direction, media_json, raw_json, message_id
      FROM bot_whatsapp_messages
      WHERE user_id = ? AND instance_id = ? AND chat_jid = ?
-       AND (message_id = ? OR (? > 0 AND id = ?)) LIMIT 1`,
-    [params.userId, params.instanceId, params.chatJid, key, numericId, numericId],
+       AND (message_id = ?${hasNumericId ? " OR id = ?" : ""}) LIMIT 1`,
+    hasNumericId
+      ? [params.userId, params.instanceId, params.chatJid, key, numericId]
+      : [params.userId, params.instanceId, params.chatJid, key],
   );
   return rows?.[0] ?? null;
 };
