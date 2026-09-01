@@ -1798,13 +1798,11 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     /\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct);
   // Do not fan out authenticated recovery requests for every historical
   // attachment while a conversation is opening. A direct CDN/R2 URL is both
-  // faster and less likely to hit a transient worker gateway. Keep the
-  // authenticated endpoint as a lazy fallback, though: WhatsApp CDN links
-  // expire frequently and otherwise leave a permanent broken-media card even
-  // when the server can still recover the bytes from the connected instance.
-  // The endpoint is only requested after the browser reports an error for the
-  // direct source (or after the user explicitly taps retry).
-  const shouldRecover = refresh || !directSource || recoverable;
+  // faster and less likely to hit a transient worker gateway. Recovery is
+  // requested only when there is no direct URL or after the user explicitly
+  // taps retry; this keeps a stale batch from turning a chat open into a
+  // cascade of 502 responses while retaining a deterministic recovery path.
+  const shouldRecover = refresh || !directSource;
   const mediaSources = Array.from(
     new Set(
       [
