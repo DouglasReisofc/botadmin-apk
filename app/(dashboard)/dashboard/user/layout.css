@@ -1,0 +1,52 @@
+/* WhatsApp Web theme tokens */
+:root {
+  --wa-bg-chat: #efeae2;
+  --wa-bg-panel: #ffffff;
+  --wa-bg-elevated: #f0f2f5;
+  --wa-primary: #00a884;
+  --wa-primary-strong: #008069;
+  --wa-accent: #25d366;
+  --wa-text: #111b21;
+  --wa-text-secondary: #667781;
+  --wa-icon: #54656f;
+  --wa-border: #d1d7db;
+  --wa-border-subtle: #e9edef;
+  --wa-hover: #f5f6f6;
+  --wa-selected: #f0f2f5;
+  --wa-selected-strong: #e9edef;
+  --wa-bubble-out: #d9fdd3;
+}
+
+/* Dashboard-local global fixes. */
+html.botadmin-flow-lock,
+body.botadmin-flow-lock {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  overscroll-behavior-y: none !important;
+  touch-action: none !important;
+  -webkit-overflow-scrolling: auto !important;
+}
+
+body.botadmin-flow-lock,
+body.botadmin-flow-lock * {
+  overscroll-behavior: none !important;
+}
+
+.botadmin-flow-root {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+}
+
+body.botadmin-flow-lock .react-flow,
+body.botadmin-flow-lock .react-flow__renderer,
+body.botadmin-flow-lock .react-flow__pane,
+body.botadmin-flow-lock .react-flow__viewport,
+body.botadmin-flow-lock .react-flow__zoompane,
+body.botadmin-flow-lock .react-flow__handle,
+body.botadmin-flow-lock .react-flow__connection,
+body.botadmin-flow-lock .react-flow__connection-path {
+  touch-action: none !important;
+  overscroll-behavior: none !important;
+}

@@ -1,0 +1,820 @@
+.workspace {
+  min-height: 0;
+  height: 100%;
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  overflow: hidden;
+  background: #efeae2;
+  color: #111b21;
+}
+
+.workspaceStandalone {
+  min-height: calc(100dvh - 72px);
+}
+
+.paneHiddenMobile {
+  display: none !important;
+}
+
+.paneVisibleMobile {
+  display: flex !important;
+}
+
+.emptyChat {
+  flex: 1;
+  display: grid;
+  place-content: center;
+  gap: 8px;
+  padding: 32px;
+  text-align: center;
+  color: #667781;
+  background: #f0f2f5;
+}
+
+.emptyChat strong {
+  color: #111b21;
+  font-size: 1rem;
+}
+
+.sheetUserCard {
+  margin: 0 18px 8px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  border: 1px solid #d9e3ec;
+  background: linear-gradient(135deg, #f7fff9, #eefbf3);
+}
+
+.sheetUserCard strong {
+  display: block;
+  font-size: 0.95rem;
+  color: #111b21;
+}
+
+.sheetUserCard small {
+  display: block;
+  margin-top: 3px;
+  color: #667781;
+  font-size: 0.8rem;
+}
+
+.sheetDangerItem strong {
+  color: #b42318;
+}
+
+.editForm {
+  display: grid;
+  gap: 14px;
+  padding: 0;
+}
+
+.modalField {
+  display: grid;
+  gap: 7px;
+}
+
+.modalFieldLabel {
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #667781;
+}
+
+.modalFieldInput,
+.modalFieldSelect {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid #d7dde4;
+  border-radius: 12px;
+  padding: 0 14px;
+  background: #fff;
+  color: #111b21;
+  font-size: 0.92rem;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modalFieldInput:focus,
+.modalFieldSelect:focus {
+  outline: none;
+  border-color: #00a884;
+  box-shadow: 0 0 0 3px rgb(0 168 132 / 0.16);
+}
+
+.modalToggleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 14px;
+  border: 1px solid #e4e9ef;
+  border-radius: 12px;
+  background: #f9fbfa;
+}
+
+.modalToggleRow strong {
+  display: block;
+  font-size: 0.88rem;
+  color: #111b21;
+}
+
+.modalToggleRow small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.76rem;
+  color: #667781;
+}
+
+.modalToggleSwitch {
+  width: 46px;
+  height: 26px;
+  border-radius: 999px;
+  border: 0;
+  background: #cfd8e3;
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.18s ease;
+}
+
+.modalToggleSwitchOn {
+  background: #00a884;
+}
+
+.modalToggleSwitch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgb(11 20 26 / 0.2);
+  transition: transform 0.18s ease;
+}
+
+.modalToggleSwitchOn::after {
+  transform: translateX(20px);
+}
+
+.modalAlert {
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 0.86rem;
+  line-height: 1.4;
+}
+
+.modalAlertDanger {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: #b42318;
+}
+
+.modalIntro {
+  margin: 0 0 4px;
+  font-size: 0.86rem;
+  line-height: 1.45;
+  color: #667781;
+}
+
+.modalTabBar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.modalTab {
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 999px;
+  padding: 0 14px;
+  background: #fff;
+  color: #54656f;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modalTabActive {
+  border-color: #00a884;
+  background: #ecfdf3;
+  color: #065f46;
+}
+
+.modalEntityList {
+  display: grid;
+  gap: 10px;
+}
+
+.modalEntityCard {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e4e9ef;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.modalEntityMain {
+  display: grid;
+  gap: 4px;
+}
+
+.modalEntityMain strong {
+  font-size: 0.92rem;
+  color: #111b21;
+}
+
+.modalEntityMain small {
+  font-size: 0.78rem;
+  color: #667781;
+}
+
+.modalEntityActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.modalStatusChip {
+  width: fit-content;
+  margin-top: 4px;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.modalStatusChipSuccess {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.modalStatusChipMuted {
+  background: #eef2f6;
+  color: #64748b;
+}
+
+.modalOptionPills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modalOptionPill {
+  min-height: 38px;
+  border: 1px solid #d7dde4;
+  border-radius: 999px;
+  padding: 0 14px;
+  background: #fff;
+  color: #3b4a54;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.modalOptionPill:hover {
+  border-color: #b8efd0;
+  background: #f7fff9;
+}
+
+.modalOptionPillActive {
+  border-color: #00a884;
+  background: #ecfdf3;
+  color: #065f46;
+  box-shadow: 0 0 0 3px rgb(0 168 132 / 0.14);
+}
+
+.modalOptionPill_muted {
+  --pill-accent: #94a3b8;
+}
+
+.modalOptionPill_amber {
+  --pill-accent: #d97706;
+}
+
+.modalOptionPill_emerald {
+  --pill-accent: #059669;
+}
+
+.modalOptionPill_rose {
+  --pill-accent: #e11d48;
+}
+
+.modalOptionPill_slate {
+  --pill-accent: #64748b;
+}
+
+.modalOptionPill_muted.modalOptionPillActive,
+.modalOptionPill_amber.modalOptionPillActive,
+.modalOptionPill_emerald.modalOptionPillActive,
+.modalOptionPill_rose.modalOptionPillActive,
+.modalOptionPill_slate.modalOptionPillActive {
+  border-color: var(--pill-accent);
+  color: #111b21;
+  background: color-mix(in srgb, var(--pill-accent) 12%, #fff);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--pill-accent) 22%, transparent);
+}
+
+.modalActionGrid {
+  display: grid;
+  gap: 8px;
+  padding: 8px 12px 14px;
+}
+
+.modalActionGridInline {
+  padding: 0;
+}
+
+.modalActionCard {
+  width: 100%;
+  border: 1px solid #e4e9ef;
+  border-radius: 14px;
+  background: #fff;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+
+.modalActionCard:hover {
+  background: #f7fff9;
+  border-color: #b8efd0;
+}
+
+.modalActionCard:active {
+  transform: scale(0.99);
+}
+
+.modalActionCardDanger:hover {
+  background: #fff5f5;
+  border-color: #fecaca;
+}
+
+.modalActionIcon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  background: #dcfce7;
+  color: #0b6b45;
+  border: 1px solid #86efac;
+}
+
+.modalActionIconSky {
+  background: #e0f2fe;
+  color: #0369a1;
+  border-color: #7dd3fc;
+}
+
+.modalActionIconViolet {
+  background: #ede9fe;
+  color: #6d28d9;
+  border-color: #c4b5fd;
+}
+
+.modalActionIconDanger {
+  background: #fee2e2;
+  color: #b42318;
+  border-color: #fecaca;
+}
+
+.modalActionText strong {
+  display: block;
+  font-size: 0.92rem;
+  color: #111b21;
+}
+
+.modalActionText small {
+  display: block;
+  margin-top: 2px;
+  font-size: 0.78rem;
+  color: #667781;
+}
+
+.editForm label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: #3b4a54;
+}
+
+.editForm input,
+.editForm select {
+  height: 42px;
+  border: 1px solid #d1d7db;
+  border-radius: 12px;
+  padding: 0 12px;
+  background: #fff;
+  color: #111b21;
+  font-size: 0.9rem;
+}
+
+.editFormRow {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.editFormSwitch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.86rem;
+  color: #3b4a54;
+}
+
+.editFormActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.editModal {
+  width: min(460px, 100%);
+  justify-items: stretch;
+  align-items: stretch;
+  text-align: left;
+  padding: 22px 20px 20px;
+}
+
+.editBtnPrimary,
+.editBtnSecondary {
+  min-height: 40px;
+  border-radius: 999px;
+  padding: 0 18px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editBtnSecondary {
+  border: 1px solid #d1d7db;
+  background: #fff;
+  color: #54656f;
+}
+
+.editBtnPrimary {
+  border: 0;
+  background: #00a884;
+  color: #06211b;
+}
+
+.editBtnPrimary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.adminModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgb(11 20 26 / 0.48);
+  backdrop-filter: blur(4px);
+}
+
+.adminModal {
+  width: min(520px, 100%);
+  max-height: min(88vh, 760px);
+  border: 1px solid #d1d7db;
+  border-radius: 20px;
+  background: #ffffff;
+  box-shadow: 0 28px 80px rgb(11 20 26 / 0.28);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.adminModalWide {
+  width: min(720px, 100%);
+}
+
+.adminModalHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid #edf1f5;
+  background: linear-gradient(180deg, #f7fff9, #ffffff);
+}
+
+.adminModalHeader strong {
+  display: block;
+  font-size: 1.05rem;
+  color: #111b21;
+}
+
+.adminModalHeader small {
+  display: block;
+  margin-top: 4px;
+  color: #667781;
+  font-size: 0.82rem;
+}
+
+.adminModalBody {
+  padding: 18px 20px;
+  overflow-y: auto;
+  display: grid;
+  gap: 14px;
+}
+
+.adminModalFooter {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding: 14px 20px 18px;
+  border-top: 1px solid #edf1f5;
+  background: #fafbfc;
+}
+
+.adminModalBtn,
+.adminModalBtnGhost,
+.adminModalBtnDanger {
+  min-height: 42px;
+  border-radius: 12px;
+  padding: 0 18px;
+  font-size: 0.86rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.adminModalBtn {
+  border: 0;
+  background: #00a884;
+  color: #06211b;
+}
+
+.adminModalBtnGhost {
+  border: 1px solid #d7dde4;
+  background: #fff;
+  color: #54656f;
+}
+
+.adminModalBtnDanger {
+  border: 0;
+  background: #ef4444;
+  color: #fff;
+}
+
+.adminModalBtn:disabled,
+.adminModalBtnGhost:disabled,
+.adminModalBtnDanger:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.confirmIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #fff4e5;
+  color: #b45309;
+}
+
+.confirmIconDanger {
+  background: #fee2e2;
+  color: #b42318;
+}
+
+.supportComposerShell {
+  flex: 0 0 auto;
+  border-top: 1px solid #d1d7db;
+  background: #f0f2f5;
+}
+
+.supportComposerNotice {
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #fde68a;
+  background: #fffbeb;
+  color: #92400e;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.supportComposerFeedback {
+  padding: 8px 16px 0;
+}
+
+.supportPendingFile {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 10px 16px 0;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #fff;
+  border: 1px solid #d1d7db;
+}
+
+.supportPendingFilePreview {
+  width: 48px;
+  height: 48px;
+  flex: 0 0 48px;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  background: #e7f8ef;
+  color: #0b6b45;
+}
+
+.supportPendingFileMeta {
+  min-width: 0;
+  flex: 1;
+  display: grid;
+  gap: 2px;
+}
+
+.supportPendingFileMeta strong,
+.supportPendingFileMeta small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supportPendingFileMeta strong {
+  font-size: 0.86rem;
+  color: #111b21;
+}
+
+.supportPendingFileMeta small {
+  font-size: 0.74rem;
+  color: #667781;
+}
+
+.supportPendingFileRemove {
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: transparent;
+  color: #54656f;
+  cursor: pointer;
+}
+
+.supportPendingFileRemove:hover {
+  background: rgb(11 20 26 / 0.06);
+}
+
+.supportComposer {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  padding: 10px 16px 14px;
+}
+
+.supportComposerAttach {
+  width: 42px;
+  height: 42px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #54656f;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.supportComposerAttach:hover {
+  background: rgb(11 20 26 / 0.06);
+  color: #111b21;
+}
+
+.supportComposerAttach input {
+  display: none;
+}
+
+.supportComposerField {
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  border-radius: 24px;
+  background: #fff;
+  border: 1px solid #e9edef;
+  padding: 0 16px;
+  box-shadow: 0 1px 2px rgb(11 20 26 / 0.05);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.supportComposerField:focus-within {
+  border-color: #00a884;
+  box-shadow: 0 0 0 2px rgb(0 168 132 / 0.14);
+}
+
+.supportComposerInput {
+  width: 100%;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  color: #111b21;
+  font-size: 0.95rem;
+  line-height: 1.35;
+  padding: 11px 0;
+}
+
+.supportComposerInput::placeholder {
+  color: #667781;
+}
+
+.supportComposerInput:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+.supportComposerSend {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #00a884;
+  color: #fff;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+  transition: background 0.15s ease, transform 0.12s ease, opacity 0.15s ease;
+}
+
+.supportComposerSend:hover:not(:disabled) {
+  background: #06cf9c;
+}
+
+.supportComposerSend:active:not(:disabled) {
+  transform: scale(0.96);
+}
+
+.supportComposerSend:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+}
+
+@media (max-width: 768px) {
+  .workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .editFormRow {
+    grid-template-columns: 1fr;
+  }
+
+  .adminModalOverlay {
+    align-items: flex-end;
+    padding: 0;
+  }
+
+  .adminModal,
+  .adminModalWide {
+    width: 100%;
+    max-height: 92vh;
+    border-radius: 22px 22px 0 0;
+  }
+
+  .supportComposer {
+    gap: 6px;
+    padding: 8px 10px calc(10px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .supportComposerAttach,
+  .supportComposerSend {
+    width: 40px;
+    height: 40px;
+  }
+
+  .supportComposerField {
+    min-height: 42px;
+    border-radius: 22px;
+    padding: 0 14px;
+  }
+
+  .supportComposerInput {
+    font-size: 16px;
+    padding: 10px 0;
+  }
+}

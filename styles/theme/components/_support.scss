@@ -1,0 +1,414 @@
+.support-contacts-card,
+.support-sidebar-card,
+.support-chat-card {
+  height: auto;
+  min-height: min(720px, calc(100vh - 220px));
+}
+
+.support-composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.support-composer__recording {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #b91c1c;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.support-composer__container {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.5rem 0.75rem;
+  box-shadow: 0 8px 24px rgba(15, 30, 45, 0.12);
+  border: 1px solid rgba(15, 30, 45, 0.08);
+}
+
+.support-composer__icon-button {
+  width: 38px;
+  height: 38px;
+  border: none;
+  background: transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  color: #0f172a;
+  transition: transform 0.15s ease, color 0.15s ease;
+  border-radius: 999px;
+}
+
+.support-composer__icon-button:hover,
+.support-composer__icon-button:focus-visible {
+  transform: translateY(-1px);
+  color: var(--bs-primary);
+  outline: none;
+}
+
+.support-composer__icon-button--danger {
+  color: #b91c1c;
+}
+
+.support-composer__icon-button--primary {
+  background: #111827;
+  color: #fff;
+  box-shadow: 0 8px 16px rgba(15, 30, 45, 0.24);
+}
+
+.support-composer__icon-button--primary:hover,
+.support-composer__icon-button--primary:focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 30, 45, 0.32);
+}
+
+.support-composer__icon-button--recording {
+  color: #b91c1c;
+}
+
+.support-composer__icon {
+  font-size: 1.5rem;
+  line-height: 1;
+}
+
+.support-composer__input {
+  flex: 1 1 auto;
+  border: none;
+  resize: none;
+  outline: none;
+  font-size: 1rem;
+  background: transparent;
+  color: #0f172a;
+}
+
+.support-composer__input::placeholder {
+  color: #94a3b8;
+}
+
+.support-composer__container--recording {
+  justify-content: space-between;
+  background: #fffbe6;
+  border: 1px solid rgba(234, 179, 8, 0.3);
+}
+
+.support-composer__recording-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex: 1 1 auto;
+  padding: 0 0.5rem;
+}
+
+.support-composer__recording-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  background: #dc2626;
+  animation: support-recording-pulse 1.2s infinite;
+}
+
+.support-composer__recording-time {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: #111827;
+  min-width: 48px;
+}
+
+.support-composer__recording-wave {
+  flex: 1 1 auto;
+  height: 24px;
+  background: repeating-linear-gradient(
+    90deg,
+    rgba(15, 30, 45, 0.1),
+    rgba(15, 30, 45, 0.1) 2px,
+    rgba(15, 30, 45, 0.05) 2px,
+    rgba(15, 30, 45, 0.05) 4px
+  );
+  border-radius: 12px;
+  position: relative;
+  overflow: hidden;
+}
+
+.support-composer__recording-wave::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.3), transparent);
+  animation: support-recording-wave 1.8s linear infinite;
+}
+
+.support-composer__actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.support-composer__send {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  background: #111827;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  box-shadow: 0 8px 20px rgba(15, 30, 45, 0.2);
+}
+
+.support-composer__send:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.support-composer__send:not(:disabled):hover,
+.support-composer__send:not(:disabled):focus-visible {
+  transform: translateY(-1px);
+  box-shadow: 0 12px 24px rgba(15, 30, 45, 0.28);
+}
+
+.support-composer__send-icon {
+  font-size: 1.35rem;
+  transform: translateX(1px);
+}
+
+.support-media-preview {
+  position: relative;
+  width: 124px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid rgba(15, 30, 45, 0.1);
+  box-shadow: 0 12px 20px rgba(15, 30, 45, 0.12);
+  padding: 0.75rem;
+}
+
+.support-media-preview__remove {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  background: #dc2626;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.support-media-preview__image {
+  max-height: 90px;
+  border-radius: 10px;
+}
+
+.support-media-preview__file {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  text-align: left;
+}
+
+.support-media-preview__label {
+  font-weight: 600;
+  font-size: 0.85rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@keyframes support-recording-pulse {
+  0% { opacity: 0.5; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.1); }
+  100% { opacity: 0.5; transform: scale(0.9); }
+}
+
+@keyframes support-recording-wave {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.support-mobile-contacts .offcanvas {
+  width: min(390px, 88vw);
+  max-width: 420px;
+}
+
+.support-mobile-contacts .offcanvas-body {
+  padding-bottom: 2.5rem;
+}
+
+@media (max-width: 991.98px) {
+  .support-contacts-card,
+  .support-sidebar-card,
+  .support-chat-card {
+    min-height: 65vh;
+  }
+}
+
+/* container utilitário para centralizar a área de suporte no painel do usuário */
+.user-support-wrapper {
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 1rem 2rem;
+  max-width: 1140px;
+}
+
+@media (min-width: 1400px) {
+  .user-support-wrapper {
+    max-width: 1260px;
+    padding: 0 1.5rem 2.5rem;
+  }
+}
+
+/* layout do suporte administrativo mantém os ajustes originais */
+.admin-support {
+  @media (min-width: 1200px) {
+    margin-left: -1.25rem; /* anula padding do container */
+    margin-right: -1.25rem;
+  }
+}
+
+.user-support {
+  width: 100%;
+}
+
+.user-support--compact {
+  padding: 1rem 0;
+}
+
+.support-sidebar-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.support-sidebar-card__header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+}
+
+.support-sidebar-card__body {
+  flex: 1 1 auto;
+  padding: 1rem 1.25rem;
+  overflow-y: auto;
+}
+
+.support-thread-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.support-thread-list-item {
+  display: flex;
+}
+
+.support-thread-item {
+  border-bottom: 1px solid var(--bs-border-color-translucent);
+  transition: background-color 0.15s ease;
+}
+
+.support-thread-item:hover {
+  background-color: var(--bs-gray-100);
+}
+
+.support-contacts-grid {
+  --support-contacts-card-min-height: 160px;
+}
+
+.support-contacts-grid > .col,
+.support-contacts-grid > [class*="col-"] {
+  display: flex;
+}
+
+
+.support-contacts-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.support-contacts-list-item {
+  display: flex;
+}
+
+.support-thread-card {
+  flex: 1 1 auto;
+  min-height: var(--support-contacts-card-min-height, 160px);
+  display: flex;
+}
+
+.support-thread-card .card-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.support-thread-card__title {
+  display: flex;
+  flex-direction: row;
+  gap: 0.35rem;
+  align-items: center;
+}
+
+.support-thread-card__meta {
+  align-items: center;
+}
+
+.support-thread-card__identifier {
+  color: var(--bs-secondary-color);
+  max-width: 50%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.support-thread-card__body {
+  gap: 0.75rem;
+}
+
+.support-thread-card__timestamp {
+  margin-top: auto;
+}
+
+@media (max-width: 575.98px) {
+  .support-thread-card__body {
+    gap: 0.5rem;
+  }
+
+  .support-thread-card__header {
+    align-items: center;
+  }
+
+  .support-thread-card__meta {
+    gap: 0.5rem;
+  }
+
+  .support-thread-card__identifier {
+    font-size: 0.75rem;
+  }
+}
+
+.support-thread-card {
+  border: 1px solid var(--bs-border-color-translucent);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.support-thread-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--bs-box-shadow);
+}
+
+.support-thread-card--active {
+  border-color: var(--bs-primary);
+  box-shadow: var(--bs-box-shadow);
+}

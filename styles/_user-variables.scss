@@ -1,0 +1,30 @@
+//
+// user-variables.scss
+// Custom overrides to keep the brand palette accessible.
+//
+
+$blue: #007867;
+$primary: $blue;
+
+// Refresh the extended primary scale so the theme utilities stay coherent.
+$primary-100: tint-color($blue, 85%);
+$primary-200: tint-color($blue, 70%);
+$primary-300: tint-color($blue, 50%);
+$primary-400: tint-color($blue, 30%);
+$primary-500: $blue;
+$primary-600: shade-color($blue, 10%);
+$primary-700: shade-color($blue, 25%);
+$primary-800: shade-color($blue, 45%);
+$primary-900: shade-color($blue, 60%);
+
+$primary-text-emphasis: shade-color($primary, 35%);
+$primary-bg-subtle: tint-color($primary, 90%);
+$primary-border-subtle: tint-color($primary, 70%);
+
+$link-color: $primary;
+$link-hover-color: shade-color($primary, 15%);
+
+// Botões com cantos arredondados apenas para tamanho LG (hero/CTAs)
+// Mantemos os tamanhos padrão do Bootstrap para evitar quebrar layouts
+// do painel, especialmente ao pré-visualizar imagens.
+$btn-border-radius-lg: 50rem;

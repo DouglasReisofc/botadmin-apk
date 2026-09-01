@@ -1,0 +1,750 @@
+{
+    "menu": {
+        "usuario": [
+            "╭━━━ 乂  M E N Ú   P R I N C I P A L 乂 ━━━╮",
+            "`{prefix}𝘱𝘭𝘢𝘺 <𝘣𝘶𝘴𝘲𝘶𝘦𝘥𝘢>` - buscar música/video",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘵𝘪𝘤𝘬𝘦𝘳` - crear sticker",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘧𝘶𝘯𝘥𝘰` - sticker sin fondo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘵𝘰𝘮𝘱3` - convertir a MP3",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘺𝘵𝘮𝘱4 <𝘭𝘪𝘯𝘬>` - descargar video de YouTube",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘵𝘪𝘬𝘵𝘰𝘬 <𝘭𝘪𝘯𝘬>` - descargar video de TikTok",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘪𝘯𝘴𝘵𝘢𝘨𝘳𝘢𝘮 <𝘭𝘪𝘯𝘬>` - descargar media de Instagram",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘢𝘤𝘦𝘣𝘰𝘰𝘬 <𝘭𝘪𝘯𝘬>` - descargar video de Facebook",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘬𝘸𝘢𝘪 <𝘭𝘪𝘯𝘬>` - descargar video de Kwai",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘮𝘦𝘨𝘢 <𝘭𝘪𝘯𝘬>` - descargar archivo de Mega",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘧𝘣𝘢𝘯 <𝘶𝘪𝘥>` - verificar ban en Free Fire",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘪𝘭𝘮𝘦 <𝘯𝘰𝘮𝘣𝘳𝘦>` - detalles de una película",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘦𝘳𝘪𝘦 <𝘯𝘰𝘮𝘣𝘳𝘦>` - detalles de una serie",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘪𝘥` - mostrar ID del chat/grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘱𝘪𝘢𝘥𝘢 [𝘵𝘦𝘮𝘢]` - contar un chiste",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘪𝘨𝘶𝘳𝘪𝘯𝘩𝘢𝘴` - enviar stickers",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘵𝘢𝘣𝘦𝘭𝘢` - mostrar tabla",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘰𝘳𝘵𝘦𝘪𝘰` - crear sorteo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘰𝘳𝘵𝘦𝘪𝘰2` - sorteo simple",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘦𝘯𝘲𝘶𝘦𝘵𝘦` - crear encuesta",
+            "━━━━━━━━━━━━━━━",
+            "🔒 *Comandos de Admin*",
+            "`{prefix}𝘮𝘦𝘯𝘶𝘢𝘥𝘮` - opciones administrativas",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "admin": [
+            "╭━━━ 乂  M E N Ú   A D M I N 乂 ━━━╮",
+            "`{prefix}𝘣𝘢𝘯 @𝘶𝘴𝘶𝘢𝘳𝘪𝘰` - Quitar miembro marcado",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘱𝘢𝘨𝘢𝘳` - Borrar mensaje citado",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘱𝘦𝘳𝘮𝘪𝘵𝘪𝘳𝘭𝘪𝘯𝘬 <𝘭𝘪𝘯𝘬>` - Agregar link/dominio a la whitelist",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘳𝘦𝘮𝘰𝘷𝘦𝘳𝘭𝘪𝘯𝘬 <𝘭𝘪𝘯𝘬>` - Quitar link/dominio de la whitelist",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘰𝘵𝘪𝘯𝘵𝘦𝘳𝘢𝘨𝘦` - IA responde en el grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘬𝘦𝘺𝘨𝘳𝘰𝘲 <𝘬𝘦𝘺>` - definir API Key del bot",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘱𝘳𝘰𝘮𝘱𝘵𝘣𝘰𝘵 <𝘵𝘦𝘹𝘵𝘰>` - definir prompt de la IA",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘭𝘪𝘯𝘬` - Borra cualquier link",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘢𝘯𝘦𝘹𝘵𝘳𝘦𝘮𝘰` - Banea por links prohibidos",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘭𝘪𝘯𝘬𝘨𝘱` - Bloquea invitaciones de grupos",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘢𝘯𝘨𝘳𝘪𝘯𝘨𝘰𝘴` - Elimina números extranjeros",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘰𝘢𝘥𝘮` - Solo admins usan comandos",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘶𝘵𝘰𝘴𝘵𝘪𝘤𝘬𝘦𝘳` - Convierte medios en sticker",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘶𝘵𝘰𝘥𝘰𝘸𝘯𝘭𝘰𝘢𝘥𝘦𝘳` - Descarga enlaces de medios",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘱𝘢𝘭𝘢𝘷𝘳𝘢𝘴` - Borra palabras prohibidas",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘮𝘢𝘳𝘤𝘢𝘳` - Mencionar a todos con etiqueta",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘮𝘦𝘯𝘤𝘪𝘰𝘯𝘢𝘳` - Mención fantasma",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘶𝘯𝘥𝘰𝘮𝘦𝘯𝘶` - Definir/quitar fondo del menú",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘧𝘶𝘯𝘥𝘰𝘣𝘦𝘮𝘷𝘪𝘯𝘥𝘰` - Definir/quitar imagen de bienvenida",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘭𝘦𝘨𝘦𝘯𝘥𝘢𝘣𝘦𝘮𝘷𝘪𝘯𝘥𝘰 <𝘵𝘦𝘹𝘵𝘰>` - Actualizar leyenda de bienvenida",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘱𝘳𝘰𝘮𝘰𝘷𝘦𝘳 @𝘶𝘴𝘶𝘢𝘳𝘪𝘰` - hacer admin",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘳𝘦𝘣𝘢𝘪𝘹𝘢𝘳 @𝘶𝘴𝘶𝘢𝘳𝘪𝘰` - quitar admin",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘥𝘥𝘳𝘦𝘨𝘳𝘢𝘴 <𝘵𝘦𝘹𝘵𝘰>` - definir reglas del grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘥𝘥𝘵𝘢𝘣𝘦𝘭𝘢 <𝘵𝘦𝘹𝘵𝘰>` - definir tabla del grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘦𝘮𝘷𝘪𝘯𝘥𝘰` - activar/desactivar bienvenida",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘮𝘦𝘶𝘳𝘢𝘯𝘬𝘪𝘯𝘨` - mostrar tu posición en el ranking",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘳𝘢𝘯𝘬𝘪𝘯𝘨` - mostrar el top 10 permanente del grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘳𝘦𝘴𝘦𝘵𝘢𝘳𝘳𝘢𝘯𝘬𝘪𝘯𝘨` - reiniciar el ranking (solo admins)",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘳𝘦𝘮𝘰𝘷𝘦𝘳𝘪𝘯𝘢𝘵𝘪𝘷𝘰𝘴 [𝘥𝘪𝘢𝘴]` - eliminar inactivos",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "main": [
+            "╭━━━ 乂  I N F O 乂 ━━━╮",
+            "┃ 👤 Usuario: {usuario}",
+            "┃ 🤖 Bot: {nomebot}",
+            "┃ 📱 Nº: {numerobot}",
+            "┃ 📅 Vencimiento: {vencimento}",
+            "╰━━━━━━━━━━━━━━━━━━━━╯",
+            "",
+            "乂  M E N Ú   P R I N C I P A L  乂",
+            "┣ 🔧 `{prefix}𝘮𝘦𝘯𝘶𝘢𝘥𝘮` - Menú Admin",
+            "┣ 📥 `{prefix}𝘮𝘦𝘯𝘶𝘥𝘰𝘸𝘯𝘭𝘰𝘢𝘥𝘴` - Descargas",
+            "┣ ⚙️ `{prefix}𝘮𝘦𝘯𝘶𝘢𝘵𝘪𝘷𝘢𝘤𝘰𝘦𝘴` - Activaciones",
+            "┣ 📅 `{prefix}𝘷𝘦𝘯𝘤𝘪𝘮𝘦𝘯𝘵𝘰` - Ver vencimiento del grupo",
+            "┣ 🌐 `{prefix}𝘪𝘥𝘪𝘰𝘮𝘢𝘴` - Idiomas",
+            "┣ 📜 `{prefix}𝘤𝘰𝘮𝘢𝘯𝘥𝘰𝘴` - Todos los comandos",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "downloads": [
+            "╭━━━ 乂  D E S C A R G A S 乂 ━━━╮",
+            "│ • `{prefix}play <busqueda>` - buscar música/video",
+            "│ • `{prefix}tomp3` - convertir a MP3",
+            "│ • `{prefix}ytmp4 <link>` - descargar video de YouTube",
+            "│ • `{prefix}tiktok <link>` - descargar video de TikTok",
+            "│ • `{prefix}instagram <link>` - descargar media de Instagram",
+            "│ • `{prefix}facebook <link>` - descargar video de Facebook",
+            "│ • `{prefix}kwai <link>` - descargar video de Kwai",
+            "│ • `{prefix}threads <link>` - descargar publicación de Threads",
+            "│ • `{prefix}spotifydl <url>` - descargar música de Spotify",
+            "│ • `{prefix}mediafire <link>` - descargar archivo de Mediafire",
+            "│ • `{prefix}mega <link>` - descargar archivo de Mega",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "ativacoes": [
+            "╭━━━ 乂  A C T I V A C I O N E S 乂 ━━━╮",
+            "`{prefix}𝘣𝘰𝘵𝘪𝘯𝘵𝘦𝘳𝘢𝘨𝘦` - IA responde en el grupo",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘬𝘦𝘺𝘨𝘳𝘰𝘲 <𝘬𝘦𝘺>` - definir API Key",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘱𝘳𝘰𝘮𝘱𝘵𝘣𝘰𝘵 <𝘵𝘦𝘹𝘵𝘰>` - definir prompt",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘭𝘪𝘯𝘬` - borra cualquier link",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘢𝘯𝘦𝘹𝘵𝘳𝘦𝘮𝘰` - banea por links prohibidos",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘭𝘪𝘯𝘬𝘨𝘱` - bloquea invitaciones de grupos",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘣𝘢𝘯𝘨𝘳𝘪𝘯𝘨𝘰𝘴` - elimina números extranjeros",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘴𝘰𝘢𝘥𝘮` - solo admins",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘶𝘵𝘰𝘴𝘵𝘪𝘤𝘬𝘦𝘳` - convierte medios en stickers",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘶𝘵𝘰𝘥𝘰𝘸𝘯𝘭𝘰𝘢𝘥𝘦𝘳` - descarga enlaces de medios",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘷𝘰𝘻𝘣𝘰𝘵𝘪𝘯𝘵𝘦𝘳𝘢𝘨𝘦` - IA responde con voz",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘶𝘵𝘰𝘳𝘦𝘴𝘱𝘰𝘴𝘵𝘢` - respuestas automáticas",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘯𝘴𝘧𝘸𝘪𝘮𝘢𝘨𝘦𝘮` - bloquea NSFW",
+            "━━━━━━━━━━━━━━━",
+            "`{prefix}𝘢𝘯𝘵𝘪𝘱𝘢𝘭𝘢𝘷𝘳𝘢𝘴` - borra palabras prohibidas",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "brincadeiras": [
+            "╭━━━ 乂  F U N C I Ó N  N O  D I S P O N I B L E 乂 ━━━╮",
+            "Los comandos de diversión fueron retirados del asistente.",
+            "El bot ahora se enfoca en flujos profesionales para tu comunidad.",
+            "Usa `{prefix}menu` para ver las funciones activas.",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "jogos": [
+            "╭━━━ 乂  F U N C I Ó N  N O  D I S P O N I B L E 乂 ━━━╮",
+            "Los juegos interactivos ya no están disponibles en esta versión.",
+            "El asistente prioriza recursos profesionales y automatizaciones.",
+            "Usa `{prefix}menu` para revisar los comandos vigentes.",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "outros": [
+            "╭━━━ 乂  V A R I O S 乂 ━━━╮",
+            "│ • `{prefix}piada [tema]` - cuenta un chiste",
+            "│ • `{prefix}pesquisar <texto>` - busca un comando",
+            "│ • `{prefix}figurinhas` - envía stickers",
+            "│ • `{prefix}tabela` - muestra la tabla",
+            "│ • `{prefix}regras` - muestra las reglas",
+            "│ • `{prefix}mensagens [días]` - estadísticas del grupo",
+            "│ • `{prefix}sorteio` - crea sorteo",
+            "│ • `{prefix}sorteio2` - sorteo simple",
+            "│ • `{prefix}enquete` - crea encuesta",
+            "│ • `{prefix}sticker` - crea sticker",
+            "│ • `{prefix}sfundo` - sticker sin fondo",
+            "│ • `{prefix}ffban <uid>` - verifica ban de Free Fire",
+            "│ • `{prefix}imageai <texto>` - genera imagen IA",
+            "│ • `{prefix}imageai3 <texto>` - genera imagen IA (Heartsync)",
+            "│ • `{prefix}spamngl <link>|<mensaje>` - envía mensaje NGL",
+            "│ • `{prefix}frase @usuario | texto` - genera tarjeta de frase",
+            "│ • `{prefix}frase2 @usuario | texto` - genera tarjeta estilo tweet",
+            "│ • `{prefix}instastalk <usuario>` - info de Instagram",
+            "│ • `{prefix}ttkstalk <usuario>` - info de TikTok",
+            "│ • `{prefix}filme <nombre>` - info de una película",
+            "│ • `{prefix}serie <nombre>` - info de una serie",
+            "│ • `{prefix}txt2vid <texto>` - genera video IA",
+            "│ • `{prefix}sonu <titulo | letra | mood | genero | voz>` - genera música IA",
+            "│ • `{prefix}suno <prompt>` - genera audio IA",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ]
+    },
+    "idiomas": [
+        "╭━━━ 乂  I D I O M A S 乂 ━━━╮",
+        "│ Elige el idioma del bot:",
+        "│ • `{prefix}pt` - Portugués",
+        "│ • `{prefix}en` - Inglés",
+        "│ • `{prefix}es` - Español",
+        "╰━━━━━━━━━━━━━━━━━━━━╯"
+    ],
+    "fundomenu": {
+        "admin_only": "❌ Este comando solo puede ser usado por administradores en grupos.",
+        "removido": "✅ Fondo del menú eliminado. Se usará el fondo por defecto.",
+        "nenhum_definido": "⚠️ No había fondo personalizado definido.",
+        "erro_remover": "❌ Error al eliminar el fondo del menú.",
+        "informe": "📌 Envía `{prefix}fundomenu` respondiendo a una imagen o envía la imagen con el texto `{prefix}fundomenu`.\nO `{prefix}fundomenu reset` para quitar el fondo personalizado.",
+        "nao_imagem": "⚠️ El mensaje respondido no contiene una imagen válida.",
+        "sucesso": "✅ Fondo del menú actualizado correctamente!",
+        "erro_salvar": "❌ Error al guardar la nueva imagen de fondo."
+    },
+    "fundobemvindo": {
+        "admin_only": "❌ Este comando solo puede ser usado por administradores en grupos.",
+        "informe": "📎 Envía `{prefix}fundobemvindo` respondiendo a una imagen.\nO usa `{prefix}fundobemvindo reset` para quitarla.",
+        "nao_imagem": "⚠️ El mensaje respondido no contiene una imagen válida.",
+        "sucesso": "✅ Imagen de bienvenida actualizada correctamente.",
+        "removido": "✅ Imagen de bienvenida eliminada. Se usará el fondo por defecto.",
+        "nenhum_definido": "⚠️ No había una imagen de bienvenida personalizada definida.",
+        "erro_salvar": "❌ Error al procesar el comando de fondo de bienvenida.",
+        "erro_remover": "❌ Error al eliminar la imagen de bienvenida."
+    },
+    "autodownloader": {
+        "aguarde": "Estoy descargando tu video, por favor espera a que la API responda correctamente.",
+        "erro_download": "❌ Error al descargar el video.",
+        "erro_pesquisa": "❌ Error al buscar.",
+        "forneca_link": "❌ Proporcione un enlace válido de {cmd}.",
+        "uso_ytmp4": "⚠️ *Uso:* {prefix}ytmp4 <enlace de YouTube>",
+        "uso_ytmp3": "⚠️ *Uso:* {prefix}ytmp3 <enlace de YouTube>",
+        "uso_generico": "⚠️ *Uso:* {prefix}{cmd} <enlace>"
+    },
+    "sorteio": {
+        "formato_invalido": "❌ Formato inválido.\n\n📌 Usa: `{prefix}𝘴𝘰𝘳𝘵𝘦𝘪𝘰 <𝘭í𝘮𝘪𝘵𝘦> | <𝘨𝘢𝘯𝘢𝘥𝘰𝘳𝘦𝘴> | <𝘵𝘪𝘦𝘮𝘱𝘰> | <𝘵í𝘵𝘶𝘭𝘰>`\n\nEj: {prefix}sorteio 30 | 2 | 5m | Sorteo de Pix $50",
+        "parametros_invalidos": "❌ Los dos primeros parámetros deben ser números válidos.\nEj: `30 | 2`",
+        "tempo_invalido": "❌ Tiempo inválido. Usa \"5m\" para minutos, \"2h\" para horas o \"1d\" para días.",
+        "falha_registrar": "❌ Error al registrar el sorteo.",
+        "apenas_grupo": "❌ Este comando solo puede usarse en grupos."
+    },
+    "sorteio2": {
+        "formato_invalido": "❌ Formato inválido.\n\n📌 Usa: `{prefix}𝘴𝘰𝘳𝘵𝘦𝘪𝘰2 <𝘤𝘢𝘯𝘵𝘪𝘥𝘢𝘥> | <𝘵í𝘵𝘶𝘭𝘰>`\nEj: `{prefix}sorteio2 2 | Pix de $50`\nO simplemente: `{prefix}sorteio2 Pix de $50`",
+        "quantidade_invalida": "❌ Cantidad de ganadores inválida.",
+        "nenhum_participante": "❌ No se encontraron participantes en el grupo.",
+        "erro": "❌ Ocurrió un error al realizar el sorteo."
+    },
+    "enquete": {
+        "formato_invalido": "❌ Formato inválido.\n\n📌 Usa: `{prefix}𝘦𝘯𝘲𝘶𝘦𝘵𝘦 𝘵í𝘵𝘶𝘭𝘰 | 𝘰𝘱𝘤𝘪ó𝘯 1 | 𝘰𝘱𝘤𝘪ó𝘯 2 | ...`\nEj: `{prefix}enquete ¿Premio favorito? | Casa | Auto | Moto`",
+        "erro": "❌ Ocurrió un error al crear la encuesta."
+    },
+    "sticker": {
+        "falha_criar": "❌ Error al crear sticker. Verifica que la media sea válida.",
+        "responda_animada": "⚠️ Responde con una imagen o video para crear un sticker animado.",
+        "responda_animada_legenda": "⚠️ Responde con una imagen o video *o envía el comando como leyenda* para generar un sticker animado.",
+        "nao_acesso": "⚠️ No se pudo acceder a la media. Inténtalo de nuevo.",
+        "responda_remover_fundo": "⚠️ Responde con una imagen para quitar el fondo.",
+        "apenas_imagem": "⚠️ Solo se permiten imágenes.",
+        "funcao_indisponivel": "❌ Función no disponible por el momento.",
+        "falha_sfundo": "❌ Error al generar sticker sin fondo.",
+        "falha_generica": "❌ Error al generar stickers.",
+        "uso_attp": "⚠️ *Uso:* {prefix}attp <texto>",
+        "uso_attp2": "⚠️ *Uso:* {prefix}attp2 <texto>",
+        "uso_attp3": "⚠️ *Uso:* {prefix}attp3 <texto>"
+    },
+    "ping": {
+        "aguarde": "🔄 *Probando velocidad de Internet...*\n⏳ Espera unos segundos...",
+        "resultado": [
+            "┌─ 🌐 *TEST DE VELOCIDAD* ─┐",
+            "│ 📡 *Ping:* {ping}",
+            "│ 📥 *Descarga:* {download}",
+            "│ 📤 *Subida:* {upload}",
+            "└───────────────────────┘",
+            "⏰ {time} | 🤖 Speedtest.net"
+        ],
+        "erro_cabecalho": "❌ *Error al probar la velocidad*\n\n",
+        "erro_timeout": "⏰ La prueba tardó demasiado en responder (timeout).\nInténtalo de nuevo más tarde.",
+        "erro_python": "🐍 Python no está instalado o no se encontró.\nVerifica la instalación de Python.",
+        "erro_arquivo": "📄 Archivo speed.py no encontrado.\nAsegúrate de que el archivo exista.",
+        "erro_generico": "🔧 Error técnico: {erro}"
+    },
+    "brincadeiras_msg": {
+        "modobrincadeira_ativo": "Este tipo de comando solo puede usarse con el modobrincadeira activo. Habla con un admin o, si lo eres, simplemente escribe {prefix}modobrincadeira",
+        "match_insuficiente": "No fue posible encontrar suficientes personas para el match.",
+        "participantes_insuficientes": "❌ No encontré participantes suficientes para jugar contigo ahora.",
+        "ninguem_para_brincar": "❌ No encontré a nadie para jugar contigo ahora.",
+        "tipo_invalido": "❌ Tipo inválido. Usa uno de: {valids}",
+        "fakeban": "te removió"
+    },
+    "whitelist": {
+        "uso_permitir": "⚠️ *Uso:* {prefix}permitirlink <link o dominio>\nEj: {prefix}permitirlink youtube.com o {prefix}permitirlink https://site.com/link",
+        "adicionado": "✅ Link/dominio `{dom}` añadido a la whitelist correctamente.",
+        "ja_adicionado": "ℹ️ El link/dominio `{dom}` ya está permitido en este grupo.",
+        "erro_adicionar": "❌ Error al añadir el link.",
+        "uso_remover": "⚠️ *Uso:* {prefix}removerlink <link o dominio>\nEj: {prefix}removerlink youtube.com",
+        "nao_existe": "⚠️ El link/dominio `{dom}` no estaba en la whitelist.",
+        "removido": "🗑️ Link/dominio `{dom}` eliminado de la whitelist correctamente.",
+        "erro_remover": "❌ Error al eliminar el link.",
+        "nenhum_liberado": "ℹ️ Aún no se han liberado links o dominios en este grupo.",
+        "lista_titulo": "📜 *Links y dominios permitidos en el grupo:*\n\n{lista}",
+        "erro_listar": "❌ Error al listar los links permitidos."
+    },
+    "ffban": {
+        "uso": "⚠️ *Uso:* {prefix}ffban <uid>",
+        "erro": "❌ Error al verificar el estado en Free Fire.",
+        "libre": "✅ UID {uid} no está baneado.",
+        "banido": "🚫 UID {uid} está baneado.\n⏳ Período: {period}"
+    },
+    "fluxai": {
+        "uso": "⚠️ *Uso:* {prefix}imageai <texto>",
+        "aguarde": "⌛ Generando imagen, por favor espera...",
+        "erro": "❌ Error al generar la imagen."
+    },
+    "imageai3": {
+        "uso": "⚠️ *Uso:* {prefix}imageai3 <texto>",
+        "aguarde": "⌛ Generando imagen, por favor espera...",
+        "erro": "❌ Error al generar la imagen."
+    },
+    "removebgec": {
+        "responda": "⚠️ Envía o responde con una imagen para quitar el fondo.",
+        "aguarde_remove": "⌛ Eliminando fondo, espera...",
+        "aguarde_upscale": "⌛ Mejorando calidad, espera...",
+        "sucesso": "✅ Imagen procesada correctamente!",
+        "erro": "❌ Error al procesar la imagen."
+    },
+    "spamngl": {
+        "uso": "⚠️ *Uso:* {prefix}spamngl <link>|<mensaje>",
+        "aguarde": "⌛ Enviando mensaje, por favor espera...",
+        "erro": "❌ Error al enviar el mensaje."
+    },
+    "txt2vid": {
+        "uso": "⚠️ *Uso:* {prefix}txt2vid <texto>",
+        "aguarde": "⌛ Generando video, por favor espera...",
+        "erro": "❌ Error al generar el video."
+    },
+    "traduzir": {
+        "uso": "⚠️ *Uso:* {prefix}traduzir [idioma] <texto>",
+        "resultado": "🌐 Traducción:\n🗣️ De: {origem} → {destino}\n📄 Texto: {texto}",
+        "erro": "❌ Error al traducir."
+    },
+    "ailabs": {
+        "uso": "⚠️ *Uso:* {prefix}ailabs [--image|--video] <prompt>",
+        "aguarde": "⌛ Generando contenido, espera...",
+        "erro": "❌ Error al generar contenido."
+    },
+    "sonu": {
+        "uso": "⚠️ *Uso:* {prefix}sonu <titulo | letra | mood | genero | voz>",
+        "exemplo": "💡 Ejemplo: {prefix}sonu Lluvia de Lágrimas | gotas caen del cielo, siento soledad | melancholic | lofi | female",
+        "aguarde": "⌛ Generando música, por favor espera...",
+        "erro": "❌ Error al generar la música."
+    },
+    "suno": {
+        "uso": "⚠️ *Uso:* {prefix}suno <prompt>",
+        "exemplo": "💡 Ejemplo: {prefix}suno canción lofi sobre amor",
+        "aguarde": "⌛ Generando audio, por favor espera...",
+        "erro": "❌ Error al generar el audio."
+    },
+    "frase": {
+        "uso": "⚠️ *Uso:* {prefix}frase @usuario | texto",
+        "aguarde": "⌛ Generando frase, por favor espera...",
+        "erro": "❌ Error al generar la frase."
+    },
+    "frase2": {
+        "uso": "⚠️ *Uso:* {prefix}frase2 @usuario | texto",
+        "aguarde": "⌛ Generando frase, por favor espera...",
+        "erro": "❌ Error al generar la frase."
+    },
+    "instastalk": {
+        "uso": "⚠️ *Uso:* {prefix}instastalk <usuario>",
+        "aguarde": "⌛ Buscando perfil, por favor espera...",
+        "erro": "❌ Error al obtener la información."
+    },
+    "ttkstalk": {
+        "uso": "⚠️ *Uso:* {prefix}ttkstalk <usuario>",
+        "aguarde": "⌛ Buscando perfil, por favor espera...",
+        "erro": "❌ Error al obtener la información."
+    },
+    "spotifydl": {
+        "uso": "⚠️ *Uso:* {prefix}spotifydl <url de Spotify>",
+        "aguarde": "⌛ Descargando música, por favor espera...",
+        "erro": "❌ Error al descargar la música."
+    },
+    "groqkey": {
+        "informe": "⚠️ Debes definir una API Key para usar el bot.\nObtén una gratis en https://console.groq.com/keys\nLuego envía {prefix}keygroq TU_KEY\nPara personalizar las respuestas usa {prefix}promptbot <texto>.",
+        "salva": "✅ Clave API actualizada correctamente."
+    },
+    "promptbot": {
+        "informe": "✏️ Usa {prefix}promptbot <texto> o responde con el nuevo prompt.",
+        "salva": "✅ Prompt actualizado con éxito."
+    },
+    "tabela": {
+        "nenhuma_definida": "ℹ️ Aún no se ha definido una tabla para este grupo.\n\n✍️ Usa el comando:\n`{prefix}addtabela <texto completo de la tabla>`",
+        "apenas_admin": "🚫 *Solo los administradores pueden actualizar la tabla.*",
+        "uso_add": "⚠️ *Uso:* {prefix}addtabela <texto completo de la tabla>\n\n📌 Ejemplo:\n{prefix}addtabela Clase 03 - Martes 14h\nOtra línea\n\n🧩 El texto reemplazará la tabla actual.",
+        "sucesso_add": "✅ *Tabla actualizada con éxito!*",
+        "erro_add": "❌ Ocurrió un error al actualizar la tabla."
+    },
+    "regras": {
+        "nenhuma_definida": "ℹ️ Aún no se han definido reglas para este grupo.\n\n✍️ Usa el comando:\n`{prefix}addregras <texto completo de las reglas>`",
+        "apenas_admin": "🚫 *Solo los administradores pueden actualizar las reglas.*",
+        "uso_add": "⚠️ *Uso:* {prefix}addregras <texto completo de las reglas>\n\n📌 Ejemplo:\n{prefix}addregras 1) Respetar a todos\n2) No spam\n3) Sin enlaces inapropiados\n\n🧩 El texto reemplazará las reglas actuales.",
+        "sucesso_add": "✅ *Reglas actualizadas con éxito!*",
+        "erro_add": "❌ Ocurrió un error al actualizar las reglas."
+    },
+    "registro_grupo": {
+        "prompt": "🚫 Este grupo no está registrado. Pulsa 'Registrar Grupo' para añadirlo ahora.",
+        "botao": "Registrar Grupo",
+        "ja_registrado": "ℹ️ Este grupo ya está registrado.",
+        "sucesso": "✅ Grupo registrado correctamente!",
+        "dados": "✅ Registro completado!\nUsuario: {usuario}\nContraseña: {senha}"
+    },
+    "ativar_bot": {
+        "prompt": "🤖 Este bot está desactivado. Pulsa 'Activar Bot' para volver a usarlo.",
+        "botao": "Activar Bot"
+    },
+    "grupos": {
+        "erro_registrar": "❌ Error al registrar el grupo.",
+        "erro_abrir": "❌ Error al abrir el grupo.",
+        "erro_fechar": "❌ Error al cerrar el grupo."
+    },
+    "bemvindo": {
+        "erro_fundo": "❌ Error al procesar el comando de fondo de bienvenida.",
+        "erro_toggle": "❌ Error al activar/desactivar la función de bienvenida.",
+        "erro_legenda": "❌ Error al actualizar la leyenda de bienvenida.",
+        "toggle_on": "✅ Función de bienvenida activada.\nLos nuevos miembros recibirán un saludo.\nPara desactivar, envía:\n{cmd}",
+        "toggle_off": "✅ Función de bienvenida desactivada.\nPara activar nuevamente, envía:\n{cmd}",
+        "legenda_on": "✅ Leyenda de bienvenida activada.\nUsa {cmd} <texto> para cambiarla.",
+        "legenda_off": "✅ Leyenda de bienvenida desactivada.\nPara reactivarla, envía:\n{cmd}",
+        "legenda_set": "✅ Leyenda de bienvenida actualizada con éxito.\nPara desactivarla, envía:\n{cmd} 0",
+        "legenda_help": "✏️ Usa {cmd} <texto> o responde a un mensaje con el texto deseado.\n\nVariables disponibles:\n- {{pushName}} -> nombre del nuevo miembro\n- {{numero}} -> número del nuevo miembro\n- {{nomeGrupo}} -> nombre del grupo\n- {{data}} -> fecha actual\n- {{hora}} -> hora actual\n- {{prefixo}} -> prefijo del bot\n\nEjemplo:\n{example}"
+    },
+    "midia": {
+        "erro_converter_mp3": "❌ Error al convertir el video a MP3.",
+        "erro_revelar": "❌ Error al revelar la media."
+    },
+    "mensagem": {
+        "erro_fixar": "❌ Error al fijar el mensaje.",
+        "erro_desfixar": "❌ Error al desfijar el mensaje."
+    },
+    "bot_status": {
+        "ativado": "✅ Bot activado correctamente!",
+        "desativado": "⛔ Bot desactivado. Usa {prefix}ativarbot para reactivarlo."
+    },
+    "remover_grupo": {
+        "sucesso": "✅ Grupo eliminado del registro correctamente."
+    },
+    "renovar_grupo": {
+        "sucesso": "🔄 𝗚𝗿𝘂𝗽𝗼 𝗿𝗲𝗻𝗼𝘃𝗮𝗱𝗼!\n\n👤 𝗨𝘀𝘂𝗮𝗿𝗶𝗼: {usuario}\n📞 𝗪𝗵𝗮𝘁𝘀𝗔𝗽𝗽: {whatsapp}\n🏷️ 𝗣𝗹𝗮𝗻: {plano} {icone}\n💰 𝗣𝗿𝗲𝗰𝗶𝗼: R$ {valor}\n📅 𝗡𝘂𝗲𝘃𝗼 𝘃𝗲𝗻𝗰𝗶𝗺𝗶𝗲𝗻𝘁𝗼: {vencimento}",
+        "sem_saldo": "🪙 𝘙𝘦𝘯𝘰𝘷𝘢𝘳 𝘎𝘳𝘶𝘱𝘰\n\n💸 Saldo insuficiente para renovar este grupo.\n💡 Valor del plan: R$ {valor}\n\n🌐 Agrega saldo en el sitio:\n{base_url}",
+        "site": "💻 𝗥𝗲𝗻𝗼𝘃𝗮𝗿 𝗚𝗿𝘂𝗽𝗼\n\n👤 Responsable: {usuario} ({whatsapp})\n🌐 Panel: {base_url}\n📌 La renovación debe hacerse en el sitio por quien tenga acceso a la cuenta."
+    },
+    "renovar_plano": {
+        "sucesso": "🔄 ¡Plan renovado con éxito! Nuevo vencimiento: {vencimento}",
+        "site": "💻 Renovar Plan\n\nGestiona las renovaciones en el sitio:\n{base_url}"
+    },
+    "vencimento_cmd": {
+        "sem_data": "⚠️ Fecha no definida",
+        "info": "⏳ 𝗘𝘀𝘁𝗮𝗱𝗼 𝗱𝗲𝗹 𝗽𝗹𝗮𝗻\n\n👤 𝗨𝘀𝘂𝗮𝗿𝗶𝗼: {usuario}\n📞 WhatsApp: {whatsapp}\n🏷️ Plan: {plano}\n💰 Precio: R$ {valor}\n📅 Vencimiento: {vencimento}",
+        "lista_vazia": "📂 Aún no has registrado ningún grupo.",
+        "lista_item": "• {nome} - {vencimento}",
+        "lista_titulo": "📅 𝗩𝗲𝗻𝗰𝗶𝗺𝗶𝗲𝗻𝘁𝗼𝘀 𝗱𝗲 𝘁𝘂𝘀 𝗴𝗿𝘂𝗽𝗼𝘀\n\n{lista}"
+    },
+    "saldo_cmd": {
+        "nao_registrado": "❌ Usuario no encontrado. Regístrate primero.",
+        "info": "💰 𝗦𝗮𝗹𝗱𝗼\n\n👤 𝗨𝘀𝘂𝗮𝗿𝗶𝗼: {usuario}\n📞 𝗪𝗵𝗮𝘁𝘀𝗔𝗽𝗽: {whatsapp}\n💵 𝗦𝗮𝗹𝗱𝗼 𝗮𝗰𝘁𝘂𝗮𝗹: R$ {saldo}"
+    },
+    "ranking_msg": {
+        "link": "🙂 @{user} no puedes mandar enlaces en este grupo. Por favor evita incumplir las reglas para no ser expulsado.\nSi cometes {restante} {infCount} más, serás removido del grupo.",
+        "nsfw": "🙂 @{user} no puedes enviar contenido NSFW en este grupo. Por favor evita incumplir las reglas para no ser expulsado.\nSi cometes {restante} {infCount} más, serás removido del grupo.",
+        "default": "🙂 @{user} violaste las reglas del grupo. Por favor evita incumplirlas para no ser expulsado.\nSi cometes {restante} {infCount} más, serás removido del grupo.",
+        "ban": "🚫 Usuario @{user} expulsado por alcanzar el límite de infracciones.",
+        "inf_singular": "infracción",
+        "inf_plural": "infracciones"
+    },
+    "ativacao_msgs": {
+        "botinterage": {
+            "on": "🤖 𝗕𝗼𝘁 𝗜𝗻𝘁𝗲𝗿𝗮𝗴𝗲 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nLa IA responderá en el grupo. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}botinterage\\n╚═════════════╝",
+            "off": "🤖 𝗕𝗼𝘁 𝗜𝗻𝘁𝗲𝗿𝗮𝗴𝗲 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLa IA ya no responderá. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}botinterage\\n╚═════════════╝"
+        },
+        "antilink": {
+            "on": "🛡️ 𝗔𝗻𝘁𝗶𝗹𝗶𝗻𝗸 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nCualquier link enviado será eliminado. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antilink\\n╚═════════════╝",
+            "off": "🛡️ 𝗔𝗻𝘁𝗶𝗹𝗶𝗻𝗸 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLos links ya no serán borrados. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antilink\\n╚═════════════╝"
+        },
+        "banextremo": {
+            "on": "⛔ 𝗕𝗮𝗻𝗘𝘅𝘁𝗿𝗲𝗺𝗼 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nQuien envíe link prohibido será baneado y el mensaje borrado. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}banextremo\\n╚═════════════╝",
+            "off": "⛔ 𝗕𝗮𝗻𝗘𝘅𝘁𝗿𝗲𝗺𝗼 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLinks prohibidos no generarán ban. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}banextremo\\n╚═════════════╝"
+        },
+        "antilinkgp": {
+            "on": "🔗 𝗔𝗻𝘁𝗶𝗟𝗶𝗻𝗸𝗚𝗣 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nInvitaciones a otros grupos serán removidas. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antilinkgp\\n╚═════════════╝",
+            "off": "🔗 𝗔𝗻𝘁𝗶𝗟𝗶𝗻𝗸𝗚𝗣 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLas invitaciones no serán borradas. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antilinkgp\\n╚═════════════╝"
+        },
+        "bangringos": {
+            "on": "🌍 𝗕𝗮𝗻𝗚𝗿𝗶𝗻𝗴𝗼𝘀 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nMiembros con código extranjero serán removidos. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}bangringos\\n╚═════════════╝",
+            "off": "🌍 𝗕𝗮𝗻𝗚𝗿𝗶𝗻𝗴𝗼𝘀 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nNúmeros extranjeros serán permitidos. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}bangringos\\n╚═════════════╝"
+        },
+        "antinsfwimagem": {
+            "on": "🚫 𝗔𝗻𝘁𝗶-𝗡𝗦𝗙𝗪 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nImágenes inapropiadas serán borradas automáticamente. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antinsfwimagem\\n╚═════════════╝",
+            "off": "🚫 𝗔𝗻𝘁𝗶-𝗡𝗦𝗙𝗪 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nImágenes inapropiadas no serán filtradas. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antinsfwimagem\\n╚═════════════╝"
+        },
+        "soadm": {
+            "on": "🛑 𝗠𝗼𝗱𝗼 𝘀𝗼𝗹𝗼 𝗮𝗱𝗺𝗶𝗻𝘀 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nSolo administradores pueden usar comandos. Usa el comando abajo para liberar nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}soadm\\n╚═════════════╝",
+            "off": "🛑 𝗠𝗼𝗱𝗼 𝘀𝗼𝗹𝗼 𝗮𝗱𝗺𝗶𝗻𝘀 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nTodos pueden usar comandos. Usa el comando abajo para restringir nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}soadm\\n╚═════════════╝"
+        },
+        "autosticker": {
+            "on": "🎨 𝗔𝘂𝘁𝗼𝘀𝘁𝗶𝗰𝗸𝗲𝗿 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nImágenes y videos cortos serán convertidos en stickers. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autosticker\\n╚═════════════╝",
+            "off": "🎨 𝗔𝘂𝘁𝗼𝘀𝘁𝗶𝗰𝗸𝗲𝗿 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLos medios ya no se convertirán. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autosticker\\n╚═════════════╝"
+        },
+        "autodownloader": {
+            "on": "📥 𝗔𝘂𝘁𝗼 𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱𝗲𝗿 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nEnlaces de medios de YouTube y redes sociales se descargarán automáticamente. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autodownloader\\n╚═════════════╝",
+            "off": "📥 𝗔𝘂𝘁𝗼 𝗗𝗼𝘄𝗻𝗹𝗼𝗮𝗱𝗲𝗿 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nLos enlaces no se descargarán automáticamente. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autodownloader\\n╚═════════════╝"
+        },
+        "brincadeiras": {
+            "on": "🎭 𝗠𝗼𝗱𝗼 𝗷𝘂𝗲𝗴𝗼𝘀 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nComandos de diversión disponibles. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}modobrincadeira\\n╚═════════════╝",
+            "off": "🎭 𝗠𝗼𝗱𝗼 𝗷𝘂𝗲𝗴𝗼𝘀 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nComandos de diversión bloqueados. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}modobrincadeira\\n╚═════════════╝"
+        },
+        "autoresposta": {
+            "on": "💬 𝗔𝘂𝘁𝗼𝗿𝗲𝘀𝗽𝘂𝗲𝘀𝘁𝗮 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗮 ✅\\n\\nEl bot responderá mensajes configurados. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autoresposta\\n╚═════════════╝",
+            "off": "💬 𝗔𝘂𝘁𝗼𝗿𝗲𝘀𝗽𝘂𝗲𝘀𝘁𝗮 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗮 ❌\\n\\nEl bot no responderá automáticamente. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}autoresposta\\n╚═════════════╝"
+        },
+        "vozbotinterage": {
+            "on": "🎤 𝗩𝗼𝘇 𝗱𝗲𝗹 𝗕𝗼𝘁 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗮 ✅\\n\\nLa IA responderá con audio. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}vozbotinterage\\n╚═════════════╝",
+            "off": "🎤 𝗩𝗼𝘇 𝗱𝗲𝗹 𝗕𝗼𝘁 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗮 ❌\\n\\nLa IA volverá a responder por texto. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}vozbotinterage\\n╚═════════════╝"
+        },
+        "antipalavras": {
+            "on": "🚯 𝗔𝗻𝘁𝗶-𝗽𝗮𝗹𝗮𝗯𝗿𝗮𝘀 𝗔𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ✅\\n\\nMensajes con términos prohibidos serán borrados automáticamente. Usa el comando abajo para desactivar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antipalavras\\n╚═════════════╝",
+            "off": "🚯 𝗔𝗻𝘁𝗶-𝗽𝗮𝗹𝗮𝗯𝗿𝗮𝘀 𝗗𝗲𝘀𝗮𝗰𝘁𝗶𝘃𝗮𝗱𝗼 ❌\\n\\nTérminos bloqueados no serán filtrados. Usa el comando abajo para activar esta función nuevamente 👇\\n\\n╔═════ᴄᴍᴅ═════╗\\n     {prefix}antipalavras\\n╚═════════════╝"
+        }
+    },
+    "comandos": {
+        "lista_titulo": "📜 *Lista de comandos disponibles:*\n\n{lista}"
+    },
+    "geral": {
+        "apenas_grupo": "🚫 *Este comando está disponible solo en grupos*\\n\\nAgrega el bot a un grupo e inténtalo de nuevo. 😊",
+        "bot_admin": "⚠️ El bot debe ser administrador del grupo para usar este comando.",
+        "sem_ultima_marcacao": "🛡️ Atención, miembros: no hay mensaje guardado. Envía texto o media después del comando.",
+        "ban_gringos": "🚫 Solo se permiten números de los siguientes países en este grupo:\n{lista}",
+        "ja_nao_grupo": "ℹ️ El usuario ya no está en el grupo.",
+        "nao_me_banir": "😅 No estoy tan loco como para banearme.",
+        "anti_spam": "⏳ Espera un momento antes de usar otro comando.",
+        "nao_rebaixar_dono": "⚠️ {user} es el creador del grupo y no puede ser degradado."
+    },
+    "tictactoe": {
+        "usage": "⚠️ Use: *{prefix}tictactoe @usuario*",
+        "self_challenge": "⚠️ No puedes desafiarte a ti mismo.",
+        "invite": {
+            "title": "🎮 *Tres en Raya*",
+            "challenge": "@{challenger} desafió a @{opponent}!",
+            "timeout": "Tienes 3 minutos para aceptar el desafío.",
+            "question": "¿Aceptar el desafío?"
+        },
+        "accept": "Aceptar",
+        "decline": "Rechazar",
+        "finish": "Finalizar",
+        "expired": "❌ Invitación expirada.",
+        "start_error": "❌ No se pudo iniciar el juego.",
+        "declined": "❌ Invitación de juego rechazada.",
+        "cancelled": "❌ Juego cancelado.",
+        "board_header": "乂  T R E S   E N   R A Y A 乂  🎮",
+        "turn": "Es el turno de {player}",
+        "win_header": "乂  T R E S   E N   R A Y A 乂  🏆",
+        "win_congrats": "¡Felicidades {player}!",
+        "win_text": "¡Brillaste en el tres en raya!",
+        "draw_header": "乂  T R E S   E N   R A Y A 乂  🤝",
+        "draw_line": "¡Empate entre {p1} y {p2}!",
+        "draw_text": "Nadie dominó el tablero esta vez.",
+        "draw_prompt": "¿Qué tal una revancha? 😄",
+        "timeout_header": "乂  T R E S   E N   R A Y A 乂  ⏳",
+        "timeout_text": "¡Tiempo agotado! El juego fue cancelado por inactividad.",
+        "timeout_prompt": "Desafíense de nuevo cuando estén listos.",
+        "replay": "🔄 Jugar de nuevo",
+        "bot": {
+            "difficulty": "@{challenger}, elige la dificultad:",
+            "easy": "Fácil",
+            "medium": "Media",
+            "hard": "Difícil"
+        }
+    },
+    "hangman": {
+        "usage": "⚠️ Usa: *{prefix}ahorcado [@usuario]*",
+        "self_challenge": "⚠️ No puedes desafiarte a ti mismo.",
+        "invite": {
+            "title": "🎯 *Juego del Ahorcado*",
+            "challenge": "@{challenger} desafió a @{opponent}!",
+            "timeout": "Tienes 3 minutos para aceptar el desafío.",
+            "question": "¿Aceptar el desafío?"
+        },
+        "accept": "Aceptar",
+        "decline": "Rechazar",
+        "expired": "❌ Invitación expirada.",
+        "start_error": "❌ No se pudo iniciar el juego.",
+        "declined": "❌ Invitación de juego rechazada.",
+        "cancelled": "❌ Juego cancelado.",
+        "no_question": "❌ No se pudo obtener una pregunta, inténtalo más tarde.",
+        "header": "乂  J U E G O   D E L   A H O R C A D O 乂",
+        "turn": "Pregunta para {player}",
+        "result_correct": "✅ {player} acertó!",
+        "result_wrong": "❌ {player} falló!",
+        "correct_answer": "✅ Respuesta correcta: {answer}",
+        "win_header": "乂  J U E G O   D E L   A H O R C A D O 乂  🏆",
+        "win_line": "¡{player} ganó!",
+        "solo_win_line": "{player} ganó al acertar {count} preguntas!",
+        "solo_progress": "Faltan {remaining} para ganar ({right}/{needed})",
+        "lose_line": "{player} fue ahorcado.",
+        "timeout": "❌ Tiempo agotado, juego cancelado.",
+        "easy": "Fácil",
+        "medium": "Media",
+        "hard": "Difícil",
+        "choose_difficulty": "Elige la dificultad:",
+        "choose_category": "Elige la categoría:",
+        "categories": {
+            "geography": "Geografía",
+            "history": "Historia",
+            "mythology": "Mitología",
+            "science": "Ciencia/Naturaleza",
+            "vehicles": "Vehículos",
+            "sports": "Deportes"
+        }
+    },
+    "mines": {
+        "usage": "⚠️ Uso: *{prefix}mines [ancho] [alto] [minas]*",
+        "started": "💣 Campo minado iniciado: {w}x{h} con {m} minas.",
+        "instructions": "Responde a la imagen del juego escribiendo el número de la casilla que quieres abrir.\n\nTip: los números en la imagen indican las posiciones.",
+        "no_game": "⚠️ No hay juego activo. Inicia con {prefix}mines",
+        "invalid": "❌ Posición inválida.",
+        "unchanged": "ℹ️ Nada cambió.",
+        "cancelled": "🛑 Juego de campo minado cancelado.",
+        "lose": "💥 Pisaste una mina. Fin del juego.",
+        "win": "🏆 ¡Felicidades! Limpiaste el campo sin minas.",
+        "not_player": "🚫 Solo quien inició el juego puede jugar.",
+        "timeout": "⏳ ¡Tiempo agotado! El juego de {player} fue cancelado por inactividad.",
+        "caption": "乂  M I N E S 乂  💣\nJugador: {player}\nTamaño: {w}×{h} | Minas: {m}\nRestante: {remaining}",
+        "result_header": "乂  M I N E S 乂",
+        "result_win": "🏆 ¡@{player} limpió el campo sin minas!",
+        "result_lose": "💥 @{player} pisó una mina.",
+        "result_stats": "Tamaño: {w}×{h} | Minas: {m}\nMovimientos: {moves}\nTiempo: {duration}"
+    },
+    "add_grupo": {
+        "sem_saldo": "💸 *Saldo insuficiente*\n\nCompra otro slot (R$ {valor}) en:\n{base_url}\n\nLuego inténtalo de nuevo:\n{prefix}{comando}",
+        "sem_slot": "🚫 *Límite de grupos alcanzado*\n\nNo tienes slots de grupos disponibles.\nAdquiere más en:\n{base_url}\n\nLuego inténtalo de nuevo:\n{prefix}{comando}",
+        "falha": "⚠️ No se pudo agregar el grupo.\n\nRegístralo en el sitio:\n{base_url}"
+    },
+    "rifa": {
+        "menu": [
+            "╭━━━ 乂  R I F A  乂 ━━━╮",
+            "`{prefix}gerarrifa <cantidad>` - genera números para este grupo",
+            "`{prefix}vincularrifa <número> <whatsapp>` - vincula un usuario al número",
+            "`{prefix}desvincularrifa <número>` - desvincula el número",
+            "`{prefix}deletarrifa <número>` - elimina el número",
+            "`{prefix}listarifa` - lista números y estado",
+            "`{prefix}finalizarrifa <cantidad>` - finaliza la rifa",
+            "╰━━━━━━━━━━━━━━━━━━━━╯"
+        ],
+        "gerada": "✅ {quantidade} números generados.",
+        "vinculado": "✅ Número {numero} vinculado a {whatsapp}.",
+        "ja_vinculado": "⚠️ Número {numero} ya está vinculado.",
+        "nao_encontrado": "⚠️ Número de rifa no encontrado.",
+        "desvinculado": "✅ Número {numero} desvinculado.",
+        "removido": "🗑️ Número {numero} eliminado.",
+        "sem_numeros": "No hay números de rifa registrados.",
+        "sem_participantes": "⚠️ No hay números vinculados para el sorteo.",
+        "finalizada": "🎉 ¡Rifa finalizada! El número {numero} vinculado a {whatsapp} ganó.",
+        "quantidade_invalida": "❌ Cantidad inválida.",
+        "participantes_insuficientes": "❌ Participantes insuficientes para este sorteo.",
+        "titulo_finalizada": "乂  R I F A   F I N A L I Z A D A 乂  🎉",
+        "parabens": "¡Felicidades!",
+        "linha_vencedor": "{pos}º: número {numero} vinculado a {whatsapp}",
+        "lista_titulo": "🎟️ Números de Rifa",
+        "status_disponivel": "{numero} - Disponible",
+        "status_vinculado": "{numero} - Vinculado a {whatsapp}",
+        "uso": {
+            "gerarrifa": [
+                "⚠️ Para que el comando funcione, úsalo así:",
+                "╔═════ᴄᴍᴅ═════╗",
+                "     {prefix}gerarrifa 10",
+                "╚═════════════╝"
+            ],
+            "vincularrifa": [
+                "⚠️ Para que el comando funcione, úsalo así:",
+                "╔═════ᴄᴍᴅ═════╗",
+                "     {prefix}vincularrifa 10 5491112345678",
+                "╚═════════════╝"
+            ],
+            "desvincularrifa": [
+                "⚠️ Para que el comando funcione, úsalo así:",
+                "╔═════ᴄᴍᴅ═════╗",
+                "     {prefix}desvincularrifa 10",
+                "╚═════════════╝"
+            ],
+            "deletarrifa": [
+                "⚠️ Para que el comando funcione, úsalo así:",
+                "╔═════ᴄᴍᴅ═════╗",
+                "     {prefix}deletarrifa 10",
+                "╚═════════════╝"
+            ],
+            "finalizarrifa": [
+                "⚠️ Para que el comando funcione, úsalo así:",
+                "╔═════ᴄᴍᴅ═════╗",
+                "     {prefix}finalizarrifa 1",
+                "╚═════════════╝"
+            ]
+        }
+    },
+    "pesquisar": {
+        "uso": "⚠️ Uso: {prefix}pesquisar <texto>",
+        "nenhum": "❌ Ningún comando encontrado."
+    },
+    "clientes": {
+        "lista_titulo": "👥 Clientes con grupos activos:",
+        "lista_vazio": "No se encontraron clientes con grupos activos.",
+        "lista_linha": "{index}. {nome} - {whatsapp} ({qtd} grupo{plural})",
+        "lista_grupo_linha": "- {nome} (vence {vencimento})",
+        "info_nao_encontrado": "Cliente no encontrado.",
+        "info_cabecalho": "👤 Nombre: {nome}\n📱 WhatsApp: {whatsapp}\n💰 Saldo: $ {saldo}\n📅 Plan vence: {vencimento}",
+        "info_grupos_titulo": "📋 Grupos:",
+        "info_grupo_linha": "{index}. {nome} - vence {vencimento}",
+        "info_sem_grupos": "Este cliente no tiene grupos registrados.",
+        "todos_titulo": "👥 Todos los clientes:",
+        "todos_vazio": "Ningún cliente encontrado."
+    },
+    "tmdb": {
+        "uso": "⚠️ Uso: {prefix}filme <nombre> o {prefix}serie <nombre>",
+        "nenhum": "❌ Ningún resultado encontrado.",
+        "erro": "❌ Error al buscar la información."
+    },
+    "flow": {
+        "trigger": "Disparador"
+    },
+    "soadm_restrito": "🚫 Solo los administradores pueden interactuar con el bot mientras el modo solo admins está activo.",
+    "antispam": {
+        "aviso": "@{user} estás enviando comandos demasiado rápido. Reduce la frecuencia o el bot te ignorará."
+    }
+}

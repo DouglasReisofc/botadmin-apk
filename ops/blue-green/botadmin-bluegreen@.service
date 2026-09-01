@@ -1,0 +1,41 @@
+[Unit]
+Description=BotAdmin blue/green slot (%i)
+After=network-online.target botadmin-postgres-tunnel.service redis.service botadmin-youtube-egress.service
+Wants=network-online.target redis.service botadmin-youtube-egress.service
+Requires=botadmin-postgres-tunnel.service
+StartLimitIntervalSec=0
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/botadmin/app
+EnvironmentFile=/opt/botadmin/bluegreen/%i.env
+Environment=NODE_ENV=production
+Environment=NEXT_TELEMETRY_DISABLED=1
+Environment=REDIS_URL=redis://127.0.0.1:6379/0
+Environment=REDIS_PREFIX=botadmin:local
+Environment=PATH=/opt/botadmin/yt-venv/bin:/opt/node-v20.20.2/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+Environment=BOT_EVENT_CONCURRENCY=12
+Environment=BOT_EVENT_INSTANCE_CONCURRENCY=2
+Environment=BOT_EVENT_INSTANCE_QUEUE_LIMIT=16384
+Environment=BOT_EVENT_QUEUE_DEDUPE_MAX=50000
+Environment=BOT_EVENT_JOB_ALERT_TIMEOUT_MS=60000
+Environment=BOT_INSTANCE_HEALTH_INTERVAL_MS=30000
+Environment=BOT_INSTANCE_HEALTH_CONCURRENCY=6
+Environment=BOT_INSTANCE_OFFLINE_CONFIRMATIONS=2
+Environment=BOT_INSTANCE_RECONNECT_SETTLE_MS=2000
+Environment=YT_PROXY_URL=socks5h://127.0.0.1:1088
+Environment=YT_PLAYER_CLIENTS=android,mweb
+Environment=YT_DISABLE_INNERTUBE=0
+Environment=YT_START_WITH_COOKIES=0
+Environment=YT_ALLOW_NODE_JS_RUNTIME=1
+Environment=YT_JS_RUNTIME=/opt/node-v22/bin/node
+ExecStart=/opt/node-v20.20.2/bin/node /opt/botadmin/app/node_modules/next/dist/bin/next start -p ${PORT}
+Restart=always
+RestartSec=2
+KillSignal=SIGTERM
+KillMode=mixed
+TimeoutStopSec=10
+LimitNOFILE=65535
+
+[Install]
+WantedBy=multi-user.target

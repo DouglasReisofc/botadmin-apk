@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="96" height="96" viewBox="0 0 96 96" fill="none">
+  <defs>
+    <linearGradient id="avonBg" x1="12" y1="12" x2="84" y2="84" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F248A5"/>
+      <stop offset="1" stop-color="#D8197B"/>
+    </linearGradient>
+  </defs>
+  <circle cx="48" cy="48" r="47" fill="url(#avonBg)" stroke="#C4166E" stroke-width="2"/>
+  <text x="48" y="50" text-anchor="middle" dominant-baseline="middle" fill="#FFFFFF" font-size="24" font-family="Arial, sans-serif" font-weight="700">AVON</text>
+</svg>

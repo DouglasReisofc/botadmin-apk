@@ -1,0 +1,729 @@
+import { execFile as execFileCallback } from "node:child_process";
+import { promises as fs } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { promisify } from "node:util";
+
+import { NextRequest, NextResponse } from "next/server";
+
+import { getCurrentUser } from "lib/auth";
+import { resolveStoredMediaBuffer } from "lib/media-storage";
+import {
+  completeChatGptPhoneJob,
+  createChatGptPhoneJob,
+  getChatGptPhoneJob,
+  markChatGptPhoneJobRunning,
+  type ChatGptPhoneInputAttachment,
+} from "lib/chatgpt-phone";
+import { getBotInterageRuntimeConfig } from "lib/admin-botinterage-config";
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 60;
+
+const execFile = promisify(execFileCallback);
+const MAX_SOURCE_BYTES = 80 * 1024 * 1024;
+const MAX_IMAGE_BYTES = 20 * 1024 * 1024;
+
+const toRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+const stringValue = (value: unknown): string =>
+  typeof value === "string" ? value.trim() : "";
+
+const getConfigModule = <T = any>(): T | null => {
+  try {
+    const resolver = eval("require") as NodeRequire;
+    return resolver("config/app-settings.js") as T;
+  } catch {
+    return null;
+  }
+};
+
+const getTmdbConfig = () => {
+  const cfg = getConfigModule();
+  return {
+    apiKey: process.env.TMDB_API_KEY || cfg?.tmdbApiKey || cfg?.config?.tmdbApiKey || null,
+    readToken: process.env.TMDB_READ_TOKEN || cfg?.tmdbReadToken || cfg?.config?.tmdbReadToken || null,
+  };
+};
+
+const fetchTmdb = async (resource: string, params: Record<string, string>) => {
+  const { apiKey, readToken } = getTmdbConfig();
+  if (!apiKey || !readToken) throw new Error("A consulta de filmes ainda não está configurada.");
+  const url = new URL(`https://api.themoviedb.org/3/${resource}`);
+  url.searchParams.set("api_key", apiKey);
+  for (const [key, value] of Object.entries(params)) url.searchParams.set(key, value);
+  const response = await fetch(url, {
+    headers: { accept: "application/json", Authorization: `Bearer ${readToken}` },
+    signal: AbortSignal.timeout(20_000),
+  });
+  if (!response.ok) throw new Error(`A busca de filmes falhou (${response.status}).`);
+  return response.json() as Promise<Record<string, any>>;
+};
+
+const searchImdbDetails = async (query: string) => {
+  const suggestionUrl = `https://v3.sg.media-imdb.com/suggestion/x/${encodeURIComponent(query)}.json`;
+  const suggestionResponse = await fetch(suggestionUrl, {
+    headers: { accept: "application/json", "user-agent": "Mozilla/5.0 BotAdmin/1.0" },
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!suggestionResponse.ok) throw new Error(`A busca do IMDb falhou (${suggestionResponse.status}).`);
+  const suggestions = await suggestionResponse.json() as { d?: Array<Record<string, unknown>> };
+  const match = suggestions.d?.find((entry) => /^tt\d+$/i.test(stringValue(entry.id)));
+  const imdbId = stringValue(match?.id);
+  if (!imdbId) throw new Error("Nenhum filme ou série foi encontrado no IMDb.");
+  const kind = stringValue(match?.q).toLowerCase();
+  const mediaType = /series|tv|mini/.test(kind) ? "series" : "movie";
+  let metadata: Record<string, any> = {};
+  try {
+    const metaResponse = await fetch(
+      `https://v3-cinemeta.strem.io/meta/${mediaType}/${imdbId}.json`,
+      { headers: { accept: "application/json" }, signal: AbortSignal.timeout(15_000) },
+    );
+    if (metaResponse.ok) {
+      const payload = await metaResponse.json() as Record<string, any>;
+      metadata = toRecord(payload.meta);
+    }
+  } catch {
+    // The IMDb suggestion still gives enough data for a useful result.
+  }
+  const title = stringValue(metadata.name) || stringValue(match?.l) || query;
+  const year = stringValue(metadata.year) || stringValue(match?.y);
+  const rating = Number(metadata.imdbRating);
+  const genres = Array.isArray(metadata.genres)
+    ? metadata.genres.map(stringValue).filter(Boolean).slice(0, 4)
+    : [];
+  const overview = stringValue(metadata.description);
+  const lines = [
+    `🎬 ${title}${year ? ` (${year})` : ""}`,
+    Number.isFinite(rating) && rating > 0 ? `⭐ IMDb: ${rating.toFixed(1)}/10` : "",
+    genres.length ? `🎭 ${genres.join(" · ")}` : "",
+    overview ? `\n${overview}` : "",
+    `\nIMDb: https://www.imdb.com/title/${imdbId}/`,
+  ].filter(Boolean);
+  return {
+    title,
+    year: year || null,
+    mediaType,
+    imdbId,
+    caption: lines.join("\n"),
+  };
+};
+
+const searchMovieDetails = async (query: string) => {
+  const search = await fetchTmdb("search/multi", { query, language: "pt-BR", include_adult: "false" });
+  const result = Array.isArray(search.results)
+    ? search.results.find((item: any) => item?.media_type === "movie" || item?.media_type === "tv")
+    : null;
+  if (!result?.id) throw new Error("Nenhum filme ou série foi encontrado com esse título.");
+  const mediaType = result.media_type === "tv" ? "tv" : "movie";
+  const details = await fetchTmdb(`${mediaType}/${result.id}`, {
+    language: "pt-BR",
+    append_to_response: mediaType === "tv" ? "external_ids" : "credits",
+  });
+  const title = stringValue(details.title) || stringValue(details.name) || query;
+  const date = stringValue(details.release_date) || stringValue(details.first_air_date);
+  const year = date.match(/^\d{4}/)?.[0] ?? "";
+  const rating = Number(details.vote_average);
+  const genres = Array.isArray(details.genres)
+    ? details.genres.map((entry: any) => stringValue(entry?.name)).filter(Boolean).slice(0, 4)
+    : [];
+  const imdbId = stringValue(details.imdb_id) || stringValue(details.external_ids?.imdb_id);
+  const overview = stringValue(details.overview);
+  const lines = [
+    `🎬 ${title}${year ? ` (${year})` : ""}`,
+    Number.isFinite(rating) && rating > 0 ? `⭐ Nota: ${rating.toFixed(1)}/10` : "",
+    genres.length ? `🎭 ${genres.join(" · ")}` : "",
+    overview ? `\n${overview}` : "",
+    imdbId ? `\nIMDb: https://www.imdb.com/title/${imdbId}/` : "",
+  ].filter(Boolean);
+  return { title, year: year || null, mediaType, imdbId: imdbId || null, caption: lines.join("\n") };
+};
+
+const safeMediaUrl = (request: NextRequest, raw: string): URL => {
+  const url = new URL(raw, request.nextUrl.origin);
+  if (!/^https?:$/i.test(url.protocol)) throw new Error("A mídia precisa usar HTTP ou HTTPS.");
+  const host = url.hostname.toLowerCase();
+  if (
+    host === "localhost" ||
+    host === "0.0.0.0" ||
+    host === "::1" ||
+    /^127\./.test(host) ||
+    /^10\./.test(host) ||
+    /^192\.168\./.test(host) ||
+    /^169\.254\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host)
+  ) {
+    throw new Error("Endereço de mídia não permitido.");
+  }
+  return url;
+};
+
+const extensionForMime = (mimeType: string): string => {
+  const mime = mimeType.toLowerCase().split(";")[0];
+  if (mime === "image/jpeg") return "jpg";
+  if (mime === "image/png") return "png";
+  if (mime === "image/webp") return "webp";
+  if (mime === "video/webm") return "webm";
+  if (mime.startsWith("video/")) return "mp4";
+  if (mime === "audio/mpeg") return "mp3";
+  return "bin";
+};
+
+const mimeForMediaName = (value: string): string => {
+  const lower = value.toLowerCase().split("?")[0];
+  if (/\.(?:jpe?g)$/.test(lower)) return "image/jpeg";
+  if (/\.png$/.test(lower)) return "image/png";
+  if (/\.webp$/.test(lower)) return "image/webp";
+  if (/\.gif$/.test(lower)) return "image/gif";
+  if (/\.webm$/.test(lower)) return "video/webm";
+  if (/\.(?:mp4|mov|mkv|m4v)$/.test(lower)) return "video/mp4";
+  return "application/octet-stream";
+};
+
+const downloadMedia = async (
+  request: NextRequest,
+  rawUrl: string,
+  mimeHint: string,
+  storedPath = "",
+) => {
+  if (storedPath || !/^https?:\/\//i.test(rawUrl)) {
+    const sourcePath = storedPath || rawUrl;
+    const buffer = await resolveStoredMediaBuffer(sourcePath);
+    if (!buffer) throw new Error("Não consegui localizar a mídia no R2 ou armazenamento local.");
+    if (buffer.byteLength > MAX_SOURCE_BYTES) throw new Error("A mídia é maior que 80 MB.");
+    return {
+      buffer,
+      mimeType: mimeHint || mimeForMediaName(sourcePath),
+    };
+  }
+  const url = safeMediaUrl(request, rawUrl);
+  const response = await fetch(url, {
+    headers: { accept: mimeHint || "image/*,video/*,audio/*,*/*;q=0.5" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(90_000),
+  });
+  if (!response.ok) throw new Error(`Não consegui baixar a mídia para análise (${response.status}).`);
+  const declaredLength = Number(response.headers.get("content-length") || 0);
+  if (declaredLength > MAX_SOURCE_BYTES) throw new Error("A mídia é maior que 80 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > MAX_SOURCE_BYTES) throw new Error("A mídia é maior que 80 MB.");
+  const mimeType = stringValue(response.headers.get("content-type")).split(";")[0] || mimeHint || "application/octet-stream";
+  return { buffer, mimeType };
+};
+
+const buildVideoAnalysisAttachments = async (
+  buffer: Buffer,
+  mimeType: string,
+  fileName: string,
+  provider: "auto" | "gemini" | "chatgpt",
+): Promise<ChatGptPhoneInputAttachment[]> => {
+  const folder = await fs.mkdtemp(path.join(tmpdir(), "botadmin-status-analysis-"));
+  const extension = extensionForMime(mimeType || "video/mp4");
+  const inputPath = path.join(folder, `source.${extension === "bin" ? "mp4" : extension}`);
+  try {
+    await fs.writeFile(inputPath, buffer);
+    let duration = 60;
+    try {
+      const probe = await execFile(
+        "ffprobe",
+        ["-v", "error", "-show_entries", "format=duration", "-of", "default=noprint_wrappers=1:nokey=1", inputPath],
+        { timeout: 20_000 },
+      );
+      const parsed = Number(probe.stdout.trim());
+      if (Number.isFinite(parsed) && parsed > 0) duration = parsed;
+    } catch {
+      // Frames still work with the conservative fallback interval.
+    }
+    let completeVideo = buffer;
+    let completeVideoMime = mimeType || "video/mp4";
+    let completeVideoName = fileName || `video-completo.${extension}`;
+    if (completeVideo.byteLength > MAX_IMAGE_BYTES) {
+      const compressedPath = path.join(folder, "video-completo.mp4");
+      const targetBytes = 18 * 1024 * 1024;
+      const audioBitsPerSecond = 64_000;
+      const targetVideoKbps = Math.max(
+        250,
+        Math.min(2_500, Math.floor(((targetBytes * 8) / Math.max(1, duration) - audioBitsPerSecond) / 1_000)),
+      );
+      try {
+        await execFile(
+          "ffmpeg",
+          [
+            "-hide_banner", "-loglevel", "error", "-i", inputPath,
+            "-vf", "scale='min(1280,iw)':-2",
+            "-c:v", "libx264", "-preset", "veryfast",
+            "-b:v", `${targetVideoKbps}k`, "-maxrate", `${targetVideoKbps}k`,
+            "-bufsize", `${targetVideoKbps * 2}k`,
+            "-c:a", "aac", "-b:a", "64k", "-movflags", "+faststart",
+            "-y", compressedPath,
+          ],
+          { timeout: 180_000 },
+        );
+        const compressed = await fs.readFile(compressedPath);
+        if (compressed.byteLength > 0 && compressed.byteLength <= MAX_IMAGE_BYTES) {
+          completeVideo = compressed;
+          completeVideoMime = "video/mp4";
+          completeVideoName = "video-completo.mp4";
+        }
+      } catch {
+        // The complete original is still used when it already fits; otherwise
+        // the visual/audio support attachments below remain as a safe fallback.
+      }
+    }
+    if (provider !== "chatgpt") {
+      if (completeVideo.byteLength > MAX_IMAGE_BYTES) {
+        throw new Error(
+          "O vídeo não pôde ser reduzido para o limite de 20 MB do Gemini.",
+        );
+      }
+      return [{
+        name: `VIDEO_COMPLETO__${completeVideoName}`,
+        fileName: completeVideoName,
+        mimeType: completeVideoMime,
+        base64: completeVideo.toString("base64"),
+      }];
+    }
+    const frameRate = Math.max(0.01, Math.min(1, 6 / duration));
+    const framePattern = path.join(folder, "frame-%02d.jpg");
+    await execFile(
+      "ffmpeg",
+      ["-hide_banner", "-loglevel", "error", "-i", inputPath, "-vf", `fps=${frameRate},scale='min(1280,iw)':-2`, "-frames:v", "6", "-q:v", "3", framePattern],
+      { timeout: 90_000 },
+    );
+    const frameAttachments: ChatGptPhoneInputAttachment[] = [];
+    const frameNames = (await fs.readdir(folder)).filter((name) => /^frame-\d+\.jpg$/.test(name)).sort();
+    for (const name of frameNames) {
+      const frame = await fs.readFile(path.join(folder, name));
+      frameAttachments.push({
+        name: `quadro-auxiliar-${name.replace(/\D/g, "")}.jpg`,
+        fileName: name,
+        mimeType: "image/jpeg",
+        base64: frame.toString("base64"),
+      });
+    }
+    let audioAttachment: ChatGptPhoneInputAttachment | null = null;
+    const audioPath = path.join(folder, "audio.mp3");
+    try {
+      await execFile(
+        "ffmpeg",
+        ["-hide_banner", "-loglevel", "error", "-i", inputPath, "-vn", "-ac", "1", "-ar", "16000", "-b:a", "48k", "-t", "900", audioPath],
+        { timeout: 90_000 },
+      );
+      const audio = await fs.readFile(audioPath);
+      if (audio.byteLength > 0 && audio.byteLength <= MAX_IMAGE_BYTES) {
+        audioAttachment = {
+          name: "audio-completo-do-video.mp3",
+          fileName: "audio-completo-do-video.mp3",
+          mimeType: "audio/mpeg",
+          base64: audio.toString("base64"),
+        };
+      }
+    } catch {
+      // Videos without an audio stream are valid.
+    }
+    const attachments: ChatGptPhoneInputAttachment[] = [];
+    // O ChatGPT de algumas contas não aceita o use-case multimodal_video.
+    // Para ele, usamos quadros e áudio; o Gemini recebe o vídeo completo acima.
+    attachments.push(...frameAttachments.slice(0, audioAttachment ? 6 : 7));
+    if (audioAttachment) attachments.push(audioAttachment);
+    return attachments;
+  } finally {
+    await fs.rm(folder, { recursive: true, force: true }).catch(() => undefined);
+  }
+};
+
+const prepareAnalysisAttachments = async (
+  request: NextRequest,
+  mediaUrl: string,
+  mimeHint: string,
+  fileName: string,
+  storedPath = "",
+  provider: "auto" | "gemini" | "chatgpt" = "auto",
+) => {
+  const downloaded = await downloadMedia(request, mediaUrl, mimeHint, storedPath);
+  const mimeType = mimeHint || downloaded.mimeType;
+  if (mimeType.startsWith("video/") || /\.(mp4|mov|webm|mkv)(?:$|\?)/i.test(mediaUrl)) {
+    return buildVideoAnalysisAttachments(
+      downloaded.buffer,
+      mimeType || "video/mp4",
+      fileName || "video.mp4",
+      provider,
+    );
+  }
+  if (downloaded.buffer.byteLength > MAX_IMAGE_BYTES) throw new Error("A imagem é maior que 20 MB.");
+  return [{
+    name: fileName || `midia.${extensionForMime(mimeType)}`,
+    fileName: fileName || null,
+    mimeType,
+    base64: downloaded.buffer.toString("base64"),
+  }] satisfies ChatGptPhoneInputAttachment[];
+};
+
+const parseAssistantJson = (raw: string) => {
+  const cleaned = raw.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+  const candidates = [cleaned, cleaned.match(/\{[\s\S]*\}/)?.[0] ?? ""];
+  for (const candidate of candidates) {
+    try {
+      const parsed = JSON.parse(candidate);
+      if (parsed && typeof parsed === "object") return toRecord(parsed);
+    } catch {
+      // use the next candidate
+    }
+  }
+  return null;
+};
+
+const isGenericMediaAnalysisAnswer = (raw: string): boolean => {
+  const normalized = raw
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized.length > 360) return false;
+  return [
+    /(?:sou|e) apenas um modelo de linguagem/,
+    /como (?:um )?modelo de linguagem/,
+    /nao (?:consigo|posso) (?:te )?ajudar com isso/,
+    /nao (?:consigo|posso|tenho capacidade de) (?:analisar|assistir|ver|processar).*(?:video|midia|imagem|anexo)/,
+  ].some((pattern) => pattern.test(normalized));
+};
+
+const resultFromJob = (responseText: string) => {
+  const parsed = parseAssistantJson(responseText);
+  const title = stringValue(parsed?.title) || stringValue(parsed?.titulo);
+  const caption =
+    stringValue(parsed?.caption) ||
+    stringValue(parsed?.legenda) ||
+    stringValue(parsed?.description) ||
+    stringValue(parsed?.descricao) ||
+    responseText.trim();
+  return {
+    title: title || null,
+    mediaType: stringValue(parsed?.type) || stringValue(parsed?.tipo) || null,
+    year: stringValue(parsed?.year) || stringValue(parsed?.ano) || null,
+    confidence: Number(parsed?.confidence ?? parsed?.confianca) || null,
+    caption,
+    raw: responseText,
+  };
+};
+
+const runHeadlessMediaAnalysis = async (
+  jobId: string,
+  prompt: string,
+  attachments: ChatGptPhoneInputAttachment[],
+  provider: "auto" | "gemini" | "chatgpt",
+) => {
+  try {
+    const config = await getBotInterageRuntimeConfig();
+    if (!config.enabled || !config.baseUrl || !config.token) {
+      throw new Error("ChatGPT Sistema não está configurado.");
+    }
+    const apiRoot = config.baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+    const deadline = Date.now() + 600_000;
+    let lastError: Error | null = null;
+    for (let attempt = 1; attempt <= 3 && Date.now() < deadline; attempt += 1) {
+      try {
+        const submission = await fetch(`${apiRoot}/v1/jobs`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${config.token}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            "Idempotency-Key": `status-analysis-${jobId}-${attempt}`,
+          },
+          body: JSON.stringify({
+            type: "ask",
+            provider,
+            task: "media_analysis",
+            prompt,
+            model: "auto",
+            provider_timeout_seconds: 240,
+            attachments: attachments.map((attachment) => ({
+              name: attachment.name || attachment.fileName || "midia",
+              mimeType: attachment.mimeType,
+              base64: attachment.base64,
+            })),
+          }),
+          signal: AbortSignal.timeout(30_000),
+        });
+        const accepted = await submission.json().catch(() => null) as Record<string, unknown> | null;
+        const remoteJobId = stringValue(accepted?.job_id) || stringValue(accepted?.id);
+        if (!submission.ok || !remoteJobId) {
+          throw new Error(
+            stringValue(accepted?.error) || `A análise retornou HTTP ${submission.status}.`,
+          );
+        }
+        await markChatGptPhoneJobRunning({
+          jobId,
+          remoteJobId,
+          provider,
+        });
+
+        while (Date.now() < deadline) {
+          const response = await fetch(`${apiRoot}/v1/jobs/${encodeURIComponent(remoteJobId)}`, {
+            headers: { Authorization: `Bearer ${config.token}`, Accept: "application/json" },
+            signal: AbortSignal.timeout(20_000),
+          });
+          const remote = await response.json().catch(() => null) as Record<string, unknown> | null;
+          if (!response.ok) {
+            throw new Error(stringValue(remote?.error) || `Falha ao consultar a análise (${response.status}).`);
+          }
+          const status = stringValue(remote?.status).toLowerCase();
+          if (status === "completed" || status === "succeeded") {
+            const result = toRecord(remote?.result);
+            const answer =
+              stringValue(result.answer) ||
+              stringValue(result.response) ||
+              stringValue(result.text) ||
+              stringValue(remote?.answer);
+            if (!answer) throw new Error("A IA concluiu sem devolver uma legenda.");
+            if (isGenericMediaAnalysisAnswer(answer)) {
+              throw new Error("Resposta genérica temporária do provedor de IA.");
+            }
+            const conversationId = stringValue(result.conversation_id);
+            const providerUsed = (
+              stringValue(result.provider_used) || stringValue(result.provider)
+            ).toLowerCase();
+            await completeChatGptPhoneJob({
+              jobId,
+              payload: {
+                ok: true,
+                text: answer,
+                conversationId: conversationId || null,
+                messageId: stringValue(result.message_id) || null,
+              },
+            });
+            if (conversationId && providerUsed !== "gemini") {
+              void fetch(`${apiRoot}/v1/conversations/${encodeURIComponent(conversationId)}`, {
+                method: "DELETE",
+                headers: { Authorization: `Bearer ${config.token}`, Accept: "application/json" },
+                signal: AbortSignal.timeout(20_000),
+              }).catch((cleanupError) => console.warn("[bot-status] failed to remove analysis chat", {
+                jobId,
+                conversationId,
+                cleanupError,
+              }));
+            }
+            return;
+          }
+          if (status === "failed" || status === "timeout" || status === "cancelled") {
+            throw new Error(
+              stringValue(remote?.error) || stringValue(toRecord(remote?.result).error) ||
+              "A IA não conseguiu analisar essa mídia.",
+            );
+          }
+          await new Promise((resolve) => setTimeout(resolve, 2_000));
+        }
+        throw new Error("A análise excedeu dez minutos.");
+      } catch (attemptError) {
+        lastError = attemptError instanceof Error
+          ? attemptError
+          : new Error("Não foi possível analisar essa mídia.");
+        const retryable = /socket|closed|timeout|tempo|network|fetch|429|5\d\d|conversation_inaccessible|resposta gen[eé]rica tempor[aá]ria/i
+          .test(lastError.message);
+        console.warn("[bot-status] headless analysis attempt failed", {
+          jobId,
+          attempt,
+          retryable,
+          message: lastError.message,
+        });
+        if (!retryable || attempt === 3 || Date.now() >= deadline) throw lastError;
+        await new Promise((resolve) => setTimeout(resolve, 1_500 * attempt));
+      }
+    }
+    throw lastError ?? new Error("A análise excedeu dez minutos.");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Não foi possível analisar essa mídia.";
+    console.error("[bot-status] headless media analysis failed", { jobId, message });
+    await completeChatGptPhoneJob({ jobId, payload: { ok: false, error: message } })
+      .catch((completionError) => console.error("[bot-status] failed to persist analysis error", { jobId, completionError }));
+  }
+};
+
+const reconcileHeadlessAnalysis = async (
+  job: NonNullable<Awaited<ReturnType<typeof getChatGptPhoneJob>>>,
+) => {
+  if (!new Set(["queued", "running"]).has(job.status) || !job.phoneMessageId) {
+    return job;
+  }
+  try {
+    const config = await getBotInterageRuntimeConfig();
+    if (!config.enabled || !config.baseUrl || !config.token) return job;
+    const apiRoot = config.baseUrl.replace(/\/+$/, "").replace(/\/v1$/, "");
+    const response = await fetch(
+      `${apiRoot}/v1/jobs/${encodeURIComponent(job.phoneMessageId)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${config.token}`,
+          Accept: "application/json",
+        },
+        signal: AbortSignal.timeout(15_000),
+        cache: "no-store",
+      },
+    );
+    if (!response.ok) return job;
+    const remote = await response.json().catch(() => null) as Record<string, unknown> | null;
+    const status = stringValue(remote?.status).toLowerCase();
+    if (status === "completed" || status === "succeeded") {
+      const result = toRecord(remote?.result);
+      const answer =
+        stringValue(result.answer) ||
+        stringValue(result.response) ||
+        stringValue(result.text) ||
+        stringValue(remote?.answer);
+      if (answer && isGenericMediaAnalysisAnswer(answer)) {
+        // The background worker will retry this transient provider response.
+        // Keep the local job running so the UI does not render it as a caption.
+        return job;
+      }
+      return completeChatGptPhoneJob({
+        jobId: job.jobId,
+        payload: answer
+          ? {
+              ok: true,
+              text: answer,
+              conversationId: stringValue(result.conversation_id) || null,
+              messageId: stringValue(result.message_id) || null,
+            }
+          : { ok: false, error: "A IA concluiu sem devolver uma legenda." },
+      });
+    }
+    if (status === "failed" || status === "timeout" || status === "cancelled") {
+      return completeChatGptPhoneJob({
+        jobId: job.jobId,
+        payload: {
+          ok: false,
+          error:
+            stringValue(remote?.error) ||
+            stringValue(toRecord(remote?.result).error) ||
+            "A IA não conseguiu analisar essa mídia.",
+        },
+      });
+    }
+  } catch (error) {
+    console.warn("[bot-status] failed to reconcile headless analysis", {
+      jobId: job.jobId,
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+  return job;
+};
+
+export async function GET(request: NextRequest) {
+  const user = await getCurrentUser();
+  if (!user) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+  const jobId = stringValue(request.nextUrl.searchParams.get("jobId"));
+  if (!jobId) return NextResponse.json({ message: "Informe jobId." }, { status: 400 });
+  let job = await getChatGptPhoneJob(jobId);
+  if (!job || job.userId !== user.id) return NextResponse.json({ message: "Análise não encontrada." }, { status: 404 });
+  job = await reconcileHeadlessAnalysis(job);
+  return NextResponse.json({
+    jobId,
+    status: job.status,
+    error: job.errorMessage,
+    provider: stringValue(toRecord(job.context).provider) || null,
+    result: job.status === "succeeded" && job.responseText ? resultFromJob(job.responseText) : null,
+  });
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+    const body = toRecord(await request.json());
+    const mode = stringValue(body.mode).toLowerCase();
+    if (mode === "imdb") {
+      const query = stringValue(body.query);
+      if (!query) return NextResponse.json({ message: "Digite o nome do filme ou série na legenda." }, { status: 400 });
+      try {
+        return NextResponse.json({ status: "succeeded", result: await searchImdbDetails(query) });
+      } catch (imdbError) {
+        try {
+          return NextResponse.json({ status: "succeeded", result: await searchMovieDetails(query) });
+        } catch {
+          throw imdbError;
+        }
+      }
+    }
+    if (mode !== "chatgpt" && mode !== "ai") {
+      return NextResponse.json({ message: "Modo de enriquecimento inválido." }, { status: 400 });
+    }
+
+    const rawProvider = stringValue(body.provider).toLowerCase() || "gemini";
+    if (!new Set(["auto", "gemini", "chatgpt"]).has(rawProvider)) {
+      return NextResponse.json({ message: "Provedor de IA inválido." }, { status: 400 });
+    }
+    const provider = rawProvider as "auto" | "gemini" | "chatgpt";
+
+    const mediaUrl = stringValue(body.mediaUrl);
+    if (!mediaUrl) return NextResponse.json({ message: "Adicione ou resolva uma mídia antes de analisar." }, { status: 400 });
+    const mimeType = stringValue(body.mimeType);
+    const fileName = stringValue(body.fileName);
+    const mediaPath = stringValue(body.mediaPath);
+    const userHint = stringValue(body.query);
+    const attachments = await prepareAnalysisAttachments(
+      request,
+      mediaUrl,
+      mimeType,
+      fileName,
+      mediaPath,
+      provider,
+    );
+    if (attachments.length === 0) throw new Error("Não foi possível preparar a mídia completa para análise.");
+
+    const prompt = [
+      "Analise a mídia anexada por inteiro para preparar uma legenda bonita e informativa de Status do WhatsApp.",
+      provider === "chatgpt"
+        ? "Analise em conjunto todos os quadros e o áudio extraídos do vídeo. Cruze rostos, personagens, figurinos, cenários, falas, créditos, logotipos e trilha sonora."
+        : "IMPORTANTE: o anexo cujo nome começa com VIDEO_COMPLETO__ contém o vídeo completo. Analise toda a duração, todas as cenas, textos na tela, diálogos e áudio.",
+      "Identifique se é filme, série, anime, documentário, programa ou outro conteúdo. Descubra o título oficial, ano de lançamento e contexto da cena. Use pesquisa na web quando estiver disponível para confirmar o candidato mais provável.",
+      "Não encerre a análise com uma resposta genérica de 'evidência insuficiente' antes de examinar o vídeo completo e tentar confirmar pelos diálogos, personagens e elementos visuais. Se ainda houver dúvida, informe o candidato mais provável e reduza confidence, sem apresentar hipótese como certeza.",
+      userHint ? `Observação do usuário: ${userHint}` : "",
+      "A legenda NÃO pode ser vaga. Escreva em português do Brasil, com 6 a 10 linhas curtas e quebras de linha reais.",
+      "Formato desejado da legenda: primeira linha com 🎬 Título oficial (ano); segunda com 🎭 tipo e gêneros; depois uma sinopse clara da obra e o contexto específico da cena em 2 a 4 linhas; finalize com 💡 uma curiosidade factual e uma frase curta que desperte interesse.",
+      "Use um espaço em branco entre os blocos para facilitar a leitura. Não inclua explicações sobre o processo de análise, anexos ou falta de quadros.",
+      "Só diga que foi inspirado em fatos reais, inclua nota, elenco ou curiosidade quando houver conhecimento seguro ou confirmação; nunca invente.",
+      "Retorne SOMENTE JSON válido, sem markdown, no formato:",
+      '{"title":"título oficial ou candidato mais provável","type":"filme|serie|anime|documentario|programa|outro","year":"ano ou vazio","confidence":0.0,"caption":"legenda final pronta, organizada em blocos com título, gênero, sinopse, contexto da cena e curiosidade"}',
+    ].filter(Boolean).join("\n");
+    const job = await createChatGptPhoneJob({
+      userId: user.id,
+      prompt,
+      phoneApiUrl: null,
+      context: {
+        source: "status-media-analysis",
+        requestedByUserId: user.id,
+        provider,
+      },
+      request: {
+        message: prompt,
+        timeoutMs: 600_000,
+        settleMs: 1_500,
+        newChat: true,
+        executor: "native-cromite",
+        resultSource: "database",
+        dedicatedPage: true,
+        ephemeral: true,
+        noQueue: true,
+        useImagesPage: false,
+        attachments,
+      },
+    });
+    void runHeadlessMediaAnalysis(job.jobId, prompt, attachments, provider);
+    return NextResponse.json(
+      { status: "queued", jobId: job.jobId, provider },
+      { status: 202 },
+    );
+  } catch (error) {
+    console.error("[bot-status] failed to enrich status media", error);
+    return NextResponse.json(
+      { message: error instanceof Error ? error.message : "Não foi possível analisar essa mídia." },
+      { status: 500 },
+    );
+  }
+}

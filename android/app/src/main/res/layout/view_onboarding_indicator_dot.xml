@@ -1,0 +1,5 @@
+<View xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/onboarding_indicator_dot"
+    android:layout_width="10dp"
+    android:layout_height="10dp"
+    android:background="@drawable/bg_onboarding_dot_inactive" />

@@ -1,0 +1,495 @@
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import java.util.HashMap
+
+import java.io.InputStream
+import java.net.HttpURLConnection
+import java.net.URL
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
+import java.util.Arrays
+import java.util.Base64
+import java.util.Locale
+
+apply plugin: 'com.android.application'
+
+// Load environment variables with support for .env fallback so Android Studio builds
+// can consume APP_URL and MOBILE_CI_TOKEN without manual IDE env configuration.
+def envMap = new HashMap(System.getenv())
+def tryUnquote = { String v ->
+    if (v == null) return v
+    def s = v.trim()
+    if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
+        return s.substring(1, s.length() - 1)
+    }
+    return s
+}
+def loadDotEnvInto = { File f, Map target ->
+    if (f != null && f.exists() && f.isFile()) {
+        f.getText('UTF-8').split(/\r?\n/).each { line ->
+            def trimmed = line?.trim()
+            if (!trimmed || trimmed.startsWith('#')) return
+            def idx = trimmed.indexOf('=')
+            if (idx <= 0) return
+            def key = trimmed.substring(0, idx).trim()
+            def val = tryUnquote(trimmed.substring(idx + 1))?.replace('\\n', "\n")
+            if (key && val && !target.containsKey(key)) {
+                target.put(key, val)
+            }
+        }
+    }
+}
+def repoRoot = rootProject.rootDir.parentFile ?: rootProject.rootDir
+loadDotEnvInto(new File(repoRoot, '.env'), envMap)
+loadDotEnvInto(new File(rootProject.rootDir, '.env'), envMap)
+
+def readEnv = { String key ->
+    def value = envMap.get(key)
+    return value ? value.toString().trim() : null
+}
+
+def panelBaseCandidates = [
+        readEnv('APP_URL'),
+        readEnv('NEXT_PUBLIC_CAP_SERVER_URL'),
+        readEnv('MOBILE_PANEL_URL'),
+        readEnv('STOREZAP_PANEL_URL')
+].findAll { it }
+
+// Default to production panel when not explicitly provided
+def panelBaseUrl = panelBaseCandidates ? panelBaseCandidates[0] : 'http://botadmin.shop'
+if (panelBaseUrl?.endsWith('/')) {
+    panelBaseUrl = panelBaseUrl.substring(0, panelBaseUrl.length() - 1)
+}
+
+def internalToken = readEnv('MOBILE_CI_TOKEN') ?: readEnv('MOBILE_INTERNAL_TOKEN') ?: readEnv('INTERNAL_API_TOKEN')
+def hasInternalApiConfig = panelBaseUrl && internalToken
+
+def jsonSlurper = new JsonSlurper()
+
+def fetchInternalJson = { String endpoint ->
+    if (!hasInternalApiConfig) {
+        return null
+    }
+
+    try {
+        def url = new URL(panelBaseUrl + endpoint)
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection()
+        connection.setRequestProperty('x-internal-token', internalToken)
+        connection.setRequestProperty('Accept', 'application/json')
+        connection.setConnectTimeout(15000)
+        connection.setReadTimeout(15000)
+
+        def status = connection.responseCode
+        InputStream stream = (status >= 200 && status < 300) ? connection.inputStream : connection.errorStream
+
+        if (!stream) {
+            connection.disconnect()
+            return null
+        }
+
+        def text = stream.getText('UTF-8')
+        stream.close()
+        connection.disconnect()
+
+        if (status >= 200 && status < 300) {
+            try {
+                return jsonSlurper.parseText(text)
+            } catch (Exception parseError) {
+                println "[mobile-gradle] Não foi possível interpretar ${endpoint}: ${parseError.message}"
+                return null
+            }
+        } else {
+            println "[mobile-gradle] HTTP ${status} ao buscar ${endpoint}"
+            return null
+        }
+    } catch (Exception error) {
+        println "[mobile-gradle] Falha ao buscar ${endpoint}: ${error.message}"
+        return null
+    }
+}
+
+if (!hasInternalApiConfig) {
+    if (!panelBaseUrl) {
+        println '[mobile-gradle] APP_URL/NEXT_PUBLIC_CAP_SERVER_URL não configurado. Utilizando valores locais.'
+    }
+    if (!internalToken) {
+        println '[mobile-gradle] MOBILE_CI_TOKEN não informado. Não será possível sincronizar configurações remotas.'
+    }
+}
+
+def panelMobileSettings = fetchInternalJson('/api/internal/mobile/settings')
+if (!(panelMobileSettings instanceof Map)) {
+    panelMobileSettings = [:]
+}
+
+def panelFirebaseSnapshot = fetchInternalJson('/api/internal/firebase/settings')
+if (!(panelFirebaseSnapshot instanceof Map)) {
+    panelFirebaseSnapshot = [:]
+}
+
+def panelKeystorePayload = fetchInternalJson('/api/internal/mobile/keystore')
+if (!(panelKeystorePayload instanceof Map)) {
+    panelKeystorePayload = [:]
+}
+
+def parseVersionCode = { String raw ->
+    if (!raw) {
+        return null
+    }
+    try {
+        return raw.toInteger()
+    } catch (ignored) {
+        return null
+    }
+}
+
+def resolveFromMap = { Map source, String key ->
+    def value = source?.get(key)
+    if (value instanceof Number) {
+        return value.toString()
+    }
+    return (value instanceof CharSequence && value.toString().trim()) ? value.toString().trim() : null
+}
+
+def resolvedAppId = readEnv('APP_ID') ?: readEnv('APP_PACKAGE') ?: resolveFromMap(panelMobileSettings, 'packageName') ?: 'com.botadmin.shop'
+def resolvedVersionName = readEnv('APP_VERSION_NAME') ?: resolveFromMap(panelMobileSettings, 'versionName') ?: '1.0'
+def resolvedVersionCode = parseVersionCode(readEnv('APP_VERSION_CODE')) ?: parseVersionCode(resolveFromMap(panelMobileSettings, 'versionCode')) ?: 1
+def resolvedAppName = readEnv('APP_NAME') ?: resolveFromMap(panelMobileSettings, 'appName')
+def resolvedNamespace = readEnv('APP_NAMESPACE') ?: 'com.botadmin.shop'
+
+println "[mobile-gradle] Aplicando configuração do app ${resolvedAppId} (${resolvedVersionName})"
+
+def ensureFileBytes = { File target, byte[] bytes ->
+    if (!target.parentFile?.exists()) {
+        target.parentFile?.mkdirs()
+    }
+
+    boolean shouldWrite = true
+    if (target.exists()) {
+        try {
+            shouldWrite = !Arrays.equals(target.bytes, bytes)
+        } catch (Exception ignored) {
+            shouldWrite = true
+        }
+    }
+
+    if (shouldWrite) {
+        Files.write(target.toPath(), bytes)
+        println "[mobile-gradle] ${target.name} atualizado em ${target.parentFile}"
+    }
+}
+
+def ensureGoogleServicesJson = { String packageName ->
+    def googleServicesBase64 = resolveFromMap(panelFirebaseSnapshot, 'googleServicesBase64')
+    byte[] desiredBytes = null
+
+    if (googleServicesBase64) {
+        try {
+            desiredBytes = Base64.decoder.decode(googleServicesBase64)
+        } catch (IllegalArgumentException ignored) {
+            println '[mobile-gradle] Base64 inválido recebido para google-services.json'
+            desiredBytes = null
+        }
+    }
+
+    if (!desiredBytes) {
+        def repoSnapshot = new File(rootProject.rootDir.parentFile ?: rootProject.rootDir, 'data/firebase/google-services.json')
+        if (!repoSnapshot.exists()) {
+            repoSnapshot = new File(rootProject.rootDir.parentFile ?: rootProject.rootDir, 'google-services.json')
+        }
+        if (repoSnapshot.exists()) {
+            desiredBytes = Files.readAllBytes(repoSnapshot.toPath())
+        }
+    }
+
+    if (!desiredBytes) {
+        println '[mobile-gradle] google-services.json não encontrado em fontes remotas ou locais.'
+        return
+    }
+
+    byte[] adjustedBytes = desiredBytes
+    try {
+        def json = jsonSlurper.parseText(new String(desiredBytes, StandardCharsets.UTF_8))
+        if (json instanceof Map && json.client instanceof List && json.client.size() == 1) {
+            def androidInfo = json.client[0]?.client_info?.android_client_info
+            if (androidInfo && androidInfo.package_name != packageName) {
+                androidInfo.package_name = packageName
+                adjustedBytes = (JsonOutput.prettyPrint(JsonOutput.toJson(json)) + System.lineSeparator()).getBytes(StandardCharsets.UTF_8)
+                println "[mobile-gradle] Ajustando package_name do google-services.json para ${packageName}."
+            }
+        }
+    } catch (Exception error) {
+        println "[mobile-gradle] Não foi possível ajustar google-services.json: ${error.message}"
+    }
+
+    def targetFile = new File(project.projectDir, 'google-services.json')
+    ensureFileBytes(targetFile, adjustedBytes)
+}
+
+
+def ensureFirebaseWebConfig = {
+    def webConfig = panelFirebaseSnapshot.get('web')
+    if (!(webConfig instanceof Map)) {
+        return
+    }
+
+    def sanitized = webConfig.findAll { entry -> entry.value != null }
+    if (sanitized.isEmpty()) {
+        return
+    }
+
+    def payload = (JsonOutput.prettyPrint(JsonOutput.toJson(sanitized)) + System.lineSeparator()).getBytes(StandardCharsets.UTF_8)
+    def targetFile = new File(project.projectDir, 'src/main/assets/firebase-web.json')
+    ensureFileBytes(targetFile, payload)
+}
+
+
+def resolvedKeystore = [:]
+if (panelKeystorePayload.base64 instanceof String && panelKeystorePayload.base64.trim()) {
+    try {
+        byte[] keystoreBytes = Base64.decoder.decode(panelKeystorePayload.base64.trim())
+        def cacheDir = new File(rootProject.rootDir, '.cache/mobile')
+        if (!cacheDir.exists()) {
+            cacheDir.mkdirs()
+        }
+        def keystoreFile = new File(cacheDir, 'android-keystore.jks')
+        ensureFileBytes(keystoreFile, keystoreBytes)
+        resolvedKeystore = [
+                path         : keystoreFile.absolutePath,
+                storePassword: resolveFromMap(panelKeystorePayload, 'storePassword'),
+                keyAlias     : resolveFromMap(panelKeystorePayload, 'keyAlias'),
+                keyPassword  : resolveFromMap(panelKeystorePayload, 'keyPassword')
+        ]
+    } catch (IllegalArgumentException error) {
+        println "[mobile-gradle] Base64 inválido para keystore remoto: ${error.message}"
+    }
+}
+
+if (resolvedKeystore.path) {
+    def aliasLabel = resolvedKeystore.keyAlias ?: 'alias desconhecido'
+    println "[mobile-gradle] Keystore remoto preparado (${aliasLabel})."
+}
+
+ensureGoogleServicesJson(resolvedAppId)
+ensureFirebaseWebConfig()
+
+android {
+    def keystorePathEnv = readEnv('ANDROID_KEYSTORE') ?: resolvedKeystore.path
+    def keystorePasswordEnv = readEnv('ANDROID_KEYSTORE_PASSWORD') ?: resolvedKeystore.storePassword
+    def keyAliasEnv = readEnv('ANDROID_KEY_ALIAS') ?: resolvedKeystore.keyAlias
+    def keyPasswordEnv = readEnv('ANDROID_KEY_ALIAS_PASSWORD') ?: resolvedKeystore.keyPassword
+    def hasSigningConfig = keystorePathEnv && keystorePasswordEnv && keyAliasEnv && keyPasswordEnv
+
+    namespace resolvedNamespace
+    compileSdk rootProject.ext.compileSdkVersion
+
+    signingConfigs {
+        release {
+            if (hasSigningConfig) {
+                storeFile file(keystorePathEnv)
+                storePassword keystorePasswordEnv
+                keyAlias keyAliasEnv
+                keyPassword keyPasswordEnv
+            } else {
+                println "[mobile] Variáveis de assinatura não configuradas. Release será gerado sem assinatura."
+            }
+        }
+    }
+    defaultConfig {
+        applicationId resolvedAppId
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode resolvedVersionCode
+        versionName resolvedVersionName
+        testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        aaptOptions {
+             // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
+             // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
+            ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+        def finalAppName = resolvedAppName
+        if (finalAppName && finalAppName.contains(".")) {
+            println "[mobile-gradle] Nome de aplicativo '${finalAppName}' parece um identificador. Mantendo nome padrão."
+            finalAppName = null
+        }
+        if (finalAppName) {
+            // Garantir que o nome exibido no launcher e em 'Recents' seja o mesmo
+            resValue "string", "app_name", finalAppName
+            resValue "string", "title_activity_main", finalAppName
+        } else {
+            resValue "string", "app_name", "Bot Admin"
+            resValue "string", "title_activity_main", "Bot Admin"
+        }
+        buildConfigField "String", "ONBOARDING_BASE_URL", JsonOutput.toJson(panelBaseUrl ?: "")
+    }
+    buildFeatures {
+        buildConfig true
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+            if (hasSigningConfig) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+}
+
+def repoRootDir = rootProject.rootDir.parentFile ?: rootProject.rootDir
+def isWindows = System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("windows")
+def mobilePrepareCommand = isWindows ? ["cmd", "/c", "npm", "run", "mobile:prepare"] : ["sh", "-c", "npm run mobile:prepare"]
+def hasCordovaPluginsModule = { -> rootProject.findProject(':capacitor-cordova-android-plugins') != null }
+def skipGradlePrepare = System.getenv('MOBILE_SKIP_GRADLE_PREPARE')?.trim()?.equalsIgnoreCase('true')
+        || System.getenv('MOBILE_SKIP_GRADLE_PREPARE')?.trim() == '1'
+
+tasks.register("prepareMobileAssets") {
+    group = "storebot"
+    description = "Sincroniza assets web e sons personalizados antes da build Android."
+
+    doLast {
+        if (skipGradlePrepare) {
+            logger.lifecycle('[storebot] MOBILE_SKIP_GRADLE_PREPARE=1 — ignorando npm run mobile:prepare.')
+            return
+        }
+        logger.lifecycle('[storebot] Executando npm run mobile:prepare para atualizar assets móveis e áudios de notificação.')
+        try {
+            exec {
+                commandLine mobilePrepareCommand
+                workingDir repoRootDir
+            }
+        } catch (Exception error) {
+            throw new GradleException(
+                    'Não foi possível executar npm run mobile:prepare. Garanta que o Node.js está instalado e que as dependências foram instaladas.',
+                    error
+            )
+        }
+    }
+}
+
+preBuild.dependsOn tasks.named("prepareMobileAssets")
+
+// Build-time fetch of public onboarding payload and images so the app can
+// render slides offline without hitting the panel on first launch.
+tasks.register("prepareOnboardingAssets") {
+    group = "storebot"
+    description = "Busca JSON de onboarding e imagens e embala em assets."
+
+    doLast {
+        try {
+            def assetsDir = new File(project.projectDir, "src/main/assets")
+            def outDir = new File(assetsDir, "onboarding-images")
+            if (!assetsDir.exists()) assetsDir.mkdirs()
+            if (!outDir.exists()) outDir.mkdirs()
+
+            // Buscar JSON público
+            def endpoint = panelBaseUrl + "/api/mobile/onboarding"
+            def conn = (HttpURLConnection) new URL(endpoint).openConnection()
+            conn.setRequestProperty('Accept', 'application/json')
+            conn.setConnectTimeout(15000)
+            conn.setReadTimeout(15000)
+            def status = conn.responseCode
+            def stream = (status >= 200 && status < 300) ? conn.inputStream : conn.errorStream
+            if (!stream) {
+                println "[onboarding] Sem resposta de ${endpoint}; mantendo assets existentes."
+                return
+            }
+            def text = stream.getText('UTF-8')
+            stream.close(); conn.disconnect()
+
+            def json = jsonSlurper.parseText(text)
+            if (!(json instanceof Map) || !json.containsKey('slides')) {
+                println "[onboarding] JSON inválido; mantendo assets existentes."
+                return
+            }
+
+            def slides = (json.slides instanceof List) ? json.slides : []
+            def rewrittenSlides = []
+            slides.eachWithIndex { s, idx ->
+                def title = s.title ?: ""
+                def description = s.description ?: ""
+                if (!title.trim() || !description.trim()) return // pular slides vazios
+                def imgUrl = s.imageUrl ?: null
+                def localUrl = null
+                if (imgUrl && imgUrl.toString().toLowerCase(Locale.ROOT).startsWith('http')) {
+                    try {
+                        def u = new URL(imgUrl.toString())
+                        def path = u.getPath()
+                        def name = path?.tokenize('/')?.last() ?: "slide-${idx}.png"
+                        if (!name.toLowerCase(Locale.ROOT).matches('.*\\.(png|jpg|jpeg|webp)$')) {
+                            name = "slide-${idx}.png"
+                        }
+                        def imgFile = new File(outDir, name)
+                        // download binário
+                        def ic = (HttpURLConnection) u.openConnection()
+                        ic.setConnectTimeout(15000); ic.setReadTimeout(15000)
+                        if (ic.responseCode >= 200 && ic.responseCode < 300) {
+                            def is = ic.inputStream
+                            Files.copy(is, imgFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                            is.close(); ic.disconnect()
+                            localUrl = "file:///android_asset/onboarding-images/${name}"
+                        } else {
+                            ic.disconnect()
+                        }
+                    } catch (Exception imgErr) {
+                        println "[onboarding] Falha ao baixar imagem do slide ${idx}: ${imgErr.message}"
+                    }
+                }
+                def copy = new HashMap(s)
+                if (localUrl != null) copy.imageUrl = localUrl
+                rewrittenSlides.add(copy)
+            }
+
+            def outJson = [
+                enabled: (json.enabled ? true : false),
+                revision: (json.revision ?: null),
+                slides: rewrittenSlides
+            ]
+            def outFile = new File(assetsDir, 'onboarding.json')
+            outFile.setText(JsonOutput.prettyPrint(JsonOutput.toJson(outJson)), 'UTF-8')
+            println "[onboarding] Assets gerados em ${outFile} (${rewrittenSlides.size()} slides)."
+        } catch (Exception e) {
+            println "[onboarding] Erro ao preparar assets: ${e.message}"
+        }
+    }
+}
+
+preBuild.dependsOn tasks.named("prepareOnboardingAssets")
+
+repositories {
+    flatDir{
+        dirs '../capacitor-cordova-android-plugins/src/main/libs', 'libs'
+    }
+}
+
+dependencies {
+    implementation fileTree(include: ['*.jar'], dir: 'libs')
+    implementation "androidx.appcompat:appcompat:$androidxAppCompatVersion"
+    implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
+    implementation "androidx.swiperefreshlayout:swiperefreshlayout:1.1.0"
+    implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
+    implementation "androidx.viewpager2:viewpager2:1.0.0"
+    implementation "com.google.android.material:material:1.12.0"
+    implementation project(':capacitor-android')
+    implementation platform('com.google.firebase:firebase-bom:33.6.0')
+    implementation 'com.google.firebase:firebase-messaging'
+    testImplementation "junit:junit:$junitVersion"
+    androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
+    androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
+    if (hasCordovaPluginsModule()) {
+        implementation project(':capacitor-cordova-android-plugins')
+    } else {
+        logger.lifecycle("[storebot] Nenhum módulo capacitor-cordova-android-plugins detectado. Pulando dependência opcional.")
+    }
+}
+
+apply from: 'capacitor.build.gradle'
+
+try {
+    def servicesJSON = file('google-services.json')
+    if (servicesJSON.text) {
+        apply plugin: 'com.google.gms.google-services'
+    }
+} catch(Exception e) {
+    logger.info("google-services.json not found, google-services plugin not applied. Push Notifications won't work")
+}

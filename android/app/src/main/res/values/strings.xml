@@ -1,0 +1,12 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Bot Admin</string>
+    <string name="title_activity_main">Bot Admin</string>
+    <string name="package_name">com.botadmin.shop</string>
+    <string name="custom_url_scheme">com.botadmin.shop</string>
+    <string name="offline_title">Você está offline</string>
+    <string name="offline_description">Não foi possível carregar o painel. Verifique sua conexão com a internet e toque em Recarregar.</string>
+    <string name="offline_retry">Recarregar</string>
+    <string name="offline_reloading">Recarregando…</string>
+    <string name="offline_image_content_desc">Animação indicando que o app está offline</string>
+</resources>

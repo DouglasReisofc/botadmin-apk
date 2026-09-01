@@ -1,0 +1,195 @@
+/* Toggle de tema + tokens globais dark/clean */
+
+:root,
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --ba-theme-surface: #0b141a;
+  --ba-theme-panel: #111b21;
+  --ba-theme-text: #e9edef;
+  --ba-theme-muted: #8696a0;
+  --ba-theme-border: rgba(255, 255, 255, 0.08);
+  --ba-theme-accent: #12e86a;
+  --ba-theme-accent-2: #00a884;
+}
+
+html[data-theme="clean"] {
+  color-scheme: light;
+  --ba-theme-surface: #ffffff;
+  --ba-theme-panel: #ffffff;
+  --ba-theme-text: #111b21;
+  --ba-theme-muted: #667781;
+  --ba-theme-border: rgba(17, 27, 33, 0.08);
+  --ba-theme-accent: #087443;
+  --ba-theme-accent-2: #00a884;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  border-radius: 999px;
+  border: 1px solid var(--ba-theme-border);
+  background: color-mix(in srgb, var(--ba-theme-panel) 92%, transparent);
+  color: var(--ba-theme-text);
+  padding: 0.42rem 0.78rem;
+  min-height: 36px;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease, background 0.15s ease, color 0.15s ease;
+  backdrop-filter: blur(8px);
+}
+
+.theme-toggle--compact {
+  width: 40px;
+  height: 40px;
+  min-height: 40px;
+  padding: 0;
+  border-radius: 50%;
+}
+
+.theme-toggle:hover {
+  border-color: color-mix(in srgb, var(--ba-theme-accent) 45%, var(--ba-theme-border));
+  color: var(--ba-theme-accent);
+  transform: translateY(-1px);
+}
+
+.theme-toggle:disabled {
+  opacity: 0.55;
+  cursor: default;
+  transform: none;
+}
+
+.theme-toggle__icon {
+  display: grid;
+  place-items: center;
+  width: 1.2rem;
+  height: 1.2rem;
+  line-height: 0;
+}
+
+.theme-toggle__icon svg {
+  display: block;
+}
+
+.theme-toggle--dark {
+  background: rgba(18, 232, 106, 0.1);
+  border-color: rgba(18, 232, 106, 0.28);
+  color: #12e86a;
+}
+
+.theme-toggle--clean {
+  background: rgba(8, 116, 67, 0.08);
+  border-color: rgba(8, 116, 67, 0.2);
+  color: #087443;
+}
+
+/* Marca pública */
+.public-brand {
+  color: var(--ba-theme-text) !important;
+}
+
+.public-brand__text {
+  letter-spacing: -0.02em;
+}
+
+.public-brand__accent {
+  color: var(--ba-theme-accent);
+}
+
+html[data-theme="dark"] .public-brand__accent {
+  color: #12e86a;
+  text-shadow: 0 0 12px rgba(18, 232, 106, 0.28);
+}
+
+/* Dashboard / bootstrap body surfaces when dark */
+html[data-theme="dark"] body {
+  background-color: #0b141a;
+  color: #e9edef;
+}
+
+html[data-theme="clean"] body {
+  background-color: #ffffff;
+  color: #111b21;
+}
+
+/* Preloader Next (loading.tsx) segue o tema ativo */
+html[data-theme="dark"] .app-preloader.app-preloader--v4.app-preloader--neon {
+  background:
+    radial-gradient(circle at 50% 40%, rgba(18, 232, 106, 0.12) 0%, transparent 55%),
+    linear-gradient(180deg, #0b141a 0%, #111b21 100%) !important;
+}
+
+html[data-theme="clean"] .app-preloader.app-preloader--v4.app-preloader--neon {
+  background: #ffffff !important;
+}
+
+html[data-theme="clean"] .app-preloader--v4.app-preloader--neon .app-preloader__bg-grid,
+html[data-theme="clean"] .app-preloader--v4.app-preloader--neon .app-preloader__bg-glow {
+  opacity: 0 !important;
+  display: none !important;
+}
+
+html[data-theme="clean"] .app-preloader--v4.app-preloader--neon .app-preloader__label {
+  color: #54656f !important;
+}
+
+html[data-theme="dark"] .app-preloader--v4.app-preloader--neon .app-preloader__label {
+  color: #e9edef !important;
+}
+
+html[data-theme="dark"] .app-preloader--v4.app-preloader--neon .app-preloader__tile {
+  background: #111b21 !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45) !important;
+}
+
+html[data-theme="clean"] .app-preloader--v4.app-preloader--neon .app-preloader__tile {
+  background: #ffffff !important;
+  border: 1px solid rgba(17, 27, 33, 0.08) !important;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+}
+
+html[data-theme="dark"] #content,
+html[data-theme="dark"] .min-vh-100 {
+  background-color: transparent;
+}
+
+html[data-theme="dark"] .navbar,
+html[data-theme="dark"] .navbar-expand-lg {
+  background-color: #111b21 !important;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+}
+
+html[data-theme="dark"] .text-secondary {
+  color: #8696a0 !important;
+}
+
+html[data-theme="dark"] .card,
+html[data-theme="dark"] .offcanvas,
+html[data-theme="dark"] .dropdown-menu,
+html[data-theme="dark"] .modal-content {
+  background-color: #111b21;
+  color: #e9edef;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] .form-control,
+html[data-theme="dark"] .form-select {
+  background-color: #1f2c34;
+  border-color: rgba(255, 255, 255, 0.1);
+  color: #e9edef;
+}
+
+html[data-theme="dark"] .table {
+  --bs-table-bg: transparent;
+  --bs-table-color: #e9edef;
+  --bs-table-border-color: rgba(255, 255, 255, 0.08);
+}
+
+html[data-theme="dark"] footer.custom-container,
+html[data-theme="dark"] .custom-container {
+  color: inherit;
+}

@@ -1,0 +1,35 @@
+.action-feedback-overlay {
+  position: fixed;
+  top: 0.75rem;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1080;
+  width: min(96vw, 34rem);
+  pointer-events: none;
+
+  &__alert {
+    pointer-events: auto;
+    border-width: 0;
+    border-radius: 0.75rem;
+  }
+
+  &__close {
+    opacity: 0.6;
+    transition: opacity 0.2s ease-in-out;
+
+    &:hover,
+    &:focus {
+      opacity: 1;
+    }
+  }
+
+  &--desktop {
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
+  &--mobile {
+    top: 0.75rem;
+    width: min(94vw, 28rem);
+  }
+}

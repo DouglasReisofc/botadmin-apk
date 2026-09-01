@@ -1,0 +1,28 @@
+{
+  "name": "BotAdmin",
+  "short_name": "BotAdmin",
+  "description": "Bot administrador para WhatsApp.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#00a884",
+  "icons": [
+    {
+      "src": "/android-chrome-192x192.png?v=botadmin-logo-20260723d",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/android-chrome-512x512.png?v=botadmin-logo-20260723d",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/apple-touch-icon.png?v=botadmin-logo-20260723d",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}

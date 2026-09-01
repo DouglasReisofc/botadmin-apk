@@ -1,0 +1,141 @@
+proxy_cache_path /www/wwwroot/botadmin.shop/proxy_cache_dir levels=1:2 keys_zone=botadmin_shop_cache:20m inactive=1d max_size=5g;
+
+server {
+    listen 80;
+    listen 443 ssl;
+    listen 443 quic;
+    http2 on;
+    http3 on;
+    
+
+    server_name botadmin.shop www.botadmin.shop botadmin-origin.botadmin.shop;
+    index index.php index.html index.htm default.php default.htm default.html;
+    root /www/wwwroot/botadmin.shop;
+    include /www/server/panel/vhost/nginx/extension/botadmin.shop/*.conf;
+
+    #CERT-APPLY-CHECK--START
+    # Configuration related to file verification for SSL certificate application - Do not delete
+    include /www/server/panel/vhost/nginx/well-known/botadmin.shop.conf;
+    #CERT-APPLY-CHECK--END
+
+    #SSL-START SSL related configuration, do NOT delete or modify the next line of commented-out 404 rules
+    #error_page 404/404.html;
+    #HTTP_TO_HTTPS_START
+    if ($server_port !~ 443){
+        rewrite ^(/.*)$ https://$host$1 permanent;
+    }
+    #HTTP_TO_HTTPS_END
+    ssl_certificate    /www/server/panel/vhost/cert/botadmin.shop/fullchain.pem;
+    ssl_certificate_key    /www/server/panel/vhost/cert/botadmin.shop/privkey.pem;
+    ssl_protocols TLSv1.1 TLSv1.2 TLSv1.3;
+    ssl_ciphers EECDH+CHACHA20:EECDH+CHACHA20-draft:EECDH+AES128:RSA+AES128:EECDH+AES256:RSA+AES256:EECDH+3DES:RSA+3DES:!MD5;
+    ssl_prefer_server_ciphers on;
+    ssl_session_tickets on;
+    ssl_session_cache shared:SSL:10m;
+    ssl_session_timeout 10m;
+    add_header Strict-Transport-Security "max-age=31536000";
+    add_header Alt-Svc 'quic=":443"; h3=":443"; h3-29=":443"; h3-27=":443";h3-25=":443"; h3-T050=":443"; h3-Q050=":443";h3-Q049=":443";h3-Q048=":443"; h3-Q046=":443"; h3-Q043=":443"';
+    quic_retry on;
+    quic_gso on;
+    ssl_early_data on;
+    error_page 497  https://$host$request_uri;
+    #SSL-END
+    #REDIRECT START
+    
+    #REDIRECT END
+
+    #ERROR-PAGE-START  Error page configuration, allowed to be commented, deleted or modified
+    #error_page 404 /404.html;
+    #error_page 502 /502.html;
+    #ERROR-PAGE-END
+
+    #PHP-INFO-START  PHP reference configuration, can be annotated or modified
+    
+    include enable-php-00.conf;
+    #PHP-INFO-END
+
+    #IP-RESTRICT-START Restrict access to IP configuration, IP blacklist and whitelist
+    
+    
+    #IP-RESTRICT-END
+
+    #BASICAUTH START
+    
+    #BASICAUTH END
+
+    #SUB_FILTER START
+    
+    #SUB_FILTER END
+
+    #GZIP START
+    
+    #GZIP END
+
+    #GLOBAL-CACHE START
+    
+    #GLOBAL-CACHE END
+
+    #WEBSOCKET-SUPPORT START
+    proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+    #WEBSOCKET-SUPPORT END
+
+    #PROXY-CONF-START
+    location ^~ / {
+      
+      
+      # Managed by /usr/local/sbin/botadmin-blue-green. The active slot is
+      # changed atomically and the previous slot remains a temporary fallback.
+      proxy_pass http://botadmin_bluegreen;
+      proxy_set_header Host $http_host;
+      proxy_set_header X-Real-IP $remote_addr;
+      proxy_set_header X-Real-Port $remote_port;
+      proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+      proxy_set_header REMOTE-HOST $remote_addr;
+      
+      proxy_connect_timeout 60s;
+    proxy_send_timeout 600s;
+    proxy_read_timeout 600s;
+      proxy_http_version 1.1;
+      proxy_set_header Upgrade $http_upgrade;
+      proxy_set_header Connection "upgrade";
+      proxy_request_buffering off;
+proxy_buffering off;
+proxy_set_header X-Forwarded-Proto $scheme;
+proxy_set_header X-Forwarded-Host $host;
+      
+      
+      
+      
+    }
+    
+    #PROXY-CONF-END
+
+    #SERVER-BLOCK START
+    client_max_body_size 512m;
+    #SERVER-BLOCK END
+
+    #Prohibited access to files or directories
+    location ~ ^/(\.user.ini|\.htaccess|\.git|\.env|\.svn|\.project|LICENSE|README.md)
+    {
+        return 404;
+    }
+
+    #One click application for SSL certificate verification directory related settings
+    location /.well-known{
+        allow all;
+        root /www/wwwroot/botadmin.shop;
+    }
+
+    #Prohibit placing sensitive files in the certificate verification directory
+    if ( $uri ~ "^/\.well-known/.*\.(php|jsp|py|js|css|lua|ts|go|zip|tar\.gz|rar|7z|sql|bak)$" ) {
+        return 403;
+    }
+
+    #LOG START
+    access_log  /www/wwwlogs/botadmin.shop.log;
+    error_log  /www/wwwlogs/botadmin.shop.error.log;
+    
+    #LOG END
+}

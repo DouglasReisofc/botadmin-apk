@@ -1,0 +1,510 @@
+import path from "node:path";
+import { spawn } from "node:child_process";
+
+import { NextRequest, NextResponse } from "next/server";
+
+import { getCurrentUser } from "lib/auth";
+import {
+  deleteUploadedFile,
+  resolveUploadedFileUrl,
+  saveBufferAsUploadedFile,
+} from "lib/uploads";
+import { isDouyinUrl, resolveDouyinVideo } from "lib/douyin-resolver";
+import { isPinterestUrl, resolvePinterestMedia } from "lib/pinterest-resolver";
+import { extractShopeeVideo } from "lib/shopee-extractor";
+import { isTikTokUrl, resolveTikTokMedia } from "lib/tiktok-resolver";
+import { getOrCreateUserApiKey } from "lib/user-api-keys";
+
+type ResolvedProvider =
+  | "tiktok"
+  | "douyin"
+  | "pinterest"
+  | "instagram"
+  | "facebook"
+  | "kwai"
+  | "shopee"
+  | "youtube"
+  | "threads"
+  | "generic";
+
+type LinkResolutionResult = {
+  provider: ResolvedProvider;
+  mediaType: "image" | "video";
+  url: string;
+  mimeType?: string;
+  title?: string | null;
+  caption?: string | null;
+  thumbnail?: string | null;
+  fileName?: string | null;
+  path?: string | null;
+  sourceUrl?: string | null;
+};
+
+const MAX_PERSISTED_MEDIA_BYTES = 100 * 1024 * 1024;
+
+const getInternalApiKey = (): string | null => {
+  const candidates = [
+    process.env.INTERNAL_API_KEY,
+    process.env.BOTADMIN_INTERNAL_API_KEY,
+    process.env.USER_API_FALLBACK_KEY,
+  ];
+  for (const candidate of candidates) {
+    if (candidate?.trim()) return candidate.trim();
+  }
+  return null;
+};
+
+const getRestInternalBaseUrl = (): string => {
+  const explicit = process.env.REST_INTERNAL_BASE_URL?.trim();
+  if (explicit) return explicit.replace(/\/+$/, "");
+  return `http://127.0.0.1:${process.env.PORT?.trim() || "4322"}`;
+};
+
+const cleanText = (value: unknown): string | null =>
+  typeof value === "string" && value.trim() ? value.replace(/\s+/g, " ").trim() : null;
+
+const inferDownloadedMedia = async (
+  buffer: Buffer,
+  responseMime: string | null,
+  fallbackType: "image" | "video",
+  fallbackMime?: string,
+): Promise<{ mediaType: "image" | "video"; mimeType: string; extension: string }> => {
+  let detectedMime = (responseMime || "").split(";")[0]?.trim().toLowerCase() || "";
+  let detectedExtension = "";
+  try {
+    const detector = await import("file-type");
+    const detected = await detector.fileTypeFromBuffer(buffer);
+    if (detected?.mime) detectedMime = detected.mime.toLowerCase();
+    if (detected?.ext) detectedExtension = detected.ext.toLowerCase();
+  } catch {
+    /* Content-Type and resolver metadata remain valid fallbacks. */
+  }
+  if (!detectedMime.startsWith("image/") && !detectedMime.startsWith("video/")) {
+    const normalizedFallback = fallbackMime?.split(";")[0]?.trim().toLowerCase() || "";
+    if (!normalizedFallback.startsWith("image/") && !normalizedFallback.startsWith("video/")) {
+      throw new Error("O link resolvido não retornou uma imagem ou um vídeo válido.");
+    }
+    detectedMime = normalizedFallback || (fallbackType === "video" ? "video/mp4" : "image/jpeg");
+  }
+  const mediaType = detectedMime.startsWith("video/") ? "video" : "image";
+  const mimeExtension = detectedMime === "image/jpeg"
+    ? "jpg"
+    : detectedMime === "image/svg+xml"
+      ? "svg"
+      : detectedMime.split("/")[1]?.replace("jpeg", "jpg").replace(/[^a-z0-9]/g, "") || "";
+  const extension = detectedExtension || mimeExtension || (mediaType === "video" ? "mp4" : "jpg");
+  return { mediaType, mimeType: detectedMime, extension: `.${extension}` };
+};
+
+const persistResolvedMedia = async (
+  request: NextRequest,
+  userId: number,
+  resolved: LinkResolutionResult,
+): Promise<LinkResolutionResult> => {
+  const sourceUrl = new URL(resolved.url, resolveBaseUrl(request)).toString();
+  const response = await fetch(sourceUrl, {
+    headers: { accept: resolved.mimeType || "image/*,video/*,*/*;q=0.5", "user-agent": "BotAdmin/1.0" },
+    redirect: "follow",
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok) throw new Error(`Não foi possível baixar a mídia resolvida (${response.status}).`);
+  const declaredSize = Number(response.headers.get("content-length") || 0);
+  if (declaredSize > MAX_PERSISTED_MEDIA_BYTES) throw new Error("A mídia resolvida é maior que 100 MB.");
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.byteLength > MAX_PERSISTED_MEDIA_BYTES) throw new Error("A mídia resolvida é maior que 100 MB.");
+  const detected = await inferDownloadedMedia(
+    buffer,
+    response.headers.get("content-type"),
+    resolved.mediaType,
+    resolved.mimeType,
+  );
+  const extension = detected.extension;
+  const sourceName = resolved.fileName?.trim() || `${resolved.provider}${extension}`;
+  const requestedName = `${Date.now()}-${sourceName}`;
+  const storedPath = await saveBufferAsUploadedFile(
+    buffer,
+    `bot-ad-campaigns/${userId}`,
+    { fixedFileName: requestedName, forceExtension: extension },
+  );
+  return {
+    ...resolved,
+    mediaType: detected.mediaType,
+    mimeType: detected.mimeType,
+    sourceUrl,
+    path: storedPath,
+    url: new URL(resolveUploadedFileUrl(storedPath), `${resolveBaseUrl(request)}/`).toString(),
+    fileName: path.basename(storedPath),
+  };
+};
+
+const resolveBaseUrl = (request: NextRequest): string => {
+  const appUrl = process.env.APP_URL?.trim();
+  if (appUrl) return appUrl.replace(/\/$/, "");
+  const baseSiteUrl = process.env.BASE_SITE_URL?.trim();
+  if (baseSiteUrl) return baseSiteUrl.replace(/\/$/, "");
+  try {
+    return request.nextUrl.origin.replace(/\/$/, "");
+  } catch {
+    return "http://localhost:4478";
+  }
+};
+
+const detectProvider = (targetUrl: URL): ResolvedProvider => {
+  const host = targetUrl.hostname.toLowerCase();
+  if (isDouyinUrl(targetUrl.toString())) return "douyin";
+  if (isTikTokUrl(targetUrl.toString())) return "tiktok";
+  if (isPinterestUrl(targetUrl.toString())) return "pinterest";
+  if (host.includes("instagram.com") || host.includes("instagr.am")) return "instagram";
+  if (host.includes("facebook.com") || host.includes("fb.watch") || host === "fb.com") return "facebook";
+  if (host.includes("kwai") || host.includes("kuaishou")) return "kwai";
+  if (host.includes("shopee") || host.includes("shp.ee")) return "shopee";
+  if (host.includes("youtube.com") || host.includes("youtu.be")) return "youtube";
+  if (host.includes("threads.net") || host.includes("threads.com")) return "threads";
+  return "generic";
+};
+
+const autoDownloaderEndpoint = (provider: ResolvedProvider): string | null => {
+  switch (provider) {
+    case "instagram": return "/api/rest/instagram";
+    case "tiktok": return "/api/rest/tiktok";
+    case "douyin": return "/api/rest/douyin";
+    case "kwai": return "/api/rest/kwai";
+    case "facebook": return "/api/rest/facebook";
+    case "pinterest": return "/api/rest/pinterest";
+    case "threads": return "/api/rest/threads";
+    case "youtube": return "/api/rest/ytmp4";
+    case "shopee": return "/api/rest/globalvideo";
+    default: return null;
+  }
+};
+
+const fetchAutoDownloaderResult = async (
+  userId: number,
+  rawUrl: string,
+  provider: ResolvedProvider,
+): Promise<LinkResolutionResult | null> => {
+  const endpointPath = autoDownloaderEndpoint(provider);
+  if (!endpointPath) return null;
+  const endpoint = new URL(endpointPath, `${getRestInternalBaseUrl()}/`);
+  endpoint.searchParams.set("url", rawUrl);
+  const headers: Record<string, string> = { accept: "application/json" };
+  const userApiKey = await getOrCreateUserApiKey(userId);
+  const apiKey = userApiKey.apiKey || getInternalApiKey();
+  if (apiKey) headers["x-api-key"] = apiKey;
+  const response = await fetch(endpoint, {
+    headers,
+    cache: "no-store",
+    signal: AbortSignal.timeout(180_000),
+  });
+  const data = await response.json().catch(() => null) as any;
+  if (!response.ok || !data || data.status === false) {
+    throw new Error(cleanText(data?.mensagem) || cleanText(data?.message) || `AutoDownloader HTTP ${response.status}`);
+  }
+  const result = data.resultado ?? data.data ?? data;
+  let mediaUrl: string | null = null;
+  let mediaType: "image" | "video" = "video";
+  let mimeType = "video/mp4";
+  let title = cleanText(result?.title) || cleanText(result?.metadata?.title);
+  let caption = cleanText(result?.caption) || cleanText(result?.description) ||
+    cleanText(result?.metadata?.caption) || cleanText(result?.metadata?.description);
+  let thumbnail = cleanText(result?.thumbnail) || cleanText(result?.metadata?.thumbnail);
+
+  if (provider === "instagram") {
+    const urls = Array.isArray(result?.urls) ? result.urls : [];
+    mediaUrl = cleanText(urls[0]);
+    const downloads = Array.isArray(result?.downloads)
+      ? result.downloads
+      : Array.isArray(result?.metadata?.downloads) ? result.metadata.downloads : [];
+    const match = downloads.find((entry: any) => cleanText(entry?.url) === mediaUrl);
+    const descriptor = [match?.mediaType, match?.type, match?.format, match?.mimeType]
+      .map(cleanText).filter(Boolean).join(" ").toLowerCase();
+    const prefersVideo = result?.isVideo === true || result?.metadata?.isVideo === true || /\/(?:reel|tv)\//i.test(rawUrl);
+    mediaType = prefersVideo || /video|mp4|mov|webm/.test(descriptor) ? "video" : "image";
+    mimeType = mediaType === "video" ? "video/mp4" : "image/jpeg";
+    title ||= cleanText(result?.username) || cleanText(result?.metadata?.username);
+  } else if (provider === "tiktok") {
+    if (result?.type === "images" && Array.isArray(result?.items) && result.items.length > 0) {
+      mediaUrl = cleanText(result.items[0]);
+      mediaType = "image";
+      mimeType = "image/jpeg";
+    } else {
+      mediaUrl = cleanText(result?.url) || cleanText(result?.download) || cleanText(result?.hdplay) || cleanText(result?.play);
+    }
+  } else if (provider === "facebook") {
+    const urls = Array.isArray(result?.urls) ? result.urls : [];
+    mediaUrl = cleanText(urls[0]);
+    title ||= cleanText(result?.metadata?.title);
+    caption ||= cleanText(result?.metadata?.caption) || cleanText(result?.metadata?.description);
+  } else if (provider === "pinterest") {
+    const downloads = Array.isArray(result?.downloads) ? result.downloads : [];
+    const preferred = downloads.find((entry: any) => cleanText(entry?.type)?.toLowerCase() === "video") || downloads[0];
+    mediaUrl = cleanText(preferred?.url) || cleanText(preferred?.downloadLink);
+    mediaType = cleanText(preferred?.type)?.toLowerCase() === "image" ? "image" : "video";
+    mimeType = mediaType === "video" ? "video/mp4" : "image/jpeg";
+    title ||= cleanText(result?.title) || cleanText(result?.pin?.title);
+    caption ||= cleanText(result?.pin?.description);
+    thumbnail ||= cleanText(result?.pin?.imageUrl);
+  } else if (provider === "threads") {
+    const urls = Array.isArray(result?.media_urls) ? result.media_urls : Array.isArray(result?.urls) ? result.urls : [];
+    mediaUrl = cleanText(urls[0]) || cleanText(result?.url);
+  } else {
+    mediaUrl = cleanText(result?.url) || cleanText(result?.download) || cleanText(result?.video_url);
+  }
+  if (!mediaUrl) return null;
+  return {
+    provider,
+    mediaType,
+    url: mediaUrl,
+    mimeType,
+    title,
+    caption,
+    thumbnail,
+    fileName: title ? `${title.replace(/[^\w\s.-]+/g, "").trim() || provider}.${mediaType === "video" ? "mp4" : "jpg"}` : null,
+  };
+};
+
+const publicResolverMessage = (provider: ResolvedProvider): string => {
+  const names: Record<ResolvedProvider, string> = {
+    tiktok: "TikTok", douyin: "Douyin", pinterest: "Pinterest", instagram: "Instagram",
+    facebook: "Facebook", kwai: "Kwai", shopee: "Shopee", youtube: "YouTube",
+    threads: "Threads", generic: "mídia",
+  };
+  return `Não consegui resolver este link do ${names[provider]} agora. Verifique se a publicação é pública e tente novamente.`;
+};
+
+const runPython = (
+  scriptPath: string,
+  args: string[],
+  cwd: string,
+  timeoutMs = 120_000,
+): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const child = spawn("python3", [scriptPath, ...args], { cwd });
+    let settled = false;
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill("SIGKILL");
+      reject(new Error(`Tempo limite excedido ao executar ${path.basename(scriptPath)}.`));
+    }, timeoutMs);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (code !== 0) {
+        reject(new Error(stderr.trim() || `python exited ${code}`));
+        return;
+      }
+      const output = stdout.trim();
+      if (!output) {
+        reject(new Error("Python não retornou saída válida."));
+        return;
+      }
+      resolve(output);
+    });
+  });
+
+const resolveByPythonDownloader = async (
+  request: NextRequest,
+  rawUrl: string,
+  provider: ResolvedProvider,
+): Promise<LinkResolutionResult> => {
+  const baseDir = path.join(process.cwd(), "lib", "python");
+  const downloaderScript = path.join(baseDir, "video_downloader.py");
+  const infoScript = path.join(baseDir, "video_info.py");
+  const baseUrl = resolveBaseUrl(request);
+
+  const id = await runPython(downloaderScript, [rawUrl, baseUrl], baseDir, 120_000);
+  const infoRaw = await runPython(infoScript, [id], baseDir, 60_000);
+  const info = JSON.parse(infoRaw) as { video_info?: Record<string, unknown> };
+  const videoInfo = info?.video_info ?? {};
+
+  const directUrl =
+    (typeof videoInfo.video_url === "string" && videoInfo.video_url.trim()) ||
+    `${baseUrl}/api/play/${id}`;
+  const title =
+    typeof videoInfo.titulo === "string"
+      ? videoInfo.titulo
+      : typeof videoInfo.title === "string"
+        ? videoInfo.title
+        : null;
+  const description =
+    typeof videoInfo.descricao === "string"
+      ? videoInfo.descricao
+      : typeof videoInfo.description === "string"
+        ? videoInfo.description
+        : null;
+  const thumbnail = typeof videoInfo.thumbnail === "string" ? videoInfo.thumbnail : null;
+
+  return {
+    provider,
+    mediaType: "video",
+    url: directUrl,
+    mimeType: "video/mp4",
+    title,
+    caption: description,
+    thumbnail,
+    fileName: title ? `${title.replace(/[^\w\s.-]+/g, "").trim() || "midia"}.mp4` : "midia.mp4",
+  };
+};
+
+const resolveTikTokLink = async (rawUrl: string): Promise<LinkResolutionResult | null> => {
+  const result = await resolveTikTokMedia(rawUrl);
+  if (!result?.url) {
+    return null;
+  }
+  return {
+    provider: "tiktok",
+    mediaType: result.type,
+    url: result.url,
+    mimeType: result.mimeType,
+    title: result.title ?? null,
+    thumbnail: result.thumbnail ?? null,
+    fileName: result.fileName ?? null,
+  };
+};
+
+const resolveDouyinLink = async (rawUrl: string): Promise<LinkResolutionResult> => {
+  const result = await resolveDouyinVideo(rawUrl);
+  return {
+    provider: "douyin",
+    mediaType: "video",
+    url: result.url,
+    mimeType: "video/mp4",
+    title: result.title || null,
+    caption: result.author || null,
+    thumbnail: result.thumbnail || null,
+    fileName: result.title ? `${result.title.replace(/[^\w\s.-]+/g, "").trim() || "douyin"}.mp4` : "douyin.mp4",
+  };
+};
+
+const resolvePinterestLink = async (rawUrl: string): Promise<LinkResolutionResult> => {
+  const result = await resolvePinterestMedia(rawUrl);
+  return {
+    provider: "pinterest",
+    mediaType: result.kind,
+    url: result.url,
+    mimeType: result.mimeType,
+    title: result.title ?? null,
+    thumbnail: result.thumbnail ?? null,
+    fileName: result.title ? `${result.title.replace(/[^\w\s.-]+/g, "").trim() || "pinterest"}.${result.kind === "video" ? "mp4" : "jpg"}` : null,
+  };
+};
+
+const resolveShopeeLink = async (rawUrl: string): Promise<LinkResolutionResult> => {
+  const result = await extractShopeeVideo(rawUrl);
+  const safeTitle = result.title?.replace(/[^\w\s.-]+/g, "").trim() || "";
+  return {
+    provider: "shopee",
+    mediaType: "video",
+    url: result.url,
+    mimeType: "video/mp4",
+    title: result.title ?? null,
+    caption: result.caption ?? null,
+    thumbnail: result.cover ?? null,
+    fileName: safeTitle ? `${safeTitle}.mp4` : "shopee.mp4",
+  };
+};
+
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+
+export async function GET(request: NextRequest) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) {
+      return NextResponse.json({ success: false, message: "Não autenticado." }, { status: 401 });
+    }
+
+    const rawInput = (request.nextUrl.searchParams.get("url") || request.nextUrl.searchParams.get("q") || "").trim();
+    if (!rawInput) {
+      return NextResponse.json({ success: false, message: "Informe a URL da mídia." }, { status: 400 });
+    }
+
+    let targetUrl: URL;
+    try {
+      targetUrl = new URL(rawInput);
+    } catch {
+      return NextResponse.json({ success: false, message: "URL inválida." }, { status: 400 });
+    }
+    if (!/^https?:$/i.test(targetUrl.protocol)) {
+      return NextResponse.json({ success: false, message: "Apenas links HTTP/HTTPS são aceitos." }, { status: 400 });
+    }
+
+    const provider = detectProvider(targetUrl);
+    let resolved: LinkResolutionResult | null = null;
+
+    try {
+      resolved = await fetchAutoDownloaderResult(user.id, targetUrl.toString(), provider);
+    } catch (autoDownloaderError) {
+      console.warn("[api/bot-status/resolve-link] AutoDownloader principal falhou; usando fallback.", {
+        provider,
+        error: autoDownloaderError,
+      });
+    }
+
+    if (!resolved && provider === "douyin") {
+      resolved = await resolveDouyinLink(targetUrl.toString());
+    } else if (!resolved && provider === "tiktok") {
+      resolved = await resolveTikTokLink(targetUrl.toString());
+    } else if (!resolved && provider === "pinterest") {
+      resolved = await resolvePinterestLink(targetUrl.toString());
+    } else if (!resolved && provider === "shopee") {
+      resolved = await resolveShopeeLink(targetUrl.toString()).catch(() => null);
+    }
+    if (!resolved && provider === "generic") {
+      resolved = {
+        provider,
+        mediaType: "image",
+        url: targetUrl.toString(),
+        fileName: path.basename(targetUrl.pathname) || "midia",
+      };
+    }
+    if (!resolved) {
+      resolved = await resolveByPythonDownloader(request, targetUrl.toString(), provider);
+    }
+
+    if (!resolved) throw new Error("O resolvedor não devolveu uma mídia válida.");
+    const previousPath = (request.nextUrl.searchParams.get("previousPath") || "").trim();
+    resolved = await persistResolvedMedia(request, user.id, resolved);
+    if (previousPath && previousPath !== resolved.path) {
+      await deleteUploadedFile(previousPath).catch(() => undefined);
+    }
+
+    return NextResponse.json({
+      success: true,
+      result: resolved,
+    });
+  } catch (error) {
+    console.error("[api/bot-status/resolve-link] Failed to resolve media link", error);
+    const rawInput = (request.nextUrl.searchParams.get("url") || request.nextUrl.searchParams.get("q") || "").trim();
+    let provider: ResolvedProvider = "generic";
+    try {
+      provider = detectProvider(new URL(rawInput));
+    } catch {
+      /* URL validation above returns a specific client error. */
+    }
+    return NextResponse.json(
+      {
+        success: false,
+        message: publicResolverMessage(provider),
+      },
+      { status: 500 },
+    );
+  }
+}

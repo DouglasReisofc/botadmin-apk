@@ -1,0 +1,3317 @@
+.flowShell {
+  width: 100%;
+  min-height: 100dvh;
+  color: #0f172a;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(20, 201, 151, 0.14), transparent 24%),
+    radial-gradient(circle at 82% 12%, rgba(59, 130, 246, 0.1), transparent 24%),
+    linear-gradient(135deg, #f8fafc 0%, #edf5ef 100%);
+}
+
+.flowTouchLockedRoot,
+.flowTouchLockedBody {
+  overflow: hidden !important;
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
+.flowConnectionDraggingBody,
+.flowConnectionDraggingBody * {
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-drag: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+.flowHome {
+  height: 100dvh;
+  min-height: 720px;
+  overflow: hidden;
+  padding: 18px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 16px;
+}
+
+.flowHomeTopbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.flowHomeActions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.homeBackButton {
+  position: static;
+  width: fit-content;
+  min-height: 44px;
+  border: 1px solid rgba(15, 23, 42, 0.1);
+  border-radius: 999px;
+  padding: 10px 14px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.homeHero {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 24px;
+  padding: 28px;
+  background: rgba(255, 255, 255, 0.86);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.08);
+}
+
+.homeEyebrow {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.homeHero h2 {
+  max-width: 760px;
+  margin: 12px 0 8px;
+  font-size: 34px;
+  line-height: 1.08;
+}
+
+.homeHero p {
+  max-width: 700px;
+  margin: 0;
+  color: #526173;
+  font-size: 15px;
+  line-height: 1.55;
+}
+
+.primaryButton,
+.ghostButton,
+.dangerButton,
+.nodeTypeButton,
+.backButton {
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 12px;
+  min-height: 40px;
+  padding: 9px 13px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-weight: 800;
+  font-size: 13px;
+  background: #fff;
+  color: #0f172a;
+  cursor: pointer;
+}
+
+.primaryButton {
+  border-color: #11b886;
+  background: #14c997;
+  color: #fff;
+  box-shadow: 0 14px 28px rgba(20, 201, 151, 0.24);
+}
+
+.dangerButton {
+  color: #b91c1c;
+}
+
+.flowGallery {
+  min-height: 0;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 22px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.06);
+  overflow: hidden;
+}
+
+.galleryHeader {
+  padding: 18px 20px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.galleryHeader h3,
+.panelHeader h4,
+.editorPanel h4 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.galleryHeader small,
+.panelHeader small,
+.editorPanel small {
+  color: #64748b;
+}
+
+.flowGrid {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  align-content: start;
+  gap: 14px;
+  padding: 18px;
+}
+
+.flowCard {
+  position: relative;
+  min-height: 174px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 18px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  text-align: left;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.07);
+  cursor: pointer;
+}
+
+.flowCardActions {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.flowCardIconButton {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(20, 184, 166, 0.2);
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  background: #ecfdf5;
+  color: #047857;
+  cursor: pointer;
+}
+
+.flowCardDangerButton {
+  border-color: rgba(185, 28, 28, 0.18);
+  background: #fff7f7;
+  color: #b91c1c;
+}
+
+.flowCard strong {
+  font-size: 17px;
+}
+
+.flowCard:not(.flowCardNew) strong {
+  padding-right: 76px;
+}
+
+.flowCardNew {
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  border-style: dashed;
+  background: rgba(236, 253, 245, 0.7);
+}
+
+.newFlowIcon {
+  width: 46px;
+  height: 46px;
+  border-radius: 16px;
+  display: grid;
+  place-items: center;
+  background: #14c997;
+  color: #fff;
+}
+
+.flowCardMeta,
+.statusRow,
+.buttonRow {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.flowCardMeta {
+  margin-top: auto;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.flowCommand {
+  display: inline-flex;
+  border-radius: 999px;
+  padding: 4px 9px;
+  background: #ecfdf5;
+  color: #047857;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.badge,
+.chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 4px 8px;
+  background: #eef2ff;
+  color: #3730a3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.chip {
+  background: #f1f5f9;
+  color: #475569;
+  font-size: 11px;
+}
+
+.badgeOn {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.badgeOff {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.flowEditor {
+  position: relative;
+  height: 100dvh;
+  max-height: 100dvh;
+  min-height: 720px;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  background: #f7faf9;
+}
+
+.editorTopbar {
+  min-height: 64px;
+  padding: 10px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: rgba(255, 255, 255, 0.9);
+  border-bottom: 1px solid rgba(148, 163, 184, 0.25);
+}
+
+.editorTopbarActions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.autoSaveStatus {
+  min-width: 136px;
+  border: 1px solid rgba(20, 201, 151, 0.18);
+  border-radius: 999px;
+  padding: 8px 10px;
+  background: #ecfdf5;
+  color: #047857;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.touchConnectStatus {
+  min-height: 34px;
+  border: 1px solid rgba(14, 165, 233, 0.22);
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #e0f2fe;
+  color: #0369a1;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.backButton {
+  border-color: #14c997;
+  background: #14c997;
+  color: #fff;
+  min-width: 112px;
+}
+
+.editorTitle {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.editorTitle strong {
+  font-size: 16px;
+}
+
+.editorTitle span {
+  color: #64748b;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+}
+
+.builderStage {
+  position: relative;
+  height: 100%;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 108px minmax(0, 1fr);
+  gap: 14px;
+  padding: 12px 14px 14px;
+  overflow: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+}
+
+.builderStageCanvasOnly {
+  grid-template-columns: 108px minmax(0, 1fr);
+}
+
+.nodePalette,
+.canvasPanel,
+.editorPanel {
+  min-height: 0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+}
+
+.nodePalette {
+  position: relative;
+  grid-column: 1;
+  grid-row: 1;
+  z-index: 20;
+  border-radius: 20px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  scrollbar-width: thin;
+  transition: border-radius 180ms ease, box-shadow 180ms ease;
+}
+
+@media (min-width: 761px) {
+  .nodePalette:hover,
+  .nodePalette:focus-within {
+    position: absolute;
+    left: 14px;
+    top: 12px;
+    bottom: 14px;
+    width: min(372px, calc(100% - 28px));
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-content: start;
+    gap: 9px;
+    border-radius: 22px;
+    box-shadow: 0 22px 48px rgba(15, 23, 42, 0.12);
+  }
+
+  .nodePalette:hover .nodeTypeButton,
+  .nodePalette:focus-within .nodeTypeButton {
+    min-height: 60px;
+    padding: 8px 5px;
+    font-size: 11px;
+  }
+}
+
+.mobilePaletteToggle,
+.mobilePaletteBackdrop {
+  display: none;
+}
+
+.nodeTypeButton {
+  min-height: 58px;
+  flex-direction: column;
+  padding: 9px 6px;
+  border-radius: 14px;
+  background: #fff;
+  text-align: center;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.touchDragPreview {
+  position: fixed;
+  z-index: 1400;
+  min-width: 92px;
+  min-height: 42px;
+  border: 1px solid rgba(20, 201, 151, 0.34);
+  border-radius: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #047857;
+  box-shadow: 0 18px 40px rgba(15, 23, 42, 0.2);
+  font-size: 12px;
+  font-weight: 900;
+  pointer-events: none;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-drag: none;
+  -webkit-touch-callout: none;
+  transform: translate(-50%, -50%);
+}
+
+.connectionDragLayer {
+  position: fixed;
+  inset: 0;
+  z-index: 1500;
+  width: 100vw;
+  height: 100dvh;
+  pointer-events: none;
+  overflow: visible;
+  contain: layout paint;
+}
+
+.connectionDragLayer path {
+  fill: none;
+  stroke: #14b8a6;
+  stroke-width: 4;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.connectionDragLayer circle {
+  fill: #fff;
+  stroke: #14b8a6;
+  stroke-width: 4;
+}
+
+.measuredEdgesLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  contain: layout paint;
+}
+
+.measuredEdgeDefault,
+.measuredEdgeTrue,
+.measuredEdgeFalse {
+  fill: none;
+  stroke: #14b8a6;
+  stroke-width: 2.35;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.measuredEdgeTrue {
+  stroke: #16a34a;
+}
+
+.measuredEdgeFalse {
+  stroke: #ef4444;
+}
+
+.measuredEdgeActive {
+  stroke: #00ff85;
+  stroke-width: 3.8;
+  filter: drop-shadow(0 0 5px rgba(0, 255, 133, 0.72));
+  animation: measuredEdgePulse 900ms ease-in-out infinite alternate;
+}
+
+.measuredEdgeLabelGuide {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 0;
+}
+
+.measuredEdgeHitPath {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 28px;
+  stroke-linecap: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.measuredEdgeText,
+.measuredEdgeTextStroke {
+  pointer-events: none;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.measuredEdgeTextStroke {
+  fill: #fff;
+  stroke: #fff;
+  stroke-width: 5px;
+  stroke-linejoin: round;
+  paint-order: stroke;
+}
+
+.measuredEdgeText {
+  fill: #047857;
+  stroke: none;
+}
+
+.measuredEdgeTextDefault,
+.measuredEdgeTextTrue {
+  fill: #047857;
+}
+
+.measuredEdgeTextFalse {
+  fill: #b91c1c;
+}
+
+.measuredEdgeDeleteButton {
+  position: absolute;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  will-change: left, top;
+  animation: measuredEdgeDeleteIn 140ms ease-out both;
+}
+
+@keyframes measuredEdgePulse {
+  from {
+    stroke-dasharray: 8 12;
+    stroke-dashoffset: 0;
+  }
+  to {
+    stroke-dasharray: 14 7;
+    stroke-dashoffset: -18;
+  }
+}
+
+@keyframes measuredEdgeDeleteIn {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.82);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.canvasPanel {
+  grid-column: 2;
+  grid-row: 1;
+  border-radius: 22px;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.reactFlowCanvas {
+  width: 100%;
+  height: 100%;
+  background: #f8fafc;
+  overscroll-behavior: none;
+  overscroll-behavior-y: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.reactFlowCanvas :global(.react-flow),
+.reactFlowCanvas :global(.react-flow__renderer),
+.reactFlowCanvas :global(.react-flow__pane),
+.reactFlowCanvas :global(.react-flow__viewport),
+.reactFlowCanvas :global(.react-flow__zoompane),
+.reactFlowCanvas :global(.react-flow__handle),
+.reactFlowCanvas :global(.react-flow__connection),
+.reactFlowCanvas :global(.react-flow__connection-path) {
+  overscroll-behavior: none !important;
+  touch-action: none !important;
+}
+
+.reactFlowCanvas :global(.react-flow__edge-path) {
+  stroke: #14b8a6;
+  stroke-width: 2.5;
+}
+
+.reactFlowCanvas :global(.react-flow__node) {
+  will-change: transform;
+}
+
+.reactFlowCanvas :global(.react-flow__connection-path) {
+  stroke: #14b8a6;
+  stroke-width: 2.5;
+}
+
+.edgeTrue :global(.react-flow__edge-path) {
+  stroke: #16a34a;
+}
+
+.edgeFalse :global(.react-flow__edge-path) {
+  stroke: #ef4444;
+}
+
+.edgeHitPath {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 18;
+  cursor: pointer;
+}
+
+.edgeDeleteButton {
+  position: absolute;
+  z-index: 8;
+  min-width: 26px;
+  height: 24px;
+  border: 1px solid rgba(20, 184, 166, 0.28);
+  border-radius: 999px;
+  background: #fff;
+  color: #0f766e;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+  pointer-events: all;
+}
+
+.flowNodeCard {
+  position: relative;
+  width: 236px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 14px 30px rgba(15, 23, 42, 0.11);
+  overflow: visible;
+  text-align: left;
+}
+
+.flowButtonNodeCard {
+  width: 318px;
+  overflow: visible;
+}
+
+.flowMenuNodeCard {
+  width: 318px;
+  overflow: visible;
+}
+
+.flowHttpNodeCard {
+  width: 236px;
+}
+
+.flowNodeCardSelected {
+  border-color: #14c997;
+  box-shadow: 0 0 0 4px rgba(20, 201, 151, 0.16), 0 14px 30px rgba(15, 23, 42, 0.11);
+}
+
+.flowNodeTouchTarget {
+  border-color: #0ea5e9;
+  box-shadow: 0 0 0 4px rgba(14, 165, 233, 0.2), 0 14px 30px rgba(15, 23, 42, 0.11);
+}
+
+.flowHttpNodeCardSelected {
+  border-color: #ff6b3d;
+  box-shadow: 0 0 0 3px rgba(255, 107, 61, 0.16), 0 14px 30px rgba(15, 23, 42, 0.11);
+}
+
+.flowNodeHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 16px 16px 0 0;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+
+.reactFlowCanvas :global(.react-flow__node.dragging) .flowNodeHeader {
+  cursor: grabbing;
+}
+
+.flowNodeTitle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-weight: 800;
+  font-size: 13px;
+  color: #0f172a;
+}
+
+.flowNodeIcon {
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #dcfce7;
+  color: #047857;
+  flex: 0 0 auto;
+}
+
+.flowNodeText {
+  margin: 0;
+  padding: 10px;
+  color: #334155;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flowNodeMediaPreview {
+  padding: 10px;
+  display: grid;
+  gap: 8px;
+}
+
+.flowNodeMediaPreview :is(img, video) {
+  width: 100%;
+  max-height: 150px;
+  display: block;
+  border-radius: 10px;
+  object-fit: cover;
+  background: #eef2f5;
+}
+
+.flowNodeMediaPreview p {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flowNodeMediaPreview .flowPhoneAudioPreview,
+.flowNodeMediaPreview .flowPhoneDocumentPreview,
+.flowNodeMediaPreview .flowPhoneMediaPlaceholder {
+  min-height: 92px;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+
+.httpNodeContent {
+  padding: 12px 14px 16px;
+}
+
+.httpNodeRequestLine {
+  min-height: 48px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: 18px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 6px;
+  padding: 9px 10px;
+  background: #f8fafc;
+  color: #94a3b8;
+  box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.02);
+}
+
+.httpNodeRequestLine span {
+  color: #a3a3a3;
+  font-weight: 900;
+}
+
+.httpNodeRequestLine strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #a3a3a3;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conditionNodeContent {
+  padding: 10px 12px 14px;
+  display: grid;
+  gap: 8px;
+}
+
+.conditionNodeRow {
+  min-height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: #fff;
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.conditionNodeRow span {
+  overflow-wrap: anywhere;
+}
+
+.conditionNodeRow svg {
+  color: #8b5cf6;
+}
+
+.conditionNodeRow strong {
+  border-radius: 999px;
+  padding: 2px 7px;
+  background: #ede9fe;
+  color: #8b5cf6;
+  font-size: 11px;
+}
+
+.flowNodeButtonList {
+  padding: 0 10px 10px;
+  display: grid;
+  gap: 6px;
+}
+
+.flowButtonNodeBubble {
+  display: grid;
+  padding: 8px;
+  gap: 7px;
+}
+
+.flowButtonHeaderSlot {
+  display: grid;
+}
+
+.flowButtonHeaderUpload {
+  min-height: 78px;
+  border: 1px dashed #b8c7d8;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  color: #087f67;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.flowButtonHeaderUpload input,
+.flowButtonHeaderAction input {
+  display: none;
+}
+
+.flowButtonNodeMedia {
+  position: relative;
+  overflow: hidden;
+  border-radius: 10px;
+  background: #eef2f5;
+}
+
+.flowButtonNodeMedia img,
+.flowButtonNodeMedia video {
+  width: 100%;
+  max-height: 118px;
+  display: block;
+  object-fit: cover;
+}
+
+.flowButtonNodeMedia span {
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flowButtonHeaderAction,
+.flowButtonHeaderRemove {
+  position: absolute;
+  top: 7px;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.14);
+  cursor: pointer;
+}
+
+.flowButtonHeaderAction {
+  right: 39px;
+  background: #dcfce7;
+  color: #047857;
+}
+
+.flowButtonHeaderRemove {
+  right: 7px;
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.flowButtonMessageTitle,
+.flowButtonMessageBody,
+.flowButtonMessageFooter {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  padding: 2px 32px 2px 2px;
+}
+
+.flowButtonMessageTitle strong {
+  color: #0f172a;
+  font-size: 13px;
+  line-height: 1.28;
+}
+
+.flowButtonMessageBody p {
+  margin: 0;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.42;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flowButtonMessageFooter span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.flowButtonMessageTitle button,
+.flowButtonMessageBody button,
+.flowButtonMessageFooter button {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #ecfdf5;
+  color: #047857;
+  cursor: pointer;
+}
+
+.flowNodeButtonItem {
+  position: relative;
+  min-height: 34px;
+  border: 1px solid #e5eef7;
+  border-radius: 10px;
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 22px 6px 6px;
+  background: #fff;
+  color: #0086d1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flowNodeButtonContent {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #0086d1;
+}
+
+.flowNodeButtonContent strong {
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowNodeButtonList small {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.flowMenuListBubble {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+}
+
+.flowMenuListCard {
+  display: grid;
+  gap: 7px;
+  border: 1px solid #e5eef7;
+  border-radius: 13px;
+  padding: 9px;
+  background: #fff;
+  box-shadow: 0 7px 18px rgba(15, 23, 42, 0.05);
+}
+
+.flowMenuFooter {
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+.flowMenuOpenButton {
+  min-height: 36px;
+  border-top: 1px solid #e5eef7;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  color: #0086d1;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flowMenuOptionsPreview {
+  display: grid;
+  gap: 6px;
+}
+
+.flowMenuOptionRow {
+  position: relative;
+  min-height: 42px;
+  border: 1px solid #e5eef7;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  padding: 7px 28px 7px 10px;
+  background: #fff;
+  color: #0f172a;
+}
+
+.flowMenuOptionRow span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.flowMenuOptionRow strong {
+  overflow: hidden;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowMenuOptionRow small {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 10.5px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowNodeButtonEdit,
+.flowNodeButtonTrash {
+  width: 22px;
+  height: 22px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.flowNodeButtonEdit {
+  background: #ecfdf5;
+  color: #047857;
+}
+
+.flowNodeButtonTrash {
+  background: #fff1f2;
+  color: #dc2626;
+}
+
+.flowNodeAddButton {
+  min-height: 34px;
+  border: 1px dashed rgba(20, 184, 166, 0.42);
+  border-radius: 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #f0fdfa;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.flowNodeDelete {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(185, 28, 28, 0.18);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff7f7;
+  color: #b91c1c;
+  cursor: pointer;
+}
+
+.reactFlowHandle {
+  width: 20px !important;
+  height: 20px !important;
+  border: 3px solid #14c997 !important;
+  background: #fff !important;
+  box-shadow: 0 6px 14px rgba(20, 184, 166, 0.2);
+  touch-action: none !important;
+}
+
+.flowNodeCard :global(.react-flow__handle-right) {
+  right: -24px !important;
+}
+
+.reactFlowHandleTrue {
+  top: 42% !important;
+  border-color: #16a34a !important;
+}
+
+.reactFlowHandleFalse {
+  top: 70% !important;
+  border-color: #ef4444 !important;
+}
+
+.reactFlowButtonHandle {
+  right: -24px !important;
+  top: 50% !important;
+  transform: translateY(-50%) !important;
+}
+
+.handleLabel {
+  position: absolute;
+  right: -22px;
+  border-radius: 999px;
+  padding: 1px 5px;
+  background: #fff;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  font-size: 10px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.handleLabelTrue {
+  top: 32%;
+  color: #15803d;
+}
+
+.handleLabelFalse {
+  top: 60%;
+  color: #b91c1c;
+}
+
+.editorPanel {
+  border-radius: 22px;
+  display: flex;
+  flex-direction: column;
+}
+
+.editorPanelPhoneOnly {
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  overflow: visible;
+  align-items: center;
+  justify-content: center;
+}
+
+.technicalPanel {
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+  overflow: auto;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.editorContent {
+  padding: 14px;
+  overflow: auto;
+}
+
+.formGrid {
+  display: grid;
+  gap: 10px;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.field input,
+.field select,
+.field textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 10px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+}
+
+.field textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.inlineActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.inlineActions button {
+  min-height: 36px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding-inline: 12px;
+}
+
+.webhookExamples {
+  display: grid;
+  gap: 8px;
+}
+
+.webhookExamples article {
+  display: grid;
+  gap: 5px;
+  padding: 9px;
+  border: 1px solid rgba(16, 185, 129, 0.26);
+  border-radius: 12px;
+  background: rgba(236, 253, 245, 0.7);
+}
+
+.webhookExamples span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.webhookExamples pre {
+  max-height: 140px;
+  overflow: auto;
+  margin: 0;
+  padding: 8px;
+  border-radius: 10px;
+  background: #052e1b;
+  color: #dcfce7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.webhookCaptureBox,
+.webhookSavedVariables {
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(16, 185, 129, 0.28);
+  border-radius: 14px;
+  padding: 10px;
+  background: rgba(236, 253, 245, 0.68);
+}
+
+.webhookCaptureBox header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.webhookCaptureBox header div {
+  display: grid;
+  gap: 2px;
+}
+
+.webhookCaptureBox header strong,
+.webhookSavedVariables > strong {
+  color: #065f46;
+  font-size: 13px;
+}
+
+.webhookCaptureBox header span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.webhookCaptureBox pre {
+  max-height: 180px;
+  overflow: auto;
+  margin: 0;
+  border-radius: 10px;
+  padding: 9px;
+  background: #052e1b;
+  color: #dcfce7;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+.webhookFieldList {
+  display: grid;
+  gap: 7px;
+}
+
+.webhookFieldItem,
+.webhookFieldSaved {
+  border: 1px solid rgba(16, 185, 129, 0.22);
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  text-align: left;
+  background: #fff;
+  color: #0f172a;
+}
+
+.webhookFieldSaved {
+  border-color: rgba(6, 255, 117, 0.64);
+  background: rgba(220, 252, 231, 0.9);
+}
+
+.webhookFieldItem span,
+.webhookFieldSaved span {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.webhookFieldItem strong,
+.webhookFieldSaved strong {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #0f766e;
+  font-size: 12px;
+}
+
+.webhookFieldItem small,
+.webhookFieldSaved small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #64748b;
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.webhookFieldItem em,
+.webhookFieldSaved em {
+  color: #047857;
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 900;
+}
+
+.webhookVariableModalBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1800;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.34);
+  backdrop-filter: blur(4px);
+}
+
+.webhookVariableModal {
+  width: min(420px, calc(100vw - 32px));
+  display: grid;
+  gap: 12px;
+  border: 1px solid rgba(6, 255, 117, 0.48);
+  border-radius: 18px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(4, 120, 87, 0.24);
+}
+
+.webhookVariableModal header,
+.webhookVariableModal footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.webhookVariableModal header div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.webhookVariableModal header strong {
+  color: #052e1b;
+  font-size: 15px;
+}
+
+.webhookVariableModal header span,
+.webhookVariableModal > small {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.webhookVariableModal header span {
+  color: #0f766e;
+}
+
+.webhookVariableModal header button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.webhookVariableModal label {
+  display: grid;
+  gap: 6px;
+  color: #334155;
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.buttonEditor,
+.ruleHint {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.ruleHint {
+  border-color: rgba(20, 184, 166, 0.24);
+  background: #ecfdf5;
+  color: #0f766e;
+  font-size: 12px;
+}
+
+.ruleHint strong {
+  color: #064e3b;
+}
+
+.flowPhoneEditor {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+.flowPhoneFloating {
+  position: fixed;
+  top: 78px;
+  right: 18px;
+  z-index: 1180;
+  width: min(430px, calc(100vw - 36px));
+  height: calc(100dvh - 96px);
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.flowPhoneFloating .flowPhoneEditor,
+.flowPhoneFloating .flowPhoneShell,
+.flowPhoneFloating .flowPhoneModalClose {
+  pointer-events: auto;
+}
+
+.flowPhoneModalClose {
+  display: none;
+}
+
+.flowPhoneFloating .flowPhoneModalClose {
+  position: absolute;
+  top: -10px;
+  right: -6px;
+  z-index: 3;
+  width: 36px;
+  height: 36px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #0f172a;
+  box-shadow: 0 14px 28px rgba(15, 23, 42, 0.2);
+  cursor: pointer;
+}
+
+.flowPhoneShell {
+  width: min(100%, 440px);
+  max-height: 100%;
+  border: 4px solid #111827;
+  border-radius: 30px;
+  overflow: hidden;
+  background: #111827;
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.18);
+}
+
+.flowPhoneScreen {
+  position: relative;
+  height: min(900px, calc(100dvh - 112px));
+  min-height: 720px;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  overflow: hidden;
+  border-radius: 25px;
+  background: #efe7dc;
+}
+
+.flowPhoneStatus {
+  min-height: 24px;
+  padding: 5px 15px 2px;
+  display: flex;
+  justify-content: space-between;
+  background: #fff;
+  color: #0f172a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.flowPhoneHeader {
+  min-height: 54px;
+  display: grid;
+  grid-template-columns: 20px 36px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 11px;
+  background: #fff;
+  border-bottom: 1px solid #eceff2;
+}
+
+.flowPhoneHeader strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+}
+
+.flowPhoneBack,
+.flowPhoneDots {
+  color: #111827;
+  font-size: 22px;
+  line-height: 1;
+  text-align: center;
+}
+
+.flowPhoneAvatar {
+  width: 36px;
+  height: 36px;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flowPhoneChat {
+  min-height: 0;
+  overflow: auto;
+  padding: 14px 11px;
+  background:
+    radial-gradient(circle at 12px 12px, rgba(17, 24, 39, 0.045) 1px, transparent 1.6px),
+    radial-gradient(circle at 30px 30px, rgba(17, 24, 39, 0.035) 1px, transparent 1.6px),
+    linear-gradient(rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.12)),
+    #efe7dc;
+  background-size: 42px 42px, 42px 42px, auto;
+}
+
+.flowPhoneBubble {
+  position: relative;
+  width: min(100%, 306px);
+  margin-right: auto;
+  padding: 0 0 18px;
+  display: grid;
+  border-radius: 2px 12px 12px 12px;
+  background: #fff;
+  color: #111827;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.14);
+}
+
+.flowPhoneUserBubble {
+  margin-right: 0;
+  margin-left: auto;
+  border-radius: 12px 2px 12px 12px;
+  background: #dcf8c6;
+}
+
+.flowPhoneUserBubble::before {
+  left: auto;
+  right: -7px;
+  background: #dcf8c6;
+  clip-path: polygon(0 0, 100% 0, 0 100%);
+}
+
+.flowPhoneUserBubble p {
+  margin: 0;
+  padding: 9px 46px 18px 10px;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.flowPhoneSystemNote {
+  width: fit-content;
+  max-width: 90%;
+  margin: 8px auto;
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: rgba(255, 255, 255, 0.72);
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.flowPhoneBubble::before {
+  content: "";
+  position: absolute;
+  left: -7px;
+  top: 0;
+  width: 9px;
+  height: 12px;
+  background: #fff;
+  clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+
+.flowPhoneBubble time {
+  position: absolute;
+  right: 9px;
+  bottom: 4px;
+  color: #667085;
+  font-size: 10px;
+}
+
+.flowPhoneSender {
+  padding: 8px 72px 1px 9px;
+  color: #0a8f73;
+  font-size: 11px;
+  font-weight: 900;
+  line-height: 1.25;
+}
+
+.flowPhoneMedia {
+  position: relative;
+  margin: 6px 6px 0;
+  overflow: hidden;
+  border-radius: 8px;
+  background: #eef2f5;
+}
+
+.flowPhoneAddMediaHeader {
+  margin: 6px 6px 0;
+  min-height: 92px;
+  border: 1px dashed #b8c7d8;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  color: #087f67;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.flowPhoneMedia img,
+.flowPhoneMedia video {
+  width: 100%;
+  max-height: 170px;
+  display: block;
+  object-fit: cover;
+}
+
+.flowPhoneAudioPreview,
+.flowPhoneDocumentPreview,
+.flowPhoneMediaPlaceholder {
+  min-height: 112px;
+  display: grid;
+  place-items: center;
+  gap: 8px;
+  padding: 12px;
+  color: #475569;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.flowPhoneAudioPreview audio {
+  width: 100%;
+}
+
+.flowPhoneDocumentPreview {
+  color: #087f67;
+  text-decoration: none;
+}
+
+.flowPhoneText {
+  position: relative;
+  min-height: 55px;
+  padding: 8px 42px 8px 9px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.flowPhoneText p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.42;
+}
+
+.flowPhoneButtonTitle {
+  padding: 7px 42px 0 9px;
+  color: #0f172a;
+  font-size: 13px;
+  font-weight: 900;
+  line-height: 1.3;
+}
+
+.flowPhoneButtonFooter {
+  padding: 0 42px 8px 9px;
+  color: #667085;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.flowPhoneEditBadge {
+  position: absolute;
+  right: 7px;
+  top: 7px;
+  width: 25px;
+  height: 25px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #c8f4ec;
+  color: #087f67;
+  cursor: pointer;
+}
+
+.flowPhoneButtons {
+  display: grid;
+  border-top: 1px solid #edf0f2;
+}
+
+.flowPhoneButtonRow {
+  display: grid;
+  grid-template-columns: 32px 1fr 32px;
+  align-items: stretch;
+  border-top: 1px solid #edf0f2;
+}
+
+.flowPhoneButtonRow:first-child {
+  border-top: 0;
+}
+
+.flowPhoneButtonDelete,
+.flowPhoneButtonEdit {
+  align-self: center;
+  justify-self: center;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+}
+
+.flowPhoneButtonDelete {
+  background: #fff1f2;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.flowPhoneButtonEdit {
+  background: #ecfdf5;
+  color: #087f67;
+  cursor: pointer;
+}
+
+.flowPhoneQuickButton {
+  width: 100%;
+  min-height: 40px;
+  border: 0;
+  border-top: 1px solid #edf0f2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #fff;
+  color: #0086d1;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.flowPhoneQuickButton:disabled {
+  color: #7aa9c6;
+  cursor: default;
+  opacity: 0.72;
+}
+
+.flowPhoneQuickButton strong {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flowPhoneAddButton {
+  min-height: 38px;
+  border: 0;
+  border-top: 1px solid #edf0f2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  background: #fff;
+  color: #0086d1;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.flowPhoneComposer {
+  min-height: 54px;
+  padding: 8px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 7px;
+  align-items: center;
+  background: #f7f8fa;
+  border-top: 1px solid #e5e7eb;
+}
+
+.flowPhoneComposer input {
+  min-width: 0;
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  padding: 9px 12px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-size: 13px;
+}
+
+.flowPhoneComposer button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 999px;
+  padding: 8px 12px;
+  background: #14c997;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.flowPhoneEditTray {
+  max-height: 220px;
+  overflow: auto;
+  display: grid;
+  gap: 9px;
+  padding: 10px;
+  background: #fff;
+  border-top: 1px solid #e3e7ec;
+}
+
+.flowPhoneEditOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  display: grid;
+  place-items: center;
+  padding: 14px;
+  background: rgba(15, 23, 42, 0.42);
+}
+
+.flowPhoneEditSheet {
+  width: min(100%, 310px);
+  max-height: min(82%, 500px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: 0 22px 46px rgba(15, 23, 42, 0.26);
+}
+
+.flowPhoneEditSheet header {
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+}
+
+.flowPhoneEditSheet header strong {
+  font-size: 13px;
+}
+
+.flowPhoneEditSheet header button {
+  width: 28px;
+  height: 28px;
+  border: 1px solid #d8dfe6;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.flowPhoneEditSheetBody {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 9px;
+  padding: 12px;
+}
+
+.flowPhoneField {
+  display: grid;
+  gap: 5px;
+  color: #0f172a;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.flowPhoneField input,
+.flowPhoneField select,
+.flowPhoneField textarea {
+  width: 100%;
+  border: 1px solid #cfd8e3;
+  border-radius: 9px;
+  padding: 8px 9px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 600;
+}
+
+.flowPhoneField textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+.flowPhoneUploadBox {
+  min-height: 128px;
+  border: 1px dashed #b8c7d8;
+  border-radius: 12px;
+  padding: 14px;
+  display: grid;
+  place-items: center;
+  gap: 6px;
+  background: #f8fafc;
+  color: #0f766e;
+  text-align: center;
+  cursor: pointer;
+}
+
+.flowPhoneUploadBox strong {
+  color: #0f172a;
+  font-size: 13px;
+}
+
+.flowPhoneUploadBox span {
+  color: #64748b;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.flowPhoneUploadBox input {
+  display: none;
+}
+
+.flowPhoneUploadedInfo {
+  border: 1px solid #dcfce7;
+  border-radius: 10px;
+  padding: 8px;
+  display: grid;
+  gap: 7px;
+  background: #f0fdf4;
+  color: #166534;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.flowPhoneUploadedInfo button {
+  min-height: 30px;
+  border: 1px solid rgba(185, 28, 28, 0.2);
+  border-radius: 9px;
+  background: #fff;
+  color: #b91c1c;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.flowPhoneUploadError {
+  margin: 0;
+  border-radius: 9px;
+  padding: 8px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.flowPhoneButtonsForm {
+  display: grid;
+  gap: 8px;
+}
+
+.flowPhoneRuleText {
+  margin: 0;
+  border: 1px solid #dbeafe;
+  border-radius: 10px;
+  padding: 8px 10px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.flowPhoneButtonForm {
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.flowPhoneButtonFormHeader,
+.flowPhoneButtonFormGrid {
+  display: grid;
+  gap: 7px;
+}
+
+.flowPhoneButtonFormHeader {
+  grid-template-columns: 1fr 28px;
+  align-items: center;
+}
+
+.flowPhoneButtonFormHeader strong {
+  font-size: 12px;
+}
+
+.flowPhoneButtonFormHeader button {
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff1f2;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.flowPhoneButtonFormGrid {
+  grid-template-columns: 0.85fr 1.15fr;
+}
+
+.flowConfigOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: grid;
+  place-items: center;
+  padding: 18px;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.flowConfigModal {
+  width: min(620px, 100%);
+  max-height: min(88vh, 760px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.3);
+}
+
+.flowConfigHeader {
+  min-height: 66px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.26);
+}
+
+.flowConfigHeader h3 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.flowConfigHeader p {
+  margin: 3px 0 0;
+  color: #64748b;
+  font-size: 13px;
+}
+
+.flowConfigClose {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.flowConfigBody {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+}
+
+.flowImportModal {
+  max-width: min(680px, calc(100vw - 28px));
+}
+
+.flowImportTextarea {
+  min-height: 150px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  resize: vertical;
+}
+
+.flowImportHint {
+  margin: 0;
+  border: 1px solid rgba(20, 184, 166, 0.18);
+  border-radius: 12px;
+  padding: 10px 12px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.quickNodeEditor {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  right: auto;
+  z-index: 1140;
+  width: min(460px, calc(100vw - 44px));
+  max-height: min(82dvh, 720px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.32);
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.18);
+  transform: translate(-50%, -50%);
+}
+
+.quickNodeEditor header,
+.quickButtonModal header {
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.24);
+}
+
+.quickNodeEditor header div {
+  display: grid;
+  gap: 2px;
+}
+
+.quickNodeEditor header strong,
+.quickButtonModal header strong {
+  font-size: 14px;
+}
+
+.quickNodeEditor header span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quickNodeEditor header button,
+.quickButtonModal header button {
+  width: 30px;
+  height: 30px;
+  border: 1px solid rgba(148, 163, 184, 0.34);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #334155;
+  cursor: pointer;
+}
+
+.quickNodeBody {
+  min-height: 0;
+  overflow: auto;
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.httpEditorPanel {
+  top: 50%;
+  right: auto;
+  left: 50%;
+  width: min(440px, calc(100vw - 44px));
+  max-height: min(82dvh, 720px);
+  grid-template-rows: none;
+  align-content: start;
+  gap: 12px;
+  overflow: auto;
+  padding: 14px;
+  border-radius: 8px;
+  border-color: rgba(15, 23, 42, 0.12);
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.2);
+  transform: translate(-50%, -50%);
+}
+
+.inputWithVariable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.textareaWithVariable {
+  position: relative;
+  display: grid;
+}
+
+.textareaWithVariable textarea {
+  padding-right: 52px;
+}
+
+.textareaWithVariable .variablePicker {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+}
+
+.httpEditorUrlRow {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.httpEditorUrlRow input,
+.httpInlineField select,
+.httpKeyValueCard input,
+.httpMappingCard input,
+.httpBodyEditor textarea {
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 8px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-size: 14px;
+}
+
+.httpEditorUrlRow input {
+  min-height: 38px;
+  padding: 8px 10px;
+  border-color: #ff6b3d;
+  box-shadow: 0 0 0 2px rgba(255, 107, 61, 0.08);
+}
+
+.httpEditorClose {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #475569;
+  cursor: pointer;
+}
+
+.httpAccordion,
+.httpSubAccordion {
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  background: #fff;
+  overflow: visible;
+}
+
+.httpAccordionHeader,
+.httpSubAccordion > button {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 13px;
+  background: #fff;
+  color: #111827;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.httpAccordionBody {
+  display: grid;
+  gap: 12px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+.httpToggleRow,
+.httpInlineField {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #334155;
+  font-size: 14px;
+}
+
+.httpToggleRow input {
+  width: 34px;
+  height: 20px;
+}
+
+.httpInlineField select {
+  width: auto;
+  min-width: 92px;
+  min-height: 34px;
+  padding: 6px 10px;
+}
+
+.httpKeyValueSection {
+  display: grid;
+  gap: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.28);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.httpKeyValueSection > strong {
+  font-size: 13px;
+}
+
+.httpKeyValueCard,
+.httpMappingCard {
+  position: relative;
+  display: grid;
+  gap: 9px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 12px 10px 10px;
+  background: #fff;
+}
+
+.httpMappingCard {
+  overflow: visible;
+}
+
+.httpKeyValueCard label,
+.httpMappingCard label {
+  display: grid;
+  gap: 5px;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.httpKeyValueCard input,
+.httpMappingCard input {
+  min-height: 36px;
+  padding: 8px 10px;
+}
+
+.httpSmartInput,
+.httpVariableInput {
+  position: relative;
+  min-width: 0;
+  display: grid;
+}
+
+.httpVariableInput {
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.httpVariableInput > button {
+  width: 34px;
+  min-height: 36px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  background: #f8fafc;
+  color: #64748b;
+  cursor: pointer;
+}
+
+.httpDataDropdown,
+.httpVariableDropdown {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 5px);
+  z-index: 40;
+  max-height: 210px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: #fff;
+  box-shadow: 0 18px 42px rgba(15, 23, 42, 0.18);
+}
+
+.httpDataDropdown button,
+.httpVariableDropdown button {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  cursor: pointer;
+}
+
+.httpDataDropdown button:hover,
+.httpVariableDropdown button:hover {
+  background: #f3f4f6;
+}
+
+.httpVariableDropdown .httpCreateVariable {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  background: #f3f4f6;
+}
+
+.httpCreateVariable strong {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 7px;
+  background: #8557ff;
+  color: #fff;
+  font-size: 11px;
+}
+
+.httpInputWithVariable {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 34px;
+  gap: 6px;
+}
+
+.httpAddValueButton {
+  min-height: 36px;
+  border: 0;
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #f1f1f1;
+  color: #111827;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.httpRemoveLine {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff1f2;
+  color: #dc2626;
+  cursor: pointer;
+}
+
+.httpBodyEditor {
+  position: relative;
+  padding: 0 10px 10px;
+}
+
+.httpBodyEditor textarea {
+  min-height: 150px;
+  padding: 10px;
+  resize: vertical;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+}
+
+.httpBodyEditor .variablePicker {
+  position: absolute;
+  right: 16px;
+  bottom: 16px;
+}
+
+.httpTestButton {
+  min-height: 34px;
+  border: 0;
+  border-radius: 8px;
+  background: #ff572f;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.httpTestButton:disabled {
+  opacity: 0.72;
+  cursor: progress;
+}
+
+.httpResultPreview {
+  max-height: 230px;
+  overflow: auto;
+  margin: 0;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.httpError {
+  margin: 0;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.httpDeleteBlock {
+  min-height: 38px;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  border-radius: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  background: #fff;
+  color: #b91c1c;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.conditionEditor {
+  display: grid;
+  gap: 10px;
+}
+
+.conditionGroupScroll {
+  display: grid;
+  gap: 8px;
+  max-height: 190px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 8px;
+  padding: 10px;
+  background: #f8fafc;
+}
+
+.conditionGroupTitle {
+  color: #475569;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.conditionGroupOption {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  padding: 9px 10px;
+  background: #fff;
+  color: #0f172a;
+  text-align: left;
+  cursor: pointer;
+}
+
+.conditionGroupOption strong {
+  overflow: hidden;
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conditionGroupOption small,
+.conditionGroupEmpty {
+  overflow: hidden;
+  color: #64748b;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conditionGroupOptionActive {
+  border-color: rgba(0, 179, 126, 0.45);
+  background: #e9fff5;
+  color: #006b4f;
+}
+
+.conditionComparisonCard {
+  position: relative;
+  display: grid;
+  gap: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  padding: 12px 10px 10px;
+  background: #fff;
+}
+
+.conditionRemoveButton {
+  position: absolute;
+  top: -9px;
+  left: -9px;
+  width: 24px;
+  height: 24px;
+  border: 1px solid rgba(220, 38, 38, 0.16);
+  border-radius: 999px;
+  display: grid;
+  place-items: center;
+  background: #fff;
+  color: #dc2626;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+}
+
+.conditionJoinLabel {
+  width: fit-content;
+  border-radius: 999px;
+  padding: 3px 8px;
+  background: #ede9fe;
+  color: #7c3aed;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.conditionComparisonCard select,
+.conditionComparisonCard input {
+  width: 100%;
+  min-height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.38);
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: #fff;
+  color: #111827;
+  font: inherit;
+  font-size: 14px;
+}
+
+.variablePicker {
+  position: relative;
+  display: inline-grid;
+}
+
+.variablePicker > button {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.variableMenu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 6px);
+  z-index: 1260;
+  width: min(220px, calc(100vw - 32px));
+  max-height: 260px;
+  overflow: auto;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 10px;
+  display: grid;
+  gap: 5px;
+  padding: 8px;
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
+}
+
+.variableMenu button {
+  width: 100%;
+  min-height: 30px;
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: transparent;
+  color: #111827;
+  font-size: 13px;
+  line-height: 1.25;
+  text-align: left;
+  overflow-wrap: anywhere;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.variableMenu button:hover {
+  background: #f3f4f6;
+}
+
+.quickUploadButton {
+  min-height: 42px;
+  border: 1px dashed rgba(20, 184, 166, 0.4);
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: #f0fdfa;
+  color: #047857;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.quickUploadButton input {
+  display: none;
+}
+
+.quickModalOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1220;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(15, 23, 42, 0.38);
+}
+
+.quickButtonModal {
+  width: min(420px, 100%);
+  max-height: min(86dvh, 620px);
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  overflow: hidden;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: 0 28px 70px rgba(15, 23, 42, 0.3);
+}
+
+.fieldQuickModal {
+  width: min(440px, 100%);
+}
+
+.fieldMediaPreview {
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  border-radius: 14px;
+  background: #f8fafc;
+}
+
+.fieldMediaPreview img,
+.fieldMediaPreview video {
+  width: 100%;
+  max-height: 260px;
+  display: block;
+  object-fit: contain;
+  background: #f1f5f9;
+}
+
+.empty {
+  margin: 18px;
+  padding: 28px;
+  border: 1px dashed rgba(148, 163, 184, 0.45);
+  border-radius: 16px;
+  color: #64748b;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.feedback {
+  margin: 10px 18px 0;
+  border-radius: 12px;
+  padding: 10px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.feedbackOk {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.feedbackError {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.flowEditor > .feedback {
+  position: absolute;
+  top: 72px;
+  left: 50%;
+  z-index: 20;
+  width: min(520px, calc(100% - 28px));
+  margin: 0;
+  transform: translateX(-50%);
+  box-shadow: 0 18px 36px rgba(15, 23, 42, 0.16);
+}
+
+@media (max-width: 1180px) {
+  .builderStage {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .builderStageCanvasOnly {
+    grid-template-columns: 84px minmax(0, 1fr);
+  }
+
+  .editorPanel {
+    grid-column: 1 / -1;
+    min-height: 420px;
+  }
+}
+
+@media (max-width: 760px) {
+  .flowShell {
+    min-height: 100dvh;
+  }
+
+  .flowHome {
+    min-height: 100dvh;
+    height: auto;
+    overflow: auto;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .flowHomeTopbar {
+    position: sticky;
+    top: 0;
+    z-index: 5;
+    padding: 2px 0;
+  }
+
+  .flowHomeActions {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .homeBackButton {
+    min-height: 40px;
+  }
+
+  .flowHomeTopbar .primaryButton,
+  .flowHomeTopbar .ghostButton {
+    width: auto;
+    min-height: 40px;
+    padding-inline: 10px;
+    white-space: nowrap;
+  }
+
+  .homeHero {
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    border-radius: 18px;
+  }
+
+  .homeHero h2 {
+    font-size: 24px;
+  }
+
+  .primaryButton,
+  .ghostButton,
+  .dangerButton {
+    width: 100%;
+  }
+
+  .flowGrid {
+    grid-template-columns: 1fr;
+    padding: 12px;
+  }
+
+  .flowEditor {
+    height: 100dvh;
+    min-height: 0;
+  }
+
+  .editorTopbar {
+    min-height: 0;
+    padding: 8px;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+  }
+
+  .editorTitle {
+    flex: 1 1 150px;
+    justify-content: center;
+  }
+
+  .editorTopbarActions {
+    width: 100%;
+    margin-left: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .autoSaveStatus {
+    grid-column: 1 / -1;
+    min-width: 0;
+    padding: 7px 8px;
+  }
+
+  .editorTopbarActions .ghostButton,
+  .editorTopbarActions .primaryButton {
+    min-width: 0;
+    padding-inline: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+
+  .backButton {
+    min-width: 88px;
+    padding-inline: 10px;
+  }
+
+  .builderStage {
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px;
+  }
+
+  .builderStageCanvasOnly {
+    grid-template-columns: 1fr;
+  }
+
+  .mobilePaletteToggle {
+    position: fixed;
+    left: 10px;
+    top: 148px;
+    z-index: 1160;
+    width: 88px;
+    min-height: 38px;
+    border: 1px solid rgba(20, 201, 151, 0.28);
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 5px;
+    background: #14c997;
+    color: #fff;
+    box-shadow: 0 14px 28px rgba(20, 201, 151, 0.24);
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .mobilePaletteBackdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 1150;
+    display: block;
+    border: 0;
+    background: transparent;
+  }
+
+  .nodePalette {
+    position: fixed;
+    grid-column: auto;
+    grid-row: auto;
+    left: 10px;
+    top: 194px;
+    z-index: 1161;
+    width: 92px;
+    max-height: calc(100dvh - 208px);
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    padding: 8px;
+    border-radius: 18px;
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateX(-125%);
+    transition: transform 160ms ease, opacity 160ms ease, visibility 160ms ease;
+  }
+
+  .nodePaletteOpen {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateX(0);
+  }
+
+  .nodeTypeButton {
+    min-height: 54px;
+    padding: 7px 3px;
+    font-size: 10px;
+    gap: 4px;
+  }
+
+  .canvasPanel {
+    grid-column: auto;
+    grid-row: auto;
+    min-height: 0;
+  }
+
+  .quickNodeEditor {
+    top: auto;
+    right: 10px;
+    bottom: 10px;
+    left: 10px;
+    width: auto;
+    max-height: min(72dvh, 560px);
+    border-radius: 18px;
+    transform: none;
+  }
+
+  .httpEditorPanel {
+    top: 8px;
+    right: 8px;
+    bottom: 8px;
+    left: 8px;
+    width: auto;
+    max-height: none;
+    height: auto;
+    border-radius: 14px;
+    z-index: 1300;
+    padding: 12px;
+    transform: none;
+  }
+
+  .variableMenu {
+    position: fixed;
+    top: 50%;
+    right: 12px;
+    left: 12px;
+    z-index: 1500;
+    width: auto;
+    max-height: min(54dvh, 360px);
+    transform: translateY(-50%);
+  }
+
+  .httpDataDropdown,
+  .httpVariableDropdown {
+    max-height: min(34dvh, 240px);
+  }
+
+  .httpResultPreview {
+    max-height: 30dvh;
+  }
+
+  .flowPhoneFloating {
+    inset: 0;
+    width: 100%;
+    height: 100dvh;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.52);
+  }
+
+  .statusRow,
+  .buttonRow {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .editorPanelPhoneOnly {
+    position: fixed;
+    inset: 0;
+    z-index: 1250;
+    min-height: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 10px;
+    display: grid;
+    place-items: center;
+    background: rgba(15, 23, 42, 0.52);
+    box-shadow: none;
+  }
+
+  .flowPhoneEditor {
+    width: min(360px, calc(100vw - 28px));
+    height: auto;
+    max-height: 100%;
+  }
+
+  .flowPhoneModalClose {
+    position: absolute;
+    top: -8px;
+    right: -2px;
+    z-index: 3;
+    width: 36px;
+    height: 36px;
+    border: 1px solid rgba(15, 23, 42, 0.12);
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+    background: #fff;
+    color: #0f172a;
+    box-shadow: 0 14px 28px rgba(15, 23, 42, 0.2);
+  }
+
+  .flowPhoneShell {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    border-width: 4px;
+  }
+
+  .flowPhoneScreen {
+    height: min(680px, calc(100dvh - 28px));
+    min-height: 0;
+  }
+
+  .flowPhoneChat {
+    padding: 10px 8px;
+  }
+
+  .flowPhoneBubble {
+    width: 100%;
+  }
+
+  .flowPhoneQuickButton {
+    min-width: 0;
+    padding-inline: 3px;
+  }
+
+  .flowPhoneQuickButton strong {
+    max-width: 100%;
+  }
+
+  .flowPhoneButtonFormGrid {
+    grid-template-columns: 1fr;
+  }
+}

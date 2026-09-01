@@ -1,0 +1,66 @@
+import type { NextConfig } from "next";
+import path from "path";
+
+const rawBasePath = process.env.NEXT_PUBLIC_BASE_PATH?.trim() ?? "";
+const normalizedBasePath = rawBasePath && rawBasePath !== "/"
+  ? (rawBasePath.startsWith("/") ? rawBasePath : `/${rawBasePath}`)
+  : "";
+
+const nextConfig: NextConfig = {
+  /* config options here */
+  reactStrictMode: true,
+  basePath: normalizedBasePath || undefined,
+  assetPrefix: normalizedBasePath ? `${normalizedBasePath}/` : undefined,
+  // Note: "allowedDevOrigins" is not supported in this Next.js version.
+  // When you upgrade to the version that supports it, add the option at the
+  // top level (not inside "experimental"). Keeping config clean for now.
+  images: {
+    formats: ["image/avif", "image/webp"],
+  },
+  typescript: {
+    // Keep DX smooth: do not block build on type errors
+    ignoreBuildErrors: true,
+  },
+  eslint: {
+    // Avoid blocking production builds due to lint errors
+    ignoreDuringBuilds: true,
+  },
+  env: {
+    NEXT_PUBLIC_BASE_PATH: normalizedBasePath,
+  },
+  // Keep Sass simple to avoid scanning node_modules during build
+  // (some binaries in .bin can cause EACCES on globbing in certain environments)
+  sassOptions: {},
+  // Avoid tracing problematic executables/symlinks under .bin on Windows
+  outputFileTracingExcludes: {
+    '*': [
+      '**/node_modules/.bin/**',
+    ],
+  },
+  webpack: (config, { isServer }) => {
+    if (isServer) {
+      const heavyNativePackages = [
+        "sharp",
+        "wa-sticker-formatter",
+        "fluent-ffmpeg",
+        "ffmpeg-static",
+      ];
+
+      if (!config.externals) {
+        config.externals = [...heavyNativePackages];
+      } else if (Array.isArray(config.externals)) {
+        for (const pkg of heavyNativePackages) {
+          if (!config.externals.includes(pkg)) {
+            config.externals.push(pkg);
+          }
+        }
+      } else {
+        config.externals = [config.externals, ...heavyNativePackages];
+      }
+    }
+
+    return config;
+  },
+};
+
+export default nextConfig;

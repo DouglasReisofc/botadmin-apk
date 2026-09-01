@@ -1,0 +1,19 @@
+import { NextRequest } from "next/server";
+
+import { GET as restGet } from "../../rest/ytmp4/route";
+
+export const runtime = "nodejs";
+export const maxDuration = 300;
+
+export const GET = (req: NextRequest) => {
+  const url = new URL(req.url);
+  const link = url.searchParams.get("link");
+  if (link && !url.searchParams.get("q") && !url.searchParams.get("url")) {
+    url.searchParams.set("q", link);
+  }
+  const adapted = new NextRequest(url.toString(), {
+    headers: req.headers,
+    method: req.method,
+  });
+  return restGet(adapted);
+};

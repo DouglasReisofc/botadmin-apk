@@ -1,0 +1,119 @@
+@import "../../user-variables";
+
+.desktop-group-manager {
+  display: grid;
+  grid-template-columns: minmax(320px, 380px) 1fr;
+  gap: 1.5rem;
+  align-items: flex-start;
+
+  @media (max-width: 991.98px) {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+}
+
+.desktop-group-manager__selector {
+  position: sticky;
+  top: 1rem;
+  z-index: 1;
+  @media (max-width: 991.98px) {
+    position: static;
+  }
+}
+
+.desktop-group-manager__buttons {
+  display: none;
+}
+
+.desktop-group-manager__button-help {
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.group-mini-mobile-menu {
+  position: fixed;
+  inset: 0;
+  z-index: 1050;
+  display: none;
+  pointer-events: none;
+
+  &__backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    border: 0;
+    padding: 0;
+    margin: 0;
+    cursor: pointer;
+    z-index: 0;
+    pointer-events: auto;
+  }
+
+  &__panel {
+    position: fixed;
+    left: 0.75rem;
+    right: 0.75rem;
+    bottom: 1rem;
+    border-radius: 1rem;
+    background-color: rgba(var(--bs-body-bg-rgb, 248, 249, 250), 0.97);
+    padding: 1rem;
+    max-height: calc(100vh - 3rem);
+    overflow-y: auto;
+    z-index: 1;
+    border: 1px solid var(--bs-border-color);
+    backdrop-filter: blur(6px);
+    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.3);
+    pointer-events: auto;
+  }
+
+  &__panel-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  &__panel-item {
+    display: flex;
+    flex-direction: column;
+  }
+
+  &__panel-button {
+    justify-content: flex-start;
+    white-space: normal;
+    font-size: 0.9rem;
+    padding: 0.5rem 0.75rem;
+  }
+
+  &__help {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0 0.35rem;
+  }
+}
+
+@media (max-width: 991.98px) {
+  .group-mini-mobile-menu {
+    display: block;
+  }
+}
+
+.group-quick-launcher {
+  position: fixed;
+  z-index: 1100;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  touch-action: none;
+  cursor: pointer;
+}

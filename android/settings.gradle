@@ -1,0 +1,12 @@
+rootProject.name = "StoreBotDashboard"
+
+include ':app'
+
+def capacitorSettingsFile = file('capacitor.settings.gradle')
+if (capacitorSettingsFile.exists()) {
+    apply from: capacitorSettingsFile
+} else {
+    logger.lifecycle("[storebot] capacitor.settings.gradle não encontrado em ${capacitorSettingsFile.absolutePath}.")
+    logger.lifecycle("[storebot] Execute `npm run cap:sync` ou `npx cap sync android` para reconstruir a plataforma, se necessário.")
+}
+

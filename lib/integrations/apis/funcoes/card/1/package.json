@@ -1,0 +1,31 @@
+{
+  "name": "",
+  "version": "0.0.0",
+  "description": "ta",
+  "main": "index.js",
+  "scripts": {
+    "test": "node index.js",
+    "start": "node index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git"
+  },
+  "keywords": [
+    "a",
+    "b",
+    "c",
+    "d"
+  ],
+  "author": "ctk",
+  "license": "MIT",
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "dependencies": {
+    "canvas": "^2.6.1",
+    "fast-average-color-node": "^1.0.3",
+    "jimp": "~0.14.0"
+  }
+}

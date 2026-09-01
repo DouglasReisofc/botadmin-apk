@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.botadmin.shop",
+      "sha256_cert_fingerprints": [
+        "21:99:79:04:89:42:A7:E0:A8:0B:FC:5B:B8:05:6B:24:56:AA:A1:28:9A:CC:00:E1:32:2C:79:3D:08:5B:5E:95"
+      ]
+    }
+  }
+]

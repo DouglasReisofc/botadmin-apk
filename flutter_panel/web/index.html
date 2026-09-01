@@ -1,0 +1,742 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <base href="$FLUTTER_BASE_HREF">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Painel operacional do BotAdmin em Flutter.">
+  <meta name="theme-color" content="#FFFFFF" id="ba-theme-color">
+  <meta name="color-scheme" content="light" id="ba-color-scheme">
+
+  <!-- Aplica tema antes do paint (evita preloader branco no dark e vice-versa) -->
+  <script>
+    (function () {
+      try {
+        window.addEventListener('contextmenu', function (event) {
+          event.preventDefault();
+        }, { capture: true });
+        window.addEventListener('dragstart', function (event) {
+          var target = event.target;
+          var tag = target && target.tagName ? String(target.tagName).toUpperCase() : '';
+          if (tag === 'IMG' || tag === 'A') {
+            event.preventDefault();
+          }
+        }, { capture: true });
+
+        var key = 'botadmin-theme';
+        var stored = localStorage.getItem(key);
+        var theme = (stored === 'dark' || stored === 'clean') ? stored : 'clean';
+        var root = document.documentElement;
+        root.setAttribute('data-theme', theme);
+        root.setAttribute('data-bs-theme', theme === 'dark' ? 'dark' : 'light');
+        root.style.colorScheme = theme === 'dark' ? 'dark' : 'light';
+        if (theme === 'dark') {
+          root.style.setProperty('--ba-bg', '#0b141a');
+          root.style.setProperty('--ba-bg-soft', '#111b21');
+          root.style.setProperty('--ba-card', '#111b21');
+          root.style.setProperty('--ba-text', '#e9edef');
+          root.style.setProperty('--ba-muted', '#8696a0');
+          root.style.setProperty('--ba-track', '#2a3942');
+          root.style.setProperty('--ba-border', '#2a3942');
+          root.style.setProperty('--ba-preload-bg', '#0b141a');
+          root.style.setProperty('--ba-logo-bg', '#202c33');
+        } else {
+          root.style.setProperty('--ba-bg', '#ffffff');
+          root.style.setProperty('--ba-bg-soft', '#ffffff');
+          root.style.setProperty('--ba-card', '#ffffff');
+          root.style.setProperty('--ba-text', '#111b21');
+          root.style.setProperty('--ba-muted', '#667781');
+          root.style.setProperty('--ba-track', '#e9edef');
+          root.style.setProperty('--ba-border', '#e9edef');
+          root.style.setProperty('--ba-preload-bg', '#ffffff');
+          root.style.setProperty('--ba-logo-bg', '#ffffff');
+        }
+        var tc = document.getElementById('ba-theme-color');
+        var cs = document.getElementById('ba-color-scheme');
+        if (tc) tc.setAttribute('content', theme === 'dark' ? '#0B141A' : '#FFFFFF');
+        if (cs) cs.setAttribute('content', theme === 'dark' ? 'dark' : 'light');
+      } catch (e) {}
+    })();
+  </script>
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="BotAdmin">
+  <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png?v=botadmin-logo-20260723d">
+
+  <!-- Favicon -->
+  <link rel="icon" href="/favicon.ico?v=botadmin-logo-20260723d" sizes="any">
+  <link rel="shortcut icon" href="/favicon.ico?v=botadmin-logo-20260723d">
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg?v=botadmin-logo-20260723d">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png?v=botadmin-logo-20260723d">
+  <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png?v=botadmin-logo-20260723d">
+  <link rel="preload" href="icons/botadmin-logo.png?v=botadmin-logo-20260723d" as="image">
+
+  <title>BotAdmin Painel</title>
+  <link rel="manifest" href="/site.webmanifest?v=botadmin-logo-20260723d">
+
+  <style>
+    :root {
+      --ba-bg: #ffffff;
+      --ba-bg-soft: #ffffff;
+      --ba-card: #ffffff;
+      --ba-green: #12e86a;
+      --ba-green-soft: #25d366;
+      --ba-text: #111b21;
+      --ba-muted: #667781;
+      --ba-track: #e9edef;
+      --ba-border: #e9edef;
+      --ba-preload-bg: #ffffff;
+      --ba-logo-bg: #ffffff;
+    }
+
+    html, body {
+      margin: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: var(--ba-preload-bg);
+      color: var(--ba-text);
+      font-family: "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+
+    flt-glass-pane,
+    flt-scene-host {
+      background: transparent !important;
+    }
+
+    #ba-preload {
+      position: fixed;
+      inset: 0;
+      z-index: 99999;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--ba-preload-bg);
+      transition: opacity 0.22s ease, visibility 0.22s ease;
+    }
+
+    html[data-theme="dark"] #ba-preload {
+      background: #0b141a;
+    }
+
+    html[data-theme="clean"] #ba-preload {
+      background: #ffffff;
+    }
+
+    #ba-preload.is-done {
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      /* mantém fundo sólido até sumir (evita flash do canvas Flutter) */
+      transition: opacity 0.16s ease, visibility 0.16s ease;
+    }
+
+    .ba-card {
+      width: min(400px, calc(100vw - 40px));
+      padding: 36px 28px 26px;
+      border-radius: 20px;
+      background: var(--ba-card);
+      border: 1px solid var(--ba-border);
+      box-shadow:
+        0 18px 48px rgba(17, 27, 33, 0.08),
+        0 2px 8px rgba(17, 27, 33, 0.04);
+      text-align: center;
+    }
+
+    /* Fallbacks por data-theme: não dependem só de CSS vars inline */
+    html[data-theme="dark"] .ba-card {
+      background: #111b21 !important;
+      border-color: #2a3942 !important;
+      box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45) !important;
+      color: #e9edef;
+    }
+
+    html[data-theme="clean"] .ba-card {
+      background: #ffffff !important;
+      border-color: #e9edef !important;
+      box-shadow: 0 12px 28px rgba(15, 23, 42, 0.08) !important;
+      color: #111b21;
+    }
+
+    html[data-theme="dark"] .ba-title { color: #e9edef !important; }
+    html[data-theme="dark"] .ba-subtitle,
+    html[data-theme="dark"] .ba-progress-meta,
+    html[data-theme="dark"] .ba-status,
+    html[data-theme="dark"] .ba-footer { color: #8696a0 !important; }
+    html[data-theme="dark"] .ba-progress-meta strong { color: #e9edef !important; }
+    html[data-theme="dark"] .ba-track { background: #2a3942 !important; }
+
+    html[data-theme="clean"] .ba-title { color: #111b21 !important; }
+    html[data-theme="clean"] .ba-subtitle,
+    html[data-theme="clean"] .ba-progress-meta,
+    html[data-theme="clean"] .ba-status,
+    html[data-theme="clean"] .ba-footer { color: #667781 !important; }
+    html[data-theme="clean"] .ba-progress-meta strong { color: #111b21 !important; }
+    html[data-theme="clean"] .ba-track { background: #e9edef !important; }
+
+    .ba-logo-wrap {
+      position: relative;
+      width: 92px;
+      height: 92px;
+      margin: 0 auto 16px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Halo suave — sem anel cônico (que gerava os traços verticais). */
+    .ba-logo-halo {
+      position: absolute;
+      inset: -6px;
+      border-radius: 26px;
+      background: rgba(0, 168, 132, 0.12);
+      animation: ba-halo 1.8s ease-in-out infinite;
+    }
+
+    .ba-logo {
+      position: relative;
+      z-index: 1;
+      width: 92px;
+      height: 92px;
+      border-radius: 22px;
+      object-fit: contain;
+      object-position: center;
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      display: block;
+      /* evita “traços” por subpixel no scale */
+      image-rendering: auto;
+      transform: translateZ(0);
+    }
+
+    html[data-theme="dark"] .ba-logo {
+      box-shadow: 0 8px 22px rgba(0, 0, 0, 0.35);
+    }
+
+    html[data-theme="dark"] .ba-logo-halo {
+      background: rgba(18, 232, 106, 0.16);
+    }
+
+    html[data-theme="clean"] .ba-logo-halo {
+      background: rgba(0, 168, 132, 0.1);
+    }
+
+    .ba-title {
+      margin: 0;
+      font-size: 27px;
+      font-weight: 750;
+      letter-spacing: 0.15px;
+      line-height: 1.15;
+      color: var(--ba-text);
+    }
+
+    .ba-title span {
+      color: var(--ba-green);
+      font-weight: 800;
+    }
+
+    .ba-subtitle {
+      margin: 8px 0 0;
+      color: var(--ba-muted);
+      font-size: 14px;
+      font-weight: 500;
+    }
+
+    .ba-progress-block {
+      margin-top: 28px;
+      text-align: left;
+    }
+
+    .ba-progress-meta {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 10px;
+      font-size: 12.5px;
+      color: var(--ba-muted);
+    }
+
+    .ba-progress-meta strong {
+      color: var(--ba-text);
+      font-weight: 700;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ba-track {
+      position: relative;
+      width: 100%;
+      height: 7px;
+      border-radius: 999px;
+      background: var(--ba-track);
+      overflow: hidden;
+    }
+
+    .ba-bar {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, var(--ba-green) 0%, var(--ba-green-soft) 100%);
+      transition: width 0.28s ease;
+    }
+
+    .ba-bar::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -40%;
+      width: 40%;
+      height: 100%;
+      background: linear-gradient(
+        90deg,
+        transparent,
+        rgba(255, 255, 255, 0.55),
+        transparent
+      );
+      animation: ba-sheen 1.5s ease-in-out infinite;
+    }
+
+    .ba-status {
+      margin: 14px 0 0;
+      min-height: 18px;
+      color: var(--ba-muted);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    .ba-dots::after {
+      content: "";
+      display: inline-block;
+      width: 1.2em;
+      text-align: left;
+      animation: ba-dots 1.2s steps(4, end) infinite;
+    }
+
+    .ba-footer {
+      margin-top: 20px;
+      color: #8696a0;
+      font-size: 11.5px;
+      letter-spacing: 0.2px;
+    }
+
+    @keyframes ba-halo {
+      0%, 100% { transform: scale(1); opacity: 0.75; }
+      50% { transform: scale(1.06); opacity: 1; }
+    }
+
+    @keyframes ba-sheen {
+      0% { left: -45%; }
+      100% { left: 120%; }
+    }
+
+    @keyframes ba-dots {
+      0% { content: ""; }
+      25% { content: "."; }
+      50% { content: ".."; }
+      75% { content: "..."; }
+      100% { content: ""; }
+    }
+
+    @media (max-width: 640px) {
+      .ba-card {
+        width: min(360px, calc(100vw - 28px));
+        padding: 28px 18px 22px;
+        border-radius: 16px;
+      }
+      .ba-title { font-size: clamp(1.25rem, 5.5vw, 1.55rem); }
+      .ba-subtitle { font-size: 0.9rem; }
+      .ba-logo-wrap,
+      .ba-logo {
+        width: clamp(64px, 18vw, 80px);
+        height: clamp(64px, 18vw, 80px);
+      }
+      .ba-logo { border-radius: 16px; }
+      .ba-footer { font-size: 0.7rem; }
+    }
+
+    @media (max-width: 360px) {
+      .ba-card {
+        padding: 22px 14px 18px;
+      }
+      .ba-title { font-size: 1.15rem; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .ba-logo-halo,
+      .ba-bar::after,
+      .ba-dots::after {
+        animation: none !important;
+      }
+      #ba-preload {
+        transition: opacity 0.2s ease;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="ba-preload" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" aria-label="Carregando BotAdmin">
+    <div class="ba-card">
+      <div class="ba-logo-wrap">
+        <div class="ba-logo-halo" aria-hidden="true"></div>
+        <img
+          class="ba-logo"
+          src="icons/botadmin-logo.png"
+          width="92"
+          height="92"
+          alt="BotAdmin"
+          decoding="async"
+          fetchpriority="high"
+        />
+      </div>
+
+      <h1 class="ba-title">Bot <span>Admin</span></h1>
+      <p class="ba-subtitle">Painel de conversas e automações</p>
+
+      <div class="ba-progress-block">
+        <div class="ba-progress-meta">
+          <span id="ba-stage">Iniciando</span>
+          <strong id="ba-pct">0%</strong>
+        </div>
+        <div class="ba-track">
+          <div class="ba-bar" id="ba-bar"></div>
+        </div>
+        <p class="ba-status"><span id="ba-status">Preparando ambiente</span><span class="ba-dots" aria-hidden="true"></span></p>
+      </div>
+
+      <div class="ba-footer">BotAdmin · carregamento seguro</div>
+    </div>
+  </div>
+
+  <script src="call_audio_bridge.js"></script>
+  <script src="browser_notifications.js"></script>
+  <script>
+    (function () {
+      var preload = document.getElementById('ba-preload');
+      var bar = document.getElementById('ba-bar');
+      var pctEl = document.getElementById('ba-pct');
+      var stageEl = document.getElementById('ba-stage');
+      var statusEl = document.getElementById('ba-status');
+      var progress = 0;
+      var target = 8;
+      var done = false;
+      var bootFailed = false;
+      var flutterSurfaceSeen = false;
+      var surfaceObserver = null;
+      var raf = 0;
+      var tickCount = 0;
+      var bootVersion = '__BOTADMIN_FLUTTER_BOOT_VERSION__';
+      var swCleanupKey = 'botadmin-flutter-sw-cleanup';
+      var bootRetryKey = 'botadmin-flutter-boot-retry';
+
+      var stages = [
+        { at: 0, stage: 'Iniciando', status: 'Preparando ambiente' },
+        { at: 14, stage: 'Recursos', status: 'Carregando recursos do painel' },
+        { at: 32, stage: 'Sistema', status: 'Preparando configurações' },
+        { at: 52, stage: 'Sessão', status: 'Validando sessão segura' },
+        { at: 70, stage: 'Conversas', status: 'Organizando conversas recentes' },
+        { at: 84, stage: 'Mídias', status: 'Preparando fotos e prévias' },
+        { at: 94, stage: 'Quase lá', status: 'Sincronizando em segundo plano' },
+        { at: 100, stage: 'Pronto', status: 'Abrindo painel' },
+      ];
+
+      var waitingStages = [
+        { stage: 'Sincronizando', status: 'Atualizando conversas recentes' },
+        { stage: 'Perfis', status: 'Conferindo perfis conectados' },
+        { stage: 'Mídias', status: 'Preparando imagens e vídeos' },
+        { stage: 'Painel', status: 'Montando a experiência do app' },
+        { stage: 'Quase lá', status: 'Finalizando dados locais' },
+      ];
+
+      function setProgress(value) {
+        progress = Math.max(progress, Math.min(100, value));
+        if (bar) bar.style.width = progress.toFixed(1) + '%';
+        if (pctEl) pctEl.textContent = Math.round(progress) + '%';
+        if (preload) preload.setAttribute('aria-valuenow', String(Math.round(progress)));
+
+        var current = stages[0];
+        for (var i = 0; i < stages.length; i += 1) {
+          if (progress >= stages[i].at) current = stages[i];
+        }
+        if (stageEl) stageEl.textContent = current.stage;
+        if (statusEl) statusEl.textContent = current.status;
+      }
+
+      function tick() {
+        if (done) return;
+        tickCount += 1;
+        if (progress < target) {
+          var delta = Math.max(0.35, (target - progress) * 0.08);
+          setProgress(progress + delta);
+        } else if (progress < 96) {
+          setProgress(progress + 0.045);
+          target = Math.min(96, target + 0.03);
+        } else if (tickCount % 110 === 0) {
+          var waiting = waitingStages[Math.floor(tickCount / 110) % waitingStages.length];
+          if (stageEl) stageEl.textContent = waiting.stage;
+          if (statusEl) statusEl.textContent = waiting.status;
+        }
+        raf = window.requestAnimationFrame(tick);
+      }
+
+      function finishPreload() {
+        if (done) return;
+        done = true;
+        if (surfaceObserver) {
+          surfaceObserver.disconnect();
+          surfaceObserver = null;
+        }
+        target = 100;
+        setProgress(100);
+        if (raf) window.cancelAnimationFrame(raf);
+        window.setTimeout(function () {
+          if (!preload) return;
+          preload.classList.add('is-done');
+          window.setTimeout(function () {
+            if (preload && preload.parentNode) preload.parentNode.removeChild(preload);
+          }, 420);
+        }, 40);
+      }
+
+      // Aguarda o primeiro frame realmente pintado antes de retirar a
+      // superfície de carregamento. O evento do Dart pode chegar um frame
+      // antes da conversa ficar visível.
+      function finishWhenPainted() {
+        var attempts = 0;
+        function check() {
+          if (done) return;
+          var surface = document.querySelector(
+            'flutter-view, flt-glass-pane, flt-scene-host'
+          );
+          if (surface || attempts >= 30) {
+            finishPreload();
+            return;
+          }
+          attempts += 1;
+          window.requestAnimationFrame(check);
+        }
+        window.requestAnimationFrame(check);
+      }
+
+      function detectFlutterSurface() {
+        if (done || flutterSurfaceSeen) return flutterSurfaceSeen;
+        var surface = document.querySelector(
+          'flutter-view, flt-glass-pane, flt-scene-host'
+        );
+        if (!surface) return false;
+        flutterSurfaceSeen = true;
+        // O canvas é criado antes da primeira tela útil. Não esconda o
+        // preloader aqui: isso expunha um fundo cinza enquanto a sessão e o
+        // snapshot do dashboard ainda eram montados. O evento
+        // botadmin-app-ready é o único handoff da UI pronta.
+        return true;
+      }
+
+      if ('MutationObserver' in window) {
+        surfaceObserver = new MutationObserver(function () {
+          detectFlutterSurface();
+        });
+        surfaceObserver.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+      }
+
+      setProgress(4);
+      target = 16;
+      raf = window.requestAnimationFrame(tick);
+
+      window.addEventListener('flutter-first-frame', function () {
+        flutterSurfaceSeen = true;
+        target = Math.max(target, 78);
+        if (statusEl) statusEl.textContent = 'Validando sessão';
+        if (stageEl) stageEl.textContent = 'Sessão';
+
+        // O primeiro frame confirma que o Flutter já tem uma superfície
+        // renderizável. O snapshot da API pode continuar atualizando em
+        // segundo plano; ele nunca deve manter o preloader HTML bloqueando a
+        // interface. Damos alguns frames para o navegador concluir o paint e
+        // então liberamos a tela caso o evento específico de app pronto ainda
+        // não tenha chegado.
+        window.setTimeout(function () {
+          if (!done) finishWhenPainted();
+        }, 320);
+      });
+
+      window.addEventListener('botadmin-app-ready', function () {
+        try {
+          sessionStorage.removeItem(bootRetryKey);
+        } catch (_) {}
+        finishWhenPainted();
+      });
+
+      function showBootFailure(reason) {
+        if (bootFailed || done || flutterSurfaceSeen) return;
+        bootFailed = true;
+        if (raf) window.cancelAnimationFrame(raf);
+        setProgress(100);
+        if (stageEl) stageEl.textContent = 'Reconectando';
+        if (statusEl) statusEl.textContent = reason || 'Atualizando os recursos do painel';
+
+        var lastRetry = '';
+        try {
+          lastRetry = sessionStorage.getItem(bootRetryKey) || '';
+        } catch (_) {}
+
+        if (lastRetry !== bootVersion) {
+          try {
+            sessionStorage.setItem(bootRetryKey, bootVersion);
+          } catch (_) {}
+          window.setTimeout(function () {
+            try {
+              var url = new URL(window.location.href);
+              url.searchParams.set('ba_boot_retry', bootVersion);
+              window.location.replace(url.toString());
+            } catch (_) {
+              window.location.reload();
+            }
+          }, 700);
+          return;
+        }
+
+        if (stageEl) stageEl.textContent = 'Falha de conexão';
+        if (statusEl) statusEl.textContent = 'Toque aqui para tentar carregar novamente';
+        if (preload) {
+          preload.style.cursor = 'pointer';
+          preload.onclick = function () {
+            try {
+              sessionStorage.removeItem(bootRetryKey);
+            } catch (_) {}
+            window.location.reload();
+          };
+        }
+      }
+
+      window.setTimeout(function () {
+        if (done) return;
+        if (detectFlutterSurface()) {
+          // A superfície pode existir mesmo quando o evento de primeiro frame
+          // foi perdido durante uma navegação/retomada do navegador.
+          finishWhenPainted();
+          return;
+        }
+        showBootFailure('O painel demorou para iniciar; tentando novamente');
+      }, 30000);
+
+      window.addEventListener('error', function (event) {
+        var target = event && event.target;
+        var source = target && (target.src || target.href) ? String(target.src || target.href) : '';
+        if (/main\.dart|flutter_bootstrap|canvaskit|\.wasm/i.test(source)) {
+          showBootFailure('Atualizando um recurso do painel');
+        }
+      }, true);
+
+      window.addEventListener('unhandledrejection', function (event) {
+        var message = String(event && event.reason ? event.reason : '');
+        if (/Flutter|CanvasKit|WebAssembly|main\.dart|Failed to fetch/i.test(message)) {
+          showBootFailure('Restabelecendo o carregamento do painel');
+        }
+      });
+
+      function loadFlutter() {
+        target = Math.max(target, 35);
+        var script = document.createElement('script');
+        script.src = 'flutter_bootstrap.js?v=' + Date.now();
+        script.async = true;
+        script.onload = function () {
+          target = Math.max(target, 62);
+        };
+        script.onerror = function () {
+          showBootFailure('Atualizando o painel após uma publicação');
+        };
+        document.body.appendChild(script);
+      }
+
+      function readCleanupVersion() {
+        try {
+          return sessionStorage.getItem(swCleanupKey) || localStorage.getItem(swCleanupKey);
+        } catch (_) {
+          return '';
+        }
+      }
+
+      function writeCleanupVersion() {
+        try {
+          sessionStorage.setItem(swCleanupKey, bootVersion);
+        } catch (_) {}
+        try {
+          localStorage.setItem(swCleanupKey, bootVersion);
+        } catch (_) {}
+      }
+
+      function reloadOnceAfterServiceWorkerCleanup(hadDashboardWorker) {
+        var isControlled = Boolean(navigator.serviceWorker && navigator.serviceWorker.controller);
+        if (!hadDashboardWorker && !isControlled) return false;
+        if (readCleanupVersion() === bootVersion) return false;
+
+        writeCleanupVersion();
+        try {
+          var url = new URL(window.location.href);
+          url.searchParams.set('ba_sw_reset', bootVersion);
+          window.location.replace(url.toString());
+        } catch (_) {
+          window.location.reload();
+        }
+        return true;
+      }
+
+      try {
+        var link = document.createElement('link');
+        link.rel = 'preload';
+        link.as = 'script';
+        link.href = 'main.dart.js?v=' + Date.now();
+        document.head.appendChild(link);
+      } catch (_) {}
+
+      if (!('serviceWorker' in navigator)) {
+        loadFlutter();
+        return;
+      }
+
+      target = Math.max(target, 22);
+      var hadDashboardWorker = false;
+      navigator.serviceWorker.getRegistrations()
+        .then(function (registrations) {
+          hadDashboardWorker = registrations.some(function (registration) {
+            return String(registration.scope || '').indexOf('/dashboard/user/') !== -1;
+          });
+          return Promise.all(registrations
+            .filter(function (registration) {
+              return String(registration.scope || '').indexOf('/dashboard/user/') !== -1;
+            })
+            .map(function (registration) {
+              return registration.unregister();
+            }));
+        })
+        .then(function () {
+          if (!hadDashboardWorker || !('caches' in window) || !window.caches.keys) return;
+          return window.caches.keys().then(function (keys) {
+            return Promise.all(keys.filter(function (key) {
+              return /flutter|botadmin/i.test(key);
+            }).map(function (key) {
+              return window.caches.delete(key);
+            }));
+          });
+        })
+        .catch(function () {})
+        .then(function () {
+          if (reloadOnceAfterServiceWorkerCleanup(hadDashboardWorker)) return;
+          target = Math.max(target, 30);
+          loadFlutter();
+        });
+    })();
+  </script>
+</body>
+</html>
