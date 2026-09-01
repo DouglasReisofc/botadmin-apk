@@ -2642,6 +2642,23 @@ function Chat({
     [recordingPreviewUrl],
   );
   useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const updateViewportHeight = () => {
+      document.documentElement.style.setProperty(
+        "--botadmin-visual-height",
+        `${Math.round(viewport.height)}px`,
+      );
+    };
+    updateViewportHeight();
+    viewport.addEventListener("resize", updateViewportHeight);
+    viewport.addEventListener("scroll", updateViewportHeight);
+    return () => {
+      viewport.removeEventListener("resize", updateViewportHeight);
+      viewport.removeEventListener("scroll", updateViewportHeight);
+    };
+  }, []);
+  useEffect(() => {
     if (!giphyKind) return;
     let cancelled = false;
     const timer = window.setTimeout(() => {
@@ -3011,7 +3028,16 @@ function Chat({
   return (
     <main className="chat">
       <header className="chat-header">
-        <button className="mobile-back" onClick={onBack} aria-label="Voltar">
+        <button
+          type="button"
+          className="mobile-back"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onBack();
+          }}
+          aria-label="Voltar para conversas"
+        >
           <ArrowLeft />
         </button>
         <Avatar name={thread.title} src={thread.avatarUrl} small />
@@ -3043,6 +3069,9 @@ function Chat({
           <button
             title="Pesquisar"
             onClick={() => {
+              setEmojiOpen(false);
+              setGiphyKind(null);
+              setAttachmentOpen(false);
               setSearchOpen((value) => !value);
               if (searchOpen) setSearchTerm("");
             }}
@@ -3066,6 +3095,28 @@ function Chat({
           <ConversationMenu thread={thread} onAction={onAction} compact />
         </div>
       </header>
+      {searchOpen && (
+        <div className="chat-search-row">
+          <Search />
+          <input
+            autoFocus
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Pesquisar mensagens"
+            aria-label="Pesquisar mensagens"
+          />
+          <button
+            type="button"
+            aria-label="Fechar pesquisa de mensagens"
+            onClick={() => {
+              setSearchOpen(false);
+              setSearchTerm("");
+            }}
+          >
+            <X />
+          </button>
+        </div>
+      )}
       <div
         className="message-area"
         ref={messageAreaRef}
@@ -3644,7 +3695,7 @@ function Chat({
                       {giphyItems.map((item) => (
                         <button
                           type="button"
-                          className="giphy-item"
+                          className={`giphy-item ${giphyKind === "stickers" ? "giphy-item--sticker" : ""}`}
                           key={item.id}
                           title={item.title}
                           disabled={giphyLoading}
