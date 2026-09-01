@@ -505,7 +505,7 @@ export async function GET(request: Request, context: Context) {
       mimeType = inferMimeType(mimeType, inferredKind, stored.messageType, filename, url);
       cacheKey = buildWhatsappMediaCacheKey({
         userId: storageUserId,
-        instanceId: instance.id,
+        instanceId,
         chatJid,
         messageKey: stored.messageId ?? messageKey,
         mimeType,
