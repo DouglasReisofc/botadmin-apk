@@ -3775,6 +3775,15 @@ function Chat({
               rows={1}
               placeholder="Digite uma mensagem"
               value={draft}
+              onFocus={() => {
+                // The keyboard and the picker are mutually exclusive, just
+                // like WhatsApp: focusing the composer always returns to the
+                // text-entry state instead of leaving a floating picker over
+                // the keyboard.
+                setEmojiOpen(false);
+                setGiphyKind(null);
+                setAttachmentOpen(false);
+              }}
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === "Enter" && !event.shiftKey) {
@@ -5367,6 +5376,465 @@ const optimisticActivationSettings = (
   };
 };
 
+const moderationActivationKeys = new Set([
+  "antilink",
+  "antilinkgp",
+  "banextremo",
+  "antipalavras",
+  "bangringos",
+  "antinsfwimagem",
+  "proibirnsfw",
+  "antisticker",
+  "antimage",
+  "antvideo",
+  "antaudio",
+  "antdoc",
+  "antvcard",
+]);
+
+const activationCommands: Record<string, string[]> = {
+  autoresposta: ["!autoresposta", "!addautorepo", "!listaautorepo"],
+  botinterage: ["!botinterage", "!promptbot"],
+  vozbotinterage: ["!vozbotinterage", "!tts"],
+  lerimagem: ["!lerimagem"],
+  bemvindo: ["!bemvindo", "!fundobemvindo", "!legendabemvindo"],
+  despedida: ["!despedida", "!saida"],
+  soadm: ["!soadm"],
+  schedule: ["!abrirgp 07:00", "!fechargp 00:00"],
+  antilink: ["!antilink"],
+  antilinkgp: ["!antilinkgp"],
+  banextremo: ["!banextremo"],
+  antipalavras: ["!antipalavras"],
+  bangringos: ["!bangringos"],
+  antinsfwimagem: ["!antinsfwimagem"],
+  proibirnsfw: ["!proibirnsfw"],
+  moderacaocomia: ["!moderacaocomia"],
+  autosticker: ["!autosticker"],
+  autodownloader: ["!autodownloader", "!play <termo>"],
+  antisticker: ["!antisticker"],
+  antimage: ["!antimage"],
+  antvideo: ["!antvideo"],
+  antaudio: ["!antaudio"],
+  antdoc: ["!antidoc"],
+  antvcard: ["!antivcard"],
+  brincadeiras: ["!brincadeiras"],
+};
+
+const stringList = (value: unknown) =>
+  Array.isArray(value)
+    ? value.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+const splitConfigLines = (value: string) =>
+  value
+    .split(/[\n,;]+/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+function GroupActivationConfigModal({
+  definition,
+  settings,
+  groupId,
+  groupName,
+  onClose,
+  onSaved,
+}: {
+  definition: GroupActivationDefinition;
+  settings: JsonRecord;
+  groupId: number;
+  groupName: string;
+  onClose: () => void;
+  onSaved: (settings: JsonRecord) => void;
+}) {
+  const key = definition.key;
+  const messageConfigKey =
+    key === "bemvindo"
+      ? "welcomeConfig"
+      : key === "despedida"
+        ? "farewellConfig"
+        : null;
+  const messageConfig = recordValue(
+    messageConfigKey ? settings[messageConfigKey] : null,
+  );
+  const scheduleConfig = recordValue(settings.scheduleConfig);
+  const horapgConfig = recordValue(settings.horapgConfig);
+  const moderationAction = recordValue(
+    recordValue(settings.moderationActions)[key],
+  );
+  const replyConfig = recordValue(messageConfig.replyButtons);
+  const initialButtons = Array.isArray(replyConfig.buttons)
+    ? (replyConfig.buttons as JsonRecord[])
+    : [];
+  const [enabled, setEnabled] = useState(
+    activationEnabled(settings, definition),
+  );
+  const [caption, setCaption] = useState(String(messageConfig.caption || ""));
+  const [mediaUrl, setMediaUrl] = useState(
+    String(messageConfig.mediaUrl || messageConfig.mediaPath || ""),
+  );
+  const [useProfilePhoto, setUseProfilePhoto] = useState(
+    Boolean(messageConfig.useParticipantProfilePhoto),
+  );
+  const [asSticker, setAsSticker] = useState(Boolean(messageConfig.asSticker));
+  const [buttonsEnabled, setButtonsEnabled] = useState(
+    Boolean(replyConfig.enabled && initialButtons.length),
+  );
+  const [buttonLabels, setButtonLabels] = useState(
+    initialButtons
+      .map((button) => String(button.label || button.title || "").trim())
+      .filter(Boolean)
+      .join("\n"),
+  );
+  const [buttonFooter, setButtonFooter] = useState(
+    String(replyConfig.footer || ""),
+  );
+  const [closeEnabled, setCloseEnabled] = useState(
+    Boolean(scheduleConfig.closeEnabled),
+  );
+  const [openEnabled, setOpenEnabled] = useState(
+    Boolean(scheduleConfig.openEnabled),
+  );
+  const [closeTimes, setCloseTimes] = useState(
+    stringList(scheduleConfig.closeTimes).join(", ") || "00:00",
+  );
+  const [openTimes, setOpenTimes] = useState(
+    stringList(scheduleConfig.openTimes).join(", ") || "07:00",
+  );
+  const [closeMessage, setCloseMessage] = useState(
+    String(scheduleConfig.closeMessage || ""),
+  );
+  const [openMessage, setOpenMessage] = useState(
+    String(scheduleConfig.openMessage || ""),
+  );
+  const [times, setTimes] = useState(
+    stringList(horapgConfig.times).join(", ") || "08:00",
+  );
+  const [mentionAll, setMentionAll] = useState(
+    Boolean(horapgConfig.mentionAll),
+  );
+  const [downloaderOnly, setDownloaderOnly] = useState(
+    Boolean(recordValue(settings.featureFlags).downloaderOnlyMode),
+  );
+  const [deleteMessage, setDeleteMessage] = useState(
+    moderationAction.deleteMessage === undefined
+      ? true
+      : Boolean(moderationAction.deleteMessage),
+  );
+  const [registerInfraction, setRegisterInfraction] = useState(
+    moderationAction.registerInfraction === undefined
+      ? true
+      : Boolean(moderationAction.registerInfraction),
+  );
+  const [banUser, setBanUser] = useState(
+    moderationAction.banUser === undefined
+      ? key === "banextremo" || key === "bangringos"
+      : Boolean(moderationAction.banUser),
+  );
+  const [maxInfractions, setMaxInfractions] = useState(
+    String(moderationAction.maxInfractions || settings.maxInfractions || 5),
+  );
+  const [allowedLinks, setAllowedLinks] = useState(
+    stringList(settings.allowedLinks).join("\n"),
+  );
+  const [bannedWords, setBannedWords] = useState(
+    stringList(settings.bannedWords).join("\n"),
+  );
+  const [blacklist, setBlacklist] = useState(
+    stringList(settings.blacklist).join("\n"),
+  );
+  const [aiProvider, setAiProvider] = useState(
+    String(settings.aiProvider || "groq"),
+  );
+  const [aiModel, setAiModel] = useState(String(settings.aiModel || ""));
+  const [aiPrompt, setAiPrompt] = useState(String(settings.aiPrompt || ""));
+  const [mentionOnly, setMentionOnly] = useState(
+    Boolean(recordValue(settings.featureFlags).botInterageMentionOnly),
+  );
+  const [listenAudio, setListenAudio] = useState(
+    Boolean(recordValue(settings.commandToggles).ouviraudiobotinterage),
+  );
+  const [uploading, setUploading] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const commands = activationCommands[key] || [];
+  const isMessageConfig = Boolean(messageConfigKey);
+  const resolvedPreview = mediaUrl ? absoluteMediaUrl(mediaUrl) : "";
+
+  const uploadMedia = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file || !messageConfigKey || uploading) return;
+    if (file.size > 16 * 1024 * 1024) {
+      setError("A mídia deve ter no máximo 16 MB.");
+      return;
+    }
+    setUploading(true);
+    setError("");
+    const localPreview = URL.createObjectURL(file);
+    setMediaUrl(localPreview);
+    setUseProfilePhoto(false);
+    try {
+      const result = await api.uploadBotGroupMessageMedia(
+        groupId,
+        key === "bemvindo" ? "welcome" : "farewell",
+        file,
+      );
+      const next = (result.settings || settings) as JsonRecord;
+      const nextConfig = recordValue(next[messageConfigKey]);
+      setMediaUrl(
+        String(nextConfig.mediaUrl || nextConfig.mediaPath || localPreview),
+      );
+      onSaved(next);
+    } catch (cause) {
+      setMediaUrl(String(messageConfig.mediaUrl || messageConfig.mediaPath || ""));
+      setError(
+        cause instanceof Error ? cause.message : "Não foi possível enviar a mídia.",
+      );
+    } finally {
+      URL.revokeObjectURL(localPreview);
+      setUploading(false);
+    }
+  };
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    let payload = activationPayload(settings, definition, enabled);
+    if (messageConfigKey) {
+      const labels = splitConfigLines(buttonLabels).slice(0, 3);
+      const preserved = initialButtons;
+      const replyButtons = buttonsEnabled && labels.length
+        ? {
+            ...replyConfig,
+            enabled: true,
+            position: String(replyConfig.position || "before_attachments"),
+            body: String(replyConfig.body || ""),
+            footer: buttonFooter.trim() || null,
+            buttons: labels.map((label, index) => ({
+              ...(preserved[index] || {}),
+              id: String(preserved[index]?.id || `${key}_${index + 1}`),
+              type: String(preserved[index]?.type || "quick_reply"),
+              label,
+              command: String(
+                preserved[index]?.command ||
+                  label.toLocaleLowerCase("pt-BR").replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, ""),
+              ),
+            })),
+          }
+        : null;
+      const cleanMedia = mediaUrl.startsWith("blob:") ? "" : mediaUrl.trim();
+      payload = {
+        ...payload,
+        [messageConfigKey]: {
+          ...messageConfig,
+          enabled,
+          caption,
+          mediaUrl: cleanMedia || null,
+          mediaPath:
+            cleanMedia && cleanMedia === String(messageConfig.mediaPath || "")
+              ? messageConfig.mediaPath
+              : cleanMedia
+                ? null
+                : messageConfig.mediaPath || null,
+          useParticipantProfilePhoto: useProfilePhoto,
+          asSticker,
+          ...(key === "bemvindo" ? { replyButtons } : {}),
+        },
+      };
+    } else if (key === "schedule") {
+      payload = {
+        scheduleConfig: {
+          ...scheduleConfig,
+          closeEnabled,
+          openEnabled,
+          closeTimes: splitConfigLines(closeTimes),
+          openTimes: splitConfigLines(openTimes),
+          closeMessage: closeMessage.trim() || null,
+          openMessage: openMessage.trim() || null,
+          timezone: String(scheduleConfig.timezone || "America/Sao_Paulo"),
+        },
+        commandToggles: { schedule: closeEnabled || openEnabled },
+      };
+    } else if (key === "horapg") {
+      payload = {
+        horapgConfig: {
+          ...horapgConfig,
+          enabled,
+          times: splitConfigLines(times),
+          mentionAll,
+          timezone: String(horapgConfig.timezone || "America/Sao_Paulo"),
+        },
+        commandToggles: { horapg: enabled },
+      };
+    } else if (key === "autodownloader") {
+      payload = {
+        ...payload,
+        featureFlags: { downloaderOnlyMode: enabled && downloaderOnly },
+      };
+    } else if (key === "botinterage") {
+      payload = {
+        ...payload,
+        commandToggles: {
+          botinterage: enabled,
+          ouviraudiobotinterage: enabled && listenAudio,
+        },
+        featureFlags: { botInterageMentionOnly: mentionOnly },
+        aiProvider,
+        aiModel: aiModel.trim() || null,
+        aiPrompt: aiPrompt.trim(),
+      };
+    } else if (moderationActivationKeys.has(key)) {
+      payload = {
+        ...payload,
+        moderationActions: {
+          [key]: {
+            deleteMessage,
+            registerInfraction,
+            banUser,
+            maxInfractions: Math.max(1, Number(maxInfractions) || 1),
+          },
+        },
+        allowedLinks: splitConfigLines(allowedLinks),
+        bannedWords: splitConfigLines(bannedWords),
+        blacklist: splitConfigLines(blacklist),
+        maxInfractions: Math.max(1, Number(maxInfractions) || 5),
+      };
+    }
+    try {
+      const result = await api.updateBotGroupSettings(groupId, payload);
+      onSaved((result.settings || { ...settings, ...payload }) as JsonRecord);
+      onClose();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível salvar esta configuração.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop activation-config-backdrop">
+      <section className={`quick-modal activation-config-modal ${isMessageConfig ? "activation-config-modal--preview" : ""}`} role="dialog" aria-modal="true">
+        <header>
+          <div>
+            <h2>Configurar {definition.label}</h2>
+            <small>{groupName}</small>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar"><X /></button>
+        </header>
+        <div className="activation-config-scroll">
+          <label className="settings-toggle activation-main-toggle">
+            <span><b>Ativar {definition.label}</b><small>{definition.description}</small></span>
+            <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
+            <i />
+          </label>
+          {isMessageConfig && (
+            <div className="message-config-layout">
+              <div className="message-config-fields">
+                <label className="quick-label">Mensagem
+                  <textarea value={caption} onChange={(event) => setCaption(event.target.value)} rows={6} placeholder={key === "bemvindo" ? "Olá {{pushName}}, seja bem-vindo ao {{nomeGrupo}}!" : "Até logo, {{pushName}}!"} />
+                </label>
+                <label className="quick-label">Link da mídia
+                  <input value={mediaUrl.startsWith("blob:") ? "" : mediaUrl} onChange={(event) => { setMediaUrl(event.target.value); setUseProfilePhoto(false); }} placeholder="https://... (opcional)" />
+                </label>
+                <div className="message-media-actions">
+                  <label className="secondary-button file-action-button">
+                    <Image /> {uploading ? "Enviando…" : "Enviar mídia"}
+                    <input type="file" accept="image/*,video/*,audio/*,.pdf" disabled={uploading} onChange={(event) => void uploadMedia(event)} />
+                  </label>
+                  {(mediaUrl || useProfilePhoto) && <button type="button" className="secondary-button" onClick={() => { setMediaUrl(""); setUseProfilePhoto(false); }}>Remover mídia</button>}
+                </div>
+                <label className="settings-toggle compact-config-toggle">
+                  <span><b>Usar foto do participante</b><small>Personaliza a mensagem com a foto de quem entrou.</small></span>
+                  <input type="checkbox" checked={useProfilePhoto} onChange={(event) => { setUseProfilePhoto(event.target.checked); if (event.target.checked) setMediaUrl(""); }} /><i />
+                </label>
+                <label className="settings-toggle compact-config-toggle">
+                  <span><b>Enviar como figurinha</b><small>Aplica à imagem configurada ou foto do participante.</small></span>
+                  <input type="checkbox" checked={asSticker} onChange={(event) => setAsSticker(event.target.checked)} /><i />
+                </label>
+                {key === "bemvindo" && (
+                  <>
+                    <label className="settings-toggle compact-config-toggle">
+                      <span><b>Botões interativos</b><small>Exibe até três respostas rápidas na mensagem.</small></span>
+                      <input type="checkbox" checked={buttonsEnabled} onChange={(event) => setButtonsEnabled(event.target.checked)} /><i />
+                    </label>
+                    {buttonsEnabled && <>
+                      <label className="quick-label">Texto dos botões
+                        <textarea rows={3} value={buttonLabels} onChange={(event) => setButtonLabels(event.target.value)} placeholder={"Um botão por linha\nVer regras\nFalar com admin"} />
+                      </label>
+                      <label className="quick-label">Rodapé pequeno
+                        <input value={buttonFooter} onChange={(event) => setButtonFooter(event.target.value)} placeholder="BotAdmin" />
+                      </label>
+                    </>}
+                  </>
+                )}
+              </div>
+              <div className="message-phone-preview" aria-label="Prévia da mensagem">
+                <div className="message-phone-status"><span>11:14</span><span>4G</span></div>
+                <div className="message-phone-header"><ArrowLeft /><Avatar name={groupName} small /><b>{groupName}</b></div>
+                <div className="message-phone-chat">
+                  <article className="message-preview-bubble">
+                    <strong>BotAdmin</strong>
+                    {useProfilePhoto ? (
+                      <div className={`message-preview-media profile-photo ${asSticker ? "as-sticker" : ""}`}><UserPlus /></div>
+                    ) : resolvedPreview ? (
+                      <img className={`message-preview-image ${asSticker ? "as-sticker" : ""}`} src={resolvedPreview} alt="Mídia da mensagem" />
+                    ) : (
+                      <div className="message-preview-media"><Image /><span>Adicionar mídia</span></div>
+                    )}
+                    <p>{caption.trim() || (key === "bemvindo" ? "Olá João, seja bem-vindo ao grupo!" : "Até logo, João!")}</p>
+                    {buttonsEnabled && splitConfigLines(buttonLabels).slice(0, 3).map((label) => <button type="button" key={label}>{label}</button>)}
+                    {buttonFooter && <small>{buttonFooter}</small>}
+                    <time>11:14</time>
+                  </article>
+                </div>
+              </div>
+            </div>
+          )}
+          {key === "schedule" && <div className="activation-form-grid">
+            <label className="settings-toggle compact-config-toggle"><span><b>Fechar automaticamente</b><small>Restringe o envio aos admins nos horários definidos.</small></span><input type="checkbox" checked={closeEnabled} onChange={(event) => setCloseEnabled(event.target.checked)} /><i /></label>
+            {closeEnabled && <><label className="quick-label">Horários de fechamento<input value={closeTimes} onChange={(event) => setCloseTimes(event.target.value)} placeholder="00:00, 12:00" /></label><label className="quick-label">Mensagem ao fechar<input value={closeMessage} onChange={(event) => setCloseMessage(event.target.value)} placeholder="Grupo fechado. Somente admins podem enviar." /></label></>}
+            <label className="settings-toggle compact-config-toggle"><span><b>Abrir automaticamente</b><small>Libera o grupo nos horários definidos.</small></span><input type="checkbox" checked={openEnabled} onChange={(event) => setOpenEnabled(event.target.checked)} /><i /></label>
+            {openEnabled && <><label className="quick-label">Horários de abertura<input value={openTimes} onChange={(event) => setOpenTimes(event.target.value)} placeholder="07:00, 18:00" /></label><label className="quick-label">Mensagem ao abrir<input value={openMessage} onChange={(event) => setOpenMessage(event.target.value)} placeholder="Grupo aberto para mensagens." /></label></>}
+            <div className="config-timezone"><Clock3 /><span>Fuso: America/Sao_Paulo</span></div>
+          </div>}
+          {key === "horapg" && <div className="activation-form-grid">
+            <label className="quick-label">Horários<input value={times} onChange={(event) => setTimes(event.target.value)} placeholder="08:00, 12:00, 19:00" /></label>
+            <label className="settings-toggle compact-config-toggle"><span><b>Mencionar todos</b><small>Inclui os membros no disparo programado.</small></span><input type="checkbox" checked={mentionAll} onChange={(event) => setMentionAll(event.target.checked)} /><i /></label>
+            <div className="config-timezone"><Clock3 /><span>Fuso: America/Sao_Paulo</span></div>
+          </div>}
+          {key === "autodownloader" && <label className="settings-toggle compact-config-toggle"><span><b>Grupo usado só para downloads</b><small>Texto comum vira uma busca com opções MP3 e MP4.</small></span><input type="checkbox" checked={enabled && downloaderOnly} disabled={!enabled} onChange={(event) => setDownloaderOnly(event.target.checked)} /><i /></label>}
+          {key === "botinterage" && <div className="activation-form-grid">
+            <label className="settings-toggle compact-config-toggle"><span><b>Responder somente quando chamado</b><small>Responde a menções ou citações do robô.</small></span><input type="checkbox" checked={mentionOnly} onChange={(event) => setMentionOnly(event.target.checked)} /><i /></label>
+            <label className="settings-toggle compact-config-toggle"><span><b>Ouvir áudios</b><small>Interpreta notas de voz elegíveis.</small></span><input type="checkbox" checked={listenAudio} onChange={(event) => setListenAudio(event.target.checked)} /><i /></label>
+            <label className="quick-label">Integração<select value={aiProvider} onChange={(event) => setAiProvider(event.target.value)}><option value="groq">Groq</option><option value="openai">OpenAI</option><option value="chatgpt_system">ChatGPT Sistema</option></select></label>
+            <label className="quick-label">Modelo<input value={aiModel} onChange={(event) => setAiModel(event.target.value)} placeholder="Automático" /></label>
+            <label className="quick-label full-span">Prompt de comportamento<textarea rows={6} value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Defina como o robô deve falar neste grupo." /></label>
+          </div>}
+          {moderationActivationKeys.has(key) && <div className="activation-form-grid">
+            <label className="settings-toggle compact-config-toggle"><span><b>Apagar mensagem</b><small>Remove o conteúdo que violou a regra.</small></span><input type="checkbox" checked={deleteMessage} onChange={(event) => setDeleteMessage(event.target.checked)} /><i /></label>
+            <label className="settings-toggle compact-config-toggle"><span><b>Registrar infração</b><small>Conta reincidências do participante.</small></span><input type="checkbox" checked={registerInfraction} onChange={(event) => setRegisterInfraction(event.target.checked)} /><i /></label>
+            <label className="settings-toggle compact-config-toggle"><span><b>Remover participante</b><small>Expulsa ao atingir o limite definido.</small></span><input type="checkbox" checked={banUser} onChange={(event) => setBanUser(event.target.checked)} /><i /></label>
+            <label className="quick-label">Limite de infrações<input type="number" min="1" max="100" value={maxInfractions} onChange={(event) => setMaxInfractions(event.target.value)} /></label>
+            {key === "antilink" && <label className="quick-label full-span">Links permitidos<textarea rows={4} value={allowedLinks} onChange={(event) => setAllowedLinks(event.target.value)} placeholder="Um domínio ou link por linha" /></label>}
+            {key === "antipalavras" && <label className="quick-label full-span">Palavras proibidas<textarea rows={4} value={bannedWords} onChange={(event) => setBannedWords(event.target.value)} placeholder="Uma palavra por linha" /></label>}
+            {(key === "banextremo" || key === "bangringos") && <label className="quick-label full-span">Lista bloqueada<textarea rows={4} value={blacklist} onChange={(event) => setBlacklist(event.target.value)} placeholder="Um número por linha" /></label>}
+          </div>}
+          {!isMessageConfig && key !== "schedule" && key !== "horapg" && key !== "autodownloader" && key !== "botinterage" && !moderationActivationKeys.has(key) && (
+            <div className="activation-how-it-works"><ShieldCheck /><div><b>Como funciona</b><p>{definition.description} A alteração é aplicada somente a este grupo e pode ser revertida a qualquer momento.</p></div></div>
+          )}
+          {commands.length > 0 && <section className="activation-command-help"><div><Bot /><b>Comandos no grupo</b></div><p>Use os comandos abaixo para controlar a função diretamente na conversa.</p><div>{commands.map((command) => <button type="button" key={command} onClick={() => void copyText(command)}><Copy />{command}</button>)}</div></section>}
+          {error && <div className="form-error">{error}</div>}
+        </div>
+        <footer className="activation-config-footer"><button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving || uploading}>{saving ? "Salvando…" : "Salvar configuração"}</button></footer>
+      </section>
+    </div>
+  );
+}
+
 function BotGroupAutomationModal({
   item,
   onClose,
@@ -5381,6 +5849,8 @@ function BotGroupAutomationModal({
   const [settings, setSettings] = useState<JsonRecord | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
+  const [configuring, setConfiguring] =
+    useState<GroupActivationDefinition | null>(null);
   const [error, setError] = useState("");
   const botEnabled = ["active", "ativo", "enabled"].includes(
     String(group.status || "").toLowerCase(),
@@ -5525,7 +5995,7 @@ function BotGroupAutomationModal({
                       const active = activationEnabled(settings, definition);
                       const Icon = definition.icon;
                       return (
-                        <label
+                        <div
                           className={`activation-tile ${active ? "is-active" : ""}`}
                           key={definition.key}
                         >
@@ -5535,7 +6005,16 @@ function BotGroupAutomationModal({
                             <strong>{active ? "Ligado" : "Desligado"}</strong>
                             <small>{definition.description}</small>
                           </span>
-                          <span className="compact-switch">
+                          <button
+                            type="button"
+                            className="activation-config-button"
+                            title={`Configurar ${definition.label}`}
+                            aria-label={`Configurar ${definition.label}`}
+                            onClick={() => setConfiguring(definition)}
+                          >
+                            <Settings />
+                          </button>
+                          <label className="compact-switch">
                             <input
                               type="checkbox"
                               checked={active}
@@ -5545,8 +6024,8 @@ function BotGroupAutomationModal({
                               }
                             />
                             <i />
-                          </span>
-                        </label>
+                          </label>
+                        </div>
                       );
                     })}
                   </div>
@@ -5558,6 +6037,17 @@ function BotGroupAutomationModal({
           {error && <div className="form-error">{error}</div>}
         </div>
       </section>
+      {configuring && settings && (
+        <GroupActivationConfigModal
+          key={configuring.key}
+          definition={configuring}
+          settings={settings}
+          groupId={groupId}
+          groupName={moduleItemTitle("groups", group)}
+          onClose={() => setConfiguring(null)}
+          onSaved={(next) => setSettings(next)}
+        />
+      )}
     </div>
   );
 }
@@ -7933,6 +8423,8 @@ function InternalGroupSettingsModal({
   const [botName, setBotName] = useState("BotAdmin");
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState<string | null>(null);
+  const [configuring, setConfiguring] =
+    useState<GroupActivationDefinition | null>(null);
   const [error, setError] = useState("");
   const load = useCallback(async () => {
     try {
@@ -8311,7 +8803,7 @@ function InternalGroupSettingsModal({
                       const active = activationEnabled(botSettings, definition);
                       const Icon = definition.icon;
                       return (
-                        <label
+                        <div
                           className={`activation-tile ${active ? "is-active" : ""}`}
                           key={definition.key}
                         >
@@ -8321,7 +8813,16 @@ function InternalGroupSettingsModal({
                             <strong>{active ? "Ligado" : "Desligado"}</strong>
                             <small>{definition.description}</small>
                           </span>
-                          <span className="compact-switch">
+                          <button
+                            type="button"
+                            className="activation-config-button"
+                            title={`Configurar ${definition.label}`}
+                            aria-label={`Configurar ${definition.label}`}
+                            onClick={() => setConfiguring(definition)}
+                          >
+                            <Settings />
+                          </button>
+                          <label className="compact-switch">
                             <input
                               type="checkbox"
                               checked={active}
@@ -8331,8 +8832,8 @@ function InternalGroupSettingsModal({
                               }
                             />
                             <i />
-                          </span>
-                        </label>
+                          </label>
+                        </div>
                       );
                     })}
                   </div>
@@ -8369,6 +8870,17 @@ function InternalGroupSettingsModal({
           {error && <div className="form-error">{error}</div>}
         </div>
       </section>
+      {configuring && botSettings && Number(group?.botGroupId || 0) > 0 && (
+        <GroupActivationConfigModal
+          key={configuring.key}
+          definition={configuring}
+          settings={botSettings}
+          groupId={Number((group || {}).botGroupId || 0)}
+          groupName={thread.title}
+          onClose={() => setConfiguring(null)}
+          onSaved={(next) => setBotSettings(next)}
+        />
+      )}
     </div>
   );
 }

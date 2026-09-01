@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -5,6 +6,14 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_panel/src/features/chat/media_players.dart';
 
 void main() {
+  test('URLs relativas de mídia usam a origem HTTPS do painel no nativo', () {
+    if (kIsWeb) return;
+    expect(
+      resolvePlaybackUrl('/api/playaudio/example'),
+      startsWith('https://botadmin.shop/api/playaudio/example'),
+    );
+  });
+
   testWidgets('player MP3 compacto reserva e exibe todos os controles', (
     tester,
   ) async {

@@ -35,10 +35,17 @@ Future<void> deleteLocalMediaFile(String? path) async {
 String _extensionFor(String mimeType, String rawUrl) {
   final mime = mimeType.toLowerCase();
   final lower = rawUrl.toLowerCase();
+  // Keep audio containers on an extension that ExoPlayer can identify.  In
+  // particular, `audio/mp4` is normally an m4a recording; writing it as
+  // `.mp4` makes some Android devices try the video renderer and expose an
+  // apparently empty/inaudible player.
+  if (mime.contains('m4a') || lower.contains('.m4a')) return '.m4a';
   if (mime.contains('mp4') || lower.contains('.mp4')) return '.mp4';
   if (mime.contains('webm') || lower.contains('.webm')) return '.webm';
   if (mime.contains('mpeg') || lower.contains('.mp3')) return '.mp3';
-  if (mime.contains('mp4') || lower.contains('.m4a')) return '.m4a';
+  if (mime.contains('aac') || lower.contains('.aac')) return '.aac';
+  if (mime.contains('wav') || lower.contains('.wav')) return '.wav';
+  if (mime.contains('amr') || lower.contains('.amr')) return '.amr';
   if (mime.contains('ogg') || mime.contains('opus') || lower.contains('.ogg')) {
     return '.ogg';
   }

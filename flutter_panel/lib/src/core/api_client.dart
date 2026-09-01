@@ -3936,7 +3936,31 @@ class BotAdminApiClient {
     }
     if (bytes.length >= 12) {
       final box = latin1.decode(bytes.sublist(4, 12), allowInvalid: true);
+      if (box.startsWith('ftypM4A') ||
+          box.startsWith('ftypM4B') ||
+          box.startsWith('ftypM4P')) {
+        return 'audio/mp4';
+      }
       if (box.startsWith('ftyp')) return 'video/mp4';
+    }
+    if (bytes.length >= 6 &&
+        bytes[0] == 0x23 &&
+        bytes[1] == 0x21 &&
+        bytes[2] == 0x41 &&
+        bytes[3] == 0x4D &&
+        bytes[4] == 0x52) {
+      return 'audio/amr';
+    }
+    if (bytes.length >= 12 &&
+        bytes[0] == 0x52 &&
+        bytes[1] == 0x49 &&
+        bytes[2] == 0x46 &&
+        bytes[3] == 0x46 &&
+        bytes[8] == 0x57 &&
+        bytes[9] == 0x41 &&
+        bytes[10] == 0x56 &&
+        bytes[11] == 0x45) {
+      return 'audio/wav';
     }
     if (bytes.length >= 4) {
       final head = bytes.sublist(0, 4);

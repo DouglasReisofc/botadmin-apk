@@ -877,6 +877,18 @@ export const api = {
       `/api/bot-groups/${groupId}/settings`,
       { method: "PATCH", body: JSON.stringify(payload) },
     ),
+  uploadBotGroupMessageMedia: (
+    groupId: number | string,
+    kind: "welcome" | "farewell",
+    file: File,
+  ) => {
+    const form = new FormData();
+    form.set("media", file);
+    return request<{ settings?: JsonRecord }>(
+      `/api/bot-groups/${groupId}/${kind}-media`,
+      { method: "POST", body: form },
+    );
+  },
   toggleBotCommand: (
     groupId: number | string,
     command: string,

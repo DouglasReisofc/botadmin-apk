@@ -133,15 +133,23 @@ const inferMediaKind = (...values: unknown[]): "image" | "video" | "audio" | "do
 
 const inferMimeType = (current: string, kind: string, ...values: unknown[]) => {
   const normalized = current.trim().toLowerCase();
-  if (normalized && normalized !== "application/octet-stream") return current;
   const source = values
     .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
     .join(" ")
     .toLowerCase();
+  // Cached WhatsApp envelopes occasionally retain `video/mp4` after a PTT or
+  // MP3 response. Do not let that stale MIME select the video download route;
+  // the message kind/filename is authoritative for audio and vice versa.
+  const contradictoryAudio = kind === "audio" && normalized.startsWith("video/");
+  const contradictoryVideo = kind === "video" && normalized.startsWith("audio/");
+  if (normalized && normalized !== "application/octet-stream" && !contradictoryAudio && !contradictoryVideo) {
+    return current;
+  }
   if (kind === "audio") {
     if (source.includes(".mp3") || source.includes("mpeg")) return "audio/mpeg";
     if (source.includes(".m4a") || source.includes("audio/mp4")) return "audio/mp4";
     if (source.includes(".wav")) return "audio/wav";
+    if (source.includes(".amr") || source.includes("audio/amr")) return "audio/amr";
     return "audio/ogg";
   }
   if (kind === "video") {
@@ -156,6 +164,21 @@ const inferMimeType = (current: string, kind: string, ...values: unknown[]) => {
     return "image/jpeg";
   }
   return current || "application/octet-stream";
+};
+
+const detectBinaryMimeType = (buffer: Buffer): string | null => {
+  if (buffer.length >= 12) {
+    const ascii = buffer.subarray(0, 12).toString("latin1");
+    if (ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WAVE") return "audio/wav";
+    const box = buffer.subarray(4, 12).toString("latin1");
+    if (box.startsWith("ftypM4A") || box.startsWith("ftypM4B") || box.startsWith("ftypM4P")) return "audio/mp4";
+    if (box.startsWith("ftyp")) return "video/mp4";
+  }
+  if (buffer.length >= 6 && buffer.subarray(0, 6).toString("latin1").startsWith("#!AMR")) return "audio/amr";
+  if (buffer.length >= 4 && buffer.subarray(0, 4).toString("latin1") === "OggS") return "audio/ogg";
+  if (buffer.length >= 3 && buffer.subarray(0, 3).toString("latin1") === "ID3") return "audio/mpeg";
+  if (buffer.length >= 2 && buffer[0] === 0xff && (buffer[1] & 0xe0) === 0xe0) return "audio/mpeg";
+  return null;
 };
 
 const toRecord = (value: unknown): Record<string, unknown> | null =>
@@ -299,10 +322,13 @@ const downloadPlainRemoteMedia = async (
     throw new Error(`Falha ao baixar mídia pública (${response.status}).`);
   }
   const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
   const contentType = response.headers.get("content-type")?.split(";")[0]?.trim();
   return {
-    buffer: Buffer.from(arrayBuffer),
-    mimeType: contentType && contentType !== "application/octet-stream" ? contentType : fallbackMimeType,
+    buffer,
+    mimeType:
+      detectBinaryMimeType(buffer) ??
+      (contentType && contentType !== "application/octet-stream" ? contentType : fallbackMimeType),
   };
 };
 
@@ -653,6 +679,28 @@ export async function GET(request: Request, context: Context) {
         throw downloadError;
       }
       buffer = await downloadChatMedia(client, buildDownloadRequest());
+    }
+
+    // Wuzapi/EasyZap may return a generic or stale content type even when the
+    // payload is a real MP3/M4A/OGG. Sniff the bytes before creating the HTTP
+    // response and the R2 key so Android's decoder receives the right
+    // container instead of a silent grey audio bubble.
+    const detectedMimeType = detectBinaryMimeType(buffer);
+    if (detectedMimeType) {
+      mimeType = detectedMimeType;
+      cacheKey = buildWhatsappMediaCacheKey({
+        userId: storageUserId,
+        instanceId: instance.id,
+        chatJid,
+        messageKey: stored.messageId ?? messageKey,
+        mimeType,
+      });
+      legacyCacheKey = buildLegacyWhatsappMediaCacheKey({
+        instanceId: instance.id,
+        chatJid,
+        messageKey: stored.messageId ?? messageKey,
+        mimeType,
+      });
     }
 
     const [settings, storageSummary] = await Promise.all([

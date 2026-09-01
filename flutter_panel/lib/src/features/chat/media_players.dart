@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 
 import '../../core/api_client.dart';
+import '../../core/app_config.dart';
 import 'media_blob.dart';
 import 'media_local_file.dart';
 import 'video_controller_factory.dart';
@@ -19,15 +20,34 @@ String resolvePlaybackUrl(String raw) {
   if (trimmed.startsWith('blob:') || trimmed.startsWith('data:')) {
     return trimmed;
   }
-  if (trimmed.startsWith('//')) return '${Uri.base.scheme}:$trimmed';
+  final configuredBase = Uri.tryParse(AppConfig.apiBaseUrl.trim());
+  final networkScheme = kIsWeb
+      ? (Uri.base.scheme.isEmpty ? 'https' : Uri.base.scheme)
+      : (configuredBase?.scheme == 'http' || configuredBase?.scheme == 'https'
+            ? configuredBase!.scheme
+            : 'https');
+  if (trimmed.startsWith('//')) return '$networkScheme:$trimmed';
   final uri = Uri.tryParse(trimmed);
   if (uri != null && uri.hasScheme) return trimmed;
   final normalized = trimmed.startsWith('/') ? trimmed : '/$trimmed';
-  return Uri.base.resolve(normalized).toString();
+  // Uri.base is a `file://` URI on Android/iOS.  Resolving an API path
+  // against it produces a local file path and just_audio cannot play it. Use
+  // the configured panel origin for every relative media URL instead.
+  final base = configuredBase;
+  if (base != null && (base.scheme == 'http' || base.scheme == 'https')) {
+    return base.resolve(normalized).toString();
+  }
+  return Uri.parse('$networkScheme://botadmin.shop$normalized').toString();
 }
 
 bool _isAuthenticatedMediaEndpoint(String url) {
   final value = url.toLowerCase();
+  final trimmed = url.trim();
+  // Besides the recoverable WhatsApp endpoint, play-command media and other
+  // panel-owned `/api/*` routes require the same session cookie.  Treating
+  // those as public URLs used to make native builds resolve them to a
+  // `file://` URI or receive an unauthenticated 401.
+  if (trimmed.startsWith('/api/') || trimmed.startsWith('api/')) return true;
   return (value.contains('/whatsapp-conversations/') &&
           value.contains('/media')) ||
       (value.contains('/internal-groups/') && value.contains('/media/'));
