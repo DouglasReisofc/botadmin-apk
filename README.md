@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # StoreBot Dashboard
 
 Projeto full-stack baseado em Next.js com autenticação integrada, landing page institucional e dashboards separados para administradores e usuários. O back-end utiliza rotas API do próprio Next.js com Node.js e MySQL, permitindo iniciar rapidamente sem a necessidade de serviços externos.
