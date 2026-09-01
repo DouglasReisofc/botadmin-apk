@@ -20,24 +20,25 @@ Projeto full-stack baseado em Next.js com autenticação integrada, landing page
 
 ## Configuração do ambiente
 
-Crie um arquivo `.env` na raiz (já incluso com os valores padrão fornecidos):
+Crie um arquivo `.env` na raiz usando os valores do seu ambiente (nunca
+versione credenciais reais):
 
 ```env
-DATABASE_HOST=150.230.85.70
+DATABASE_HOST=127.0.0.1
 DATABASE_PORT=3306
-DATABASE_USER=storebot
-DATABASE_PASSWORD=storebot
-DATABASE_NAME=storebot
-JWT_SECRET=super-secret-jwt-key-change-me
-APP_URL=http://botadmin.shop
+DATABASE_USER=your_database_user
+DATABASE_PASSWORD=your_database_password
+DATABASE_NAME=your_database_name
+JWT_SECRET=replace-with-a-long-random-secret
+APP_URL=https://botadmin.shop
 PORT=4478
-DEFAULT_ADMIN_EMAIL=contactgestorvip@gmail.com
-DEFAULT_ADMIN_PASSWORD="Dev7766@#$%"
+DEFAULT_ADMIN_EMAIL=admin@example.com
+DEFAULT_ADMIN_PASSWORD=replace-before-starting
 DEFAULT_ADMIN_NAME=Administrador StoreBot
 FIREBASE_PROJECT_ID=storezap-3d056
 FIREBASE_CLIENT_EMAIL=
 FIREBASE_PRIVATE_KEY=
-NEXT_PUBLIC_FIREBASE_API_KEY=AIzaSyAPTHu45boxRCeicqJ5X5VChTvYtzZuP5s
+NEXT_PUBLIC_FIREBASE_API_KEY=
 NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=storezap-3d056.firebaseapp.com
 NEXT_PUBLIC_FIREBASE_PROJECT_ID=storezap-3d056
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=storezap-3d056.firebasestorage.app
@@ -47,9 +48,9 @@ NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=G-E9SBWGJT9F
 NEXT_PUBLIC_FIREBASE_VAPID_KEY=BD_aiT4RdUUgMVLaTXQCnavAUamKS4lz9PhLDDOc-1ZJ754pLZeqgSXTcqpZGoZZtS8y1dvAZF4GyEQExHqWQ8
 ```
 
-> **Importante:** altere `JWT_SECRET` em produção para um valor forte e mantenha as credenciais em local seguro.
-
-> A senha padrão está entre aspas porque contém `#`; sem as aspas o restante seria interpretado como comentário pelo parser de variáveis de ambiente.
+> **Importante:** substitua todos os valores de exemplo, use um `JWT_SECRET`
+> forte e mantenha as credenciais em um cofre seguro. Não commite o arquivo
+> `.env`.
 
 As variáveis `DEFAULT_ADMIN_*` garantem que um administrador inicial seja provisionado automaticamente. Ajuste-as caso precise de outro e-mail ou senha.
 
