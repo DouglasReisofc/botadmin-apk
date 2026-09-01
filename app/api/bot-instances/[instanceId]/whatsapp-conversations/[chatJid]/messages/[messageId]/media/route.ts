@@ -505,7 +505,7 @@ export async function GET(request: Request, context: Context) {
       mimeType = inferMimeType(mimeType, inferredKind, stored.messageType, filename, url);
       cacheKey = buildWhatsappMediaCacheKey({
         userId: storageUserId,
-        instanceId,
+        instanceId: instance.id,
         chatJid,
         messageKey: stored.messageId ?? messageKey,
         mimeType,
@@ -758,7 +758,7 @@ export async function GET(request: Request, context: Context) {
       );
     if (mediaExpired) {
       console.info("WhatsApp media is no longer available from the CDN", {
-        instanceId: instance.id,
+        instanceId,
         chatJid,
         messageKey: messageKey.slice(0, 12),
       });
