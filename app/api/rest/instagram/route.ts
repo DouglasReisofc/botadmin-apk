@@ -1,4 +1,5 @@
 import path from "path";
+import { spawn } from "node:child_process";
 import { NextRequest, NextResponse } from "next/server";
 
 import { withUserApiAuth } from "lib/api-rest-auth";
@@ -249,36 +250,220 @@ const fetchRichMetadataWithCookies = async (
   return null;
 };
 
+type YtDlpInstagramRecord = {
+  id?: string;
+  title?: string;
+  description?: string;
+  uploader?: string;
+  uploader_id?: string;
+  thumbnail?: string;
+  webpage_url?: string;
+  duration?: number | null;
+  ext?: string;
+  vcodec?: string | null;
+  entries?: YtDlpInstagramRecord[] | null;
+};
+
+const sleep = (milliseconds: number): Promise<void> =>
+  new Promise((resolve) => setTimeout(resolve, milliseconds));
+
+const isAbsoluteHttpUrl = (value: unknown): value is string =>
+  typeof value === "string" && /^https?:\/\//i.test(value.trim());
+
+/**
+ * Instagram occasionally returns a transient 5xx/"Try again later" from the
+ * HTML resolvers.  The server already ships with yt-dlp for the other media
+ * providers, so use it as a last-mile resolver instead of failing the group
+ * event.  We ask for metadata and the selected media URL in one invocation;
+ * no media is downloaded to the API process and the URL is consumed
+ * immediately by the autodownloader.
+ */
+const resolveInstagramWithYtDlp = async (targetUrl: string): Promise<{
+  urls: string[];
+  metadata: InstagramMetadata;
+} | null> => {
+  const binary =
+    process.env.INSTAGRAM_YTDLP_BINARY?.trim() ||
+    process.env.YT_DLP_BINARY?.trim() ||
+    "/opt/botadmin/yt-venv/bin/yt-dlp";
+  const args = [
+    "--dump-single-json",
+    "--get-url",
+    "--format",
+    "bestvideo[ext=mp4]/best[ext=mp4]/best",
+    "--no-playlist",
+    "--no-warnings",
+    "--socket-timeout",
+    "15",
+    "--retries",
+    "2",
+    targetUrl,
+  ];
+  const proxy = process.env.INSTAGRAM_YTDLP_PROXY?.trim();
+  if (proxy) {
+    args.splice(args.length - 1, 0, "--proxy", proxy);
+  }
+
+  return new Promise((resolve) => {
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const finish = (value: { urls: string[]; metadata: InstagramMetadata } | null) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      resolve(value);
+    };
+    const child = spawn(binary, args, {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    const timer = setTimeout(() => {
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 1000).unref();
+      finish(null);
+    }, 90_000);
+    child.stdout.on("data", (chunk) => {
+      if (stdout.length < 2_000_000) stdout += String(chunk);
+    });
+    child.stderr.on("data", (chunk) => {
+      if (stderr.length < 16_000) stderr += String(chunk);
+    });
+    child.on("error", (error) => {
+      console.warn("[rest/instagram] fallback yt-dlp indisponível", {
+        error: error instanceof Error ? error.message : String(error),
+      });
+      finish(null);
+    });
+    child.on("close", (code) => {
+      if (code !== 0) {
+        console.warn("[rest/instagram] fallback yt-dlp falhou", {
+          code,
+          error: stderr.trim().slice(0, 500),
+        });
+        finish(null);
+        return;
+      }
+      const lines = stdout
+        .split(/\r?\n/)
+        .map((line) => line.trim())
+        .filter(Boolean);
+      const jsonLine = [...lines].reverse().find((line) => line.startsWith("{"));
+      let record: YtDlpInstagramRecord | null = null;
+      if (jsonLine) {
+        try {
+          record = JSON.parse(jsonLine) as YtDlpInstagramRecord;
+        } catch (error) {
+          console.warn("[rest/instagram] fallback yt-dlp retornou JSON inválido", {
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      const urls = lines.filter(
+        (line) => isAbsoluteHttpUrl(line) && line !== record?.webpage_url,
+      );
+      if (!urls.length) {
+        finish(null);
+        return;
+      }
+      const firstUrl = urls[0];
+      const isVideo =
+        /\.mp4(?:[?#]|$)/i.test(firstUrl) ||
+        record?.ext === "mp4" ||
+        Boolean(record?.vcodec && record.vcodec !== "none");
+      const caption = normalizeText(record?.description) || normalizeText(record?.title);
+      const username = normalizeText(record?.uploader) || normalizeText(record?.uploader_id);
+      const thumbnail = isAbsoluteHttpUrl(record?.thumbnail) ? record.thumbnail : null;
+      finish({
+        urls,
+        metadata: {
+          caption,
+          description: caption,
+          title: normalizeText(record?.title),
+          username,
+          author: username,
+          thumbnail,
+          isVideo,
+          downloads: urls.map((url) => ({
+            url,
+            type: "download",
+            mediaType: isVideo ? "video" : "image",
+            format: isVideo ? "mp4" : undefined,
+          })),
+        },
+      });
+    });
+  });
+};
+
 export const GET = withUserApiAuth(async (req: NextRequest) => {
   try {
     if (!igdl) {
-      return NextResponse.json(
-        { status: false, mensagem: "Extrator de Instagram indisponível no momento." },
-        { status: 500 },
-      );
+      console.warn("[rest/instagram] extrator principal indisponível; usando fallback yt-dlp");
     }
 
     const { searchParams } = new URL(req.url);
     const url = (searchParams.get('url') || searchParams.get('q') || '').trim();
     if (!url) return NextResponse.json({ status: false, mensagem: 'Informe url' }, { status: 400 });
-    const res = await igdl(url);
-    if (typeof res?.msg === "string" && (!res?.url || !Array.isArray(res.url))) {
-      return NextResponse.json(
-        { status: false, mensagem: res.msg || "Não foi possível baixar este link do Instagram." },
-        { status: 502 },
-      );
+    if (!/^https?:\/\/(?:www\.|m\.)?instagram\.com\//i.test(url)) {
+      return NextResponse.json({ status: false, mensagem: "Forneça um link válido do Instagram." }, { status: 400 });
     }
-    const list: string[] = Array.isArray(res?.url)
-      ? res.url.filter((entry: any) => typeof entry === "string" && entry.trim())
-      : [];
+
+    let res: any = null;
+    let list: string[] = [];
+    let resolverError: unknown = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        res = igdl ? await igdl(url) : null;
+        list = Array.isArray(res?.url)
+          ? res.url.filter((entry: any) => typeof entry === "string" && /^https?:\/\//i.test(entry.trim()))
+          : [];
+        if (list.length) break;
+        resolverError = typeof res?.msg === "string" ? res.msg : null;
+      } catch (error) {
+        resolverError = error;
+      }
+      if (attempt === 0) {
+        await sleep(400 + Math.floor(Math.random() * 400));
+      }
+    }
+
+    // Fallback local: evita que uma falha transitória do SnapSave/GraphQL
+    // impeça o autodownloader de publicar no grupo.
+    let fallbackMetadata: InstagramMetadata | null = null;
+    if (!list.length) {
+      const fallback = await resolveInstagramWithYtDlp(url);
+      if (fallback) {
+        list = fallback.urls;
+        fallbackMetadata = fallback.metadata;
+        res = { url: list, metadata: fallback.metadata, resolver: "yt-dlp" };
+        console.info("[rest/instagram] Instagram resolvido pelo fallback yt-dlp", {
+          url,
+          urls: list.length,
+        });
+      }
+    }
     if (!list.length) {
       return NextResponse.json(
-        { status: false, mensagem: 'Falha ao obter links de download do Instagram.' },
+        {
+          status: false,
+          mensagem:
+            typeof resolverError === "string" && resolverError.trim()
+              ? resolverError
+              : 'Falha ao obter links de download do Instagram.',
+        },
         { status: 502 },
       );
     }
     const metadata: InstagramMetadata =
       res && typeof res.metadata === "object" && res.metadata ? { ...res.metadata } : {};
+    if (fallbackMetadata) {
+      Object.assign(metadata, {
+        ...fallbackMetadata,
+        ...metadata,
+      });
+    }
     let caption =
       normalizeText(metadata.caption) ||
       normalizeText(metadata.description) ||
