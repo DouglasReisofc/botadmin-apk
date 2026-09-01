@@ -66,6 +66,15 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  async rewrites() {
+    return [
+      // The isolated React web panel is emitted under public/dashboard/react.
+      // Keep both friendly forms working when Next handles the request instead
+      // of requiring users to type the generated index.html filename.
+      { source: "/dashboard/react", destination: "/dashboard/react/index.html" },
+      { source: "/dashboard/react/", destination: "/dashboard/react/index.html" },
+    ];
+  },
   images: {
     formats: ["image/avif", "image/webp"],
   },
