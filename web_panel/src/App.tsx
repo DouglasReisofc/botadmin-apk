@@ -17,6 +17,7 @@ import {
   CarFront,
   CheckSquare,
   ChevronLeft,
+  ChevronRight,
   CircleDashed,
   Clock3,
   ContactRound,
@@ -3775,6 +3776,14 @@ function Chat({
               rows={1}
               placeholder="Digite uma mensagem"
               value={draft}
+              onPointerDown={() => {
+                // A picker aberta nunca deve ficar sobre o teclado.  onFocus
+                // não é suficiente: ao tocar novamente em um textarea já
+                // focado o navegador não dispara um novo evento de foco.
+                setEmojiOpen(false);
+                setGiphyKind(null);
+                setAttachmentOpen(false);
+              }}
               onFocus={() => {
                 // The keyboard and the picker are mutually exclusive, just
                 // like WhatsApp: focusing the composer always returns to the
@@ -5731,6 +5740,13 @@ function GroupActivationConfigModal({
             <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
             <i />
           </label>
+          {!isMessageConfig && <section className="activation-live-preview" aria-label={`Prévia de ${definition.label}`}>
+            <div className="activation-live-preview-heading"><div><b>Prévia no grupo</b><span>Veja como esta ativação aparece na conversa.</span></div><Eye /></div>
+            <div className={`activation-preview-bubble ${enabled ? "is-enabled" : "is-disabled"}`}>
+              <Avatar name="BotAdmin" small />
+              <div><strong>BotAdmin</strong><p>{key === "schedule" ? "Grupo fechado: somente admins podem enviar mensagens." : key === "horapg" ? "Disparo programado do grupo aparecerá aqui." : definition.description}</p><small>{enabled ? "Ativação ligada" : "Ativação desligada"}</small></div>
+            </div>
+          </section>}
           {isMessageConfig && (
             <div className="message-config-layout">
               <div className="message-config-fields">
@@ -5833,6 +5849,271 @@ function GroupActivationConfigModal({
       </section>
     </div>
   );
+}
+
+type BotAdvancedMode = "prefixes" | "menus" | "responses" | "ads";
+type BotAdvancedResponseDraft = {
+  id: string;
+  source: JsonRecord;
+  triggers: string;
+  responseText: string;
+  matchMode: "contains" | "equals";
+};
+type BotAdvancedAdDraft = {
+  id: string;
+  source: JsonRecord;
+  enabled: boolean;
+  caption: string;
+  mentionAll: boolean;
+  scheduleType: "frequency" | "times";
+  frequency: string;
+  times: string;
+};
+
+const botMenuTextFields: Array<[string, string]> = [
+  ["main", "Menu principal"],
+  ["admin", "Menu de administração"],
+  ["comandos", "Comandos"],
+  ["outros", "Outros"],
+  ["downloads", "Downloads"],
+  ["ativacoes", "Ativações"],
+  ["jogos", "Jogos e brincadeiras"],
+];
+
+const newBotDraftId = (prefix: string) =>
+  `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+
+function BotAdvancedConfigModal({
+  mode,
+  settings,
+  groupId,
+  groupName,
+  onClose,
+  onSaved,
+}: {
+  mode: BotAdvancedMode;
+  settings: JsonRecord;
+  groupId: number;
+  groupName: string;
+  onClose: () => void;
+  onSaved: (settings: JsonRecord) => void;
+}) {
+  const initialMenuTexts = recordValue(settings.menuTexts);
+  const initialResponses = Array.isArray(settings.autoResponses)
+    ? settings.autoResponses.map((entry) => {
+        const source = recordValue(entry);
+        return {
+          id: String(source.id || newBotDraftId("response")),
+          source,
+          triggers: stringList(source.triggers).join(", "),
+          responseText: String(source.responseText || ""),
+          matchMode: source.matchMode === "contains" ? "contains" : "equals",
+        } satisfies BotAdvancedResponseDraft;
+      })
+    : [];
+  const initialAds = Array.isArray(settings.ads)
+    ? settings.ads.map((entry) => {
+        const source = recordValue(entry);
+        const scheduleType = source.scheduleType === "times" ? "times" : "frequency";
+        return {
+          id: String(source.id || newBotDraftId("ad")),
+          source,
+          enabled: source.enabled !== false,
+          caption: String(source.caption || ""),
+          mentionAll: Boolean(source.mentionAll),
+          scheduleType,
+          frequency: String(source.frequency || "24h"),
+          times: stringList(source.times).join(", "),
+        } satisfies BotAdvancedAdDraft;
+      })
+    : [];
+  const [prefixes, setPrefixes] = useState(
+    stringList(settings.commandPrefixes).join("\n") || "/\n!\n#",
+  );
+  const [allowWithoutPrefix, setAllowWithoutPrefix] = useState(
+    Boolean(settings.allowCommandsWithoutPrefix),
+  );
+  const [menuTexts, setMenuTexts] = useState<Record<string, string>>(() =>
+    Object.fromEntries(
+      botMenuTextFields.map(([key]) => [key, stringList(initialMenuTexts[key]).join("\n")]),
+    ),
+  );
+  const [responses, setResponses] = useState<BotAdvancedResponseDraft[]>(initialResponses);
+  const [ads, setAds] = useState<BotAdvancedAdDraft[]>(initialAds);
+  const [removedAds, setRemovedAds] = useState<string[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const title =
+    mode === "prefixes"
+      ? "Configurar prefixos"
+      : mode === "menus"
+        ? "Menus do robô"
+        : mode === "responses"
+          ? "Respostas automáticas"
+          : "Mensagens programadas";
+  const subtitle =
+    mode === "prefixes"
+      ? "Defina como os comandos serão reconhecidos neste grupo."
+      : mode === "menus"
+        ? "Edite os textos do menu sem alterar as ativações."
+        : mode === "responses"
+          ? "Crie respostas com texto e gatilhos claros."
+          : "Configure anúncios, horários e menções do grupo.";
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError("");
+    try {
+      if (mode === "prefixes") {
+        const nextPrefixes = Array.from(
+          new Set(
+            splitConfigLines(prefixes)
+              .map((entry) => entry.replace(/\s+/g, ""))
+              .filter(Boolean),
+          ),
+        ).slice(0, 10);
+        const patch = {
+          commandPrefixes: nextPrefixes.length ? nextPrefixes : ["/", "!", "#"],
+          allowCommandsWithoutPrefix: allowWithoutPrefix,
+        };
+        const result = await api.updateBotGroupSettings(groupId, patch);
+        onSaved((result.settings || { ...settings, ...patch }) as JsonRecord);
+      } else if (mode === "menus") {
+        const patch = {
+          menuTexts: Object.fromEntries(
+            botMenuTextFields.map(([key]) => [key, splitConfigLines(menuTexts[key] || "")]),
+          ),
+        };
+        const result = await api.updateBotGroupSettings(groupId, patch);
+        onSaved((result.settings || { ...settings, ...patch }) as JsonRecord);
+      } else if (mode === "responses") {
+        const patchResponses = responses
+          .map((entry) => ({
+            ...entry.source,
+            id: entry.id,
+            triggers: Array.from(new Set(splitConfigLines(entry.triggers).map((value) => value.toLowerCase()))).slice(0, 20),
+            responseText: entry.responseText.trim(),
+            matchMode: entry.matchMode,
+            updatedAt: new Date().toISOString(),
+          }))
+          .filter(
+            (entry) =>
+              (Array.isArray(entry.triggers) && entry.triggers.length > 0) &&
+              (String(entry.responseText || "").length > 0 || Boolean(recordValue(entry).responseMedia) || Boolean(recordValue(entry).responseVcard)),
+          )
+          .slice(0, 50);
+        const patch = { autoResponses: patchResponses };
+        const result = await api.updateBotGroupSettings(groupId, patch);
+        onSaved((result.settings || { ...settings, ...patch }) as JsonRecord);
+      } else {
+        for (const adId of removedAds) {
+          if (!adId.startsWith("ad-")) await api.deleteBotGroupAd(groupId, adId);
+        }
+        const savedAds: JsonRecord[] = [];
+        for (const entry of ads) {
+          const payload: JsonRecord = {
+            caption: entry.caption.trim(),
+            enabled: entry.enabled,
+            mentionAll: entry.mentionAll,
+            scheduleType: entry.scheduleType,
+            frequency: entry.scheduleType === "frequency" ? entry.frequency.trim() || "24h" : "",
+            times: entry.scheduleType === "times" ? splitConfigLines(entry.times) : [],
+          };
+          if (!entry.source.id) {
+            const result = await api.createBotGroupAd(groupId, { ...payload, media: entry.source.media || null });
+            savedAds.push((result.ad || { ...entry.source, ...payload, id: newBotDraftId("ad") }) as JsonRecord);
+          } else {
+            const result = await api.updateBotGroupAd(groupId, entry.id, payload);
+            savedAds.push((result.ad || { ...entry.source, ...payload, id: entry.id }) as JsonRecord);
+          }
+        }
+        const patch = { ads: savedAds };
+        onSaved({ ...settings, ...patch });
+      }
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível salvar esta configuração.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop activation-config-backdrop">
+      <section className="quick-modal bot-advanced-modal" role="dialog" aria-modal="true">
+        <header>
+          <div>
+            <div className="modal-heading-line"><h2>{title}</h2><InfoTip label={title}>{subtitle} As alterações ficam restritas ao grupo {groupName}.</InfoTip></div>
+            <small>{groupName}</small>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar"><X /></button>
+        </header>
+        <div className="bot-advanced-scroll">
+          {mode === "prefixes" && <div className="bot-advanced-form">
+            <label className="quick-label">Prefixos<textarea rows={4} value={prefixes} onChange={(event) => setPrefixes(event.target.value)} placeholder="Um por linha. Exemplo: /, !, #" /></label>
+            <label className="settings-toggle compact-config-toggle"><span><b>Permitir comandos sem prefixo</b><small>Aceita menu, play e comandos sem / ou !.</small></span><input type="checkbox" checked={allowWithoutPrefix} onChange={(event) => setAllowWithoutPrefix(event.target.checked)} /><i /></label>
+            <div className="bot-advanced-preview"><Tag /><span>{allowWithoutPrefix ? "Aceita comandos com ou sem prefixo." : "Os comandos precisam começar com um prefixo."}</span></div>
+          </div>}
+          {mode === "menus" && <div className="bot-advanced-form bot-menu-fields">
+            {botMenuTextFields.map(([key, label]) => <label className="quick-label" key={key}>{label}<textarea rows={3} value={menuTexts[key] || ""} onChange={(event) => setMenuTexts((current) => ({ ...current, [key]: event.target.value }))} placeholder="Uma opção por linha" /></label>)}
+          </div>}
+          {mode === "responses" && <div className="bot-advanced-form">
+            <div className="bot-advanced-list-heading"><div><b>Gatilhos e respostas</b><small>O robô responde quando o texto recebido corresponder à regra.</small></div><button type="button" className="secondary-button" onClick={() => setResponses((current) => [...current, { id: newBotDraftId("response"), source: {}, triggers: "", responseText: "", matchMode: "equals" }])}><Plus /> Adicionar</button></div>
+            {responses.length === 0 && <div className="bot-advanced-empty"><MessageCircle /><span>Nenhuma resposta configurada. Adicione a primeira regra.</span></div>}
+            {responses.map((entry, index) => <article className="bot-advanced-row" key={entry.id}>
+              <div className="bot-advanced-row-heading"><b>Resposta {index + 1}</b><button type="button" className="icon-button" aria-label="Remover resposta" onClick={() => setResponses((current) => current.filter((item) => item.id !== entry.id))}><X /></button></div>
+              <label className="quick-label">Gatilhos<input value={entry.triggers} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, triggers: event.target.value } : item))} placeholder="oi, olá, bom dia" /></label>
+              <label className="quick-label">Resposta<textarea rows={3} value={entry.responseText} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, responseText: event.target.value } : item))} placeholder="Mensagem que o robô enviará" /></label>
+              <label className="quick-label">Correspondência<select value={entry.matchMode} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, matchMode: event.target.value === "contains" ? "contains" : "equals" } : item))}><option value="equals">Texto exato</option><option value="contains">Contém o texto</option></select></label>
+            </article>)}
+          </div>}
+          {mode === "ads" && <div className="bot-advanced-form">
+            <div className="bot-advanced-list-heading"><div><b>Mensagens programadas</b><small>Até 20 anúncios por grupo, com frequência ou horários definidos.</small></div><button type="button" className="secondary-button" disabled={ads.length >= 20} onClick={() => setAds((current) => [...current, { id: newBotDraftId("ad"), source: {}, enabled: true, caption: "", mentionAll: false, scheduleType: "frequency", frequency: "24h", times: "" }])}><Plus /> Adicionar</button></div>
+            {ads.length === 0 && <div className="bot-advanced-empty"><Clock3 /><span>Nenhuma mensagem programada neste grupo.</span></div>}
+            {ads.map((entry, index) => <article className="bot-advanced-row" key={entry.id}>
+              <div className="bot-advanced-row-heading"><b>Mensagem {index + 1}</b><button type="button" className="icon-button" aria-label="Remover mensagem" onClick={() => { setAds((current) => current.filter((item) => item.id !== entry.id)); setRemovedAds((current) => [...current, entry.id]); }}><X /></button></div>
+              <label className="quick-label">Texto<textarea rows={3} value={entry.caption} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, caption: event.target.value } : item))} placeholder="Mensagem que será enviada" /></label>
+              <div className="bot-advanced-inline-fields"><label className="settings-toggle compact-config-toggle"><span><b>Ativa</b><small>Pausar sem apagar.</small></span><input type="checkbox" checked={entry.enabled} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, enabled: event.target.checked } : item))} /><i /></label><label className="settings-toggle compact-config-toggle"><span><b>Mencionar todos</b><small>Inclui a menção no envio.</small></span><input type="checkbox" checked={entry.mentionAll} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, mentionAll: event.target.checked } : item))} /><i /></label></div>
+              <label className="quick-label">Tipo de programação<select value={entry.scheduleType} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, scheduleType: event.target.value === "times" ? "times" : "frequency" } : item))}><option value="frequency">A cada intervalo</option><option value="times">Horários fixos</option></select></label>
+              {entry.scheduleType === "frequency" ? <label className="quick-label">Intervalo<input value={entry.frequency} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, frequency: event.target.value } : item))} placeholder="24h, 6h, 30m" /></label> : <label className="quick-label">Horários<input value={entry.times} onChange={(event) => setAds((current) => current.map((item) => item.id === entry.id ? { ...item, times: event.target.value } : item))} placeholder="08:00, 12:00, 19:00" /></label>}
+            </article>)}
+          </div>}
+          {error && <div className="form-error">{error}</div>}
+        </div>
+        <footer className="activation-config-footer"><button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving}>{saving ? "Salvando…" : "Salvar configuração"}</button></footer>
+      </section>
+    </div>
+  );
+}
+
+function BotAdvancedControls({
+  settings,
+  groupId,
+  groupName,
+  onSaved,
+}: {
+  settings: JsonRecord;
+  groupId: number;
+  groupName: string;
+  onSaved: (settings: JsonRecord) => void;
+}) {
+  const [mode, setMode] = useState<BotAdvancedMode | null>(null);
+  const prefixes = stringList(settings.commandPrefixes);
+  const autoResponses = Array.isArray(settings.autoResponses) ? settings.autoResponses.length : 0;
+  const ads = Array.isArray(settings.ads) ? settings.ads.length : 0;
+  return <>
+    <section className="bot-advanced-panel">
+      <div className="activation-overview-heading"><div><h3>Controles principais</h3><span>Mesma organização do painel Flutter.</span></div><InfoTip label="Controles principais">Prefixos, menus, respostas automáticas e mensagens programadas têm configuração própria e não ficam misturados nas ativações.</InfoTip></div>
+      <div className="bot-advanced-grid">
+        <button type="button" className="bot-advanced-card" onClick={() => setMode("prefixes")}><Tag /><span><b>Prefixos</b><small>{prefixes.length ? prefixes.slice(0, 4).join(" ") : "/ ! #"}</small></span><ChevronRight /></button>
+        <button type="button" className="bot-advanced-card" onClick={() => setMode("menus")}><List /><span><b>Menus do robô</b><small>Editar cards, textos e imagens.</small></span><ChevronRight /></button>
+        <button type="button" className="bot-advanced-card" onClick={() => setMode("ads")}><Clock3 /><span><b>Mensagens programadas</b><small>{ads ? `${ads} mensagem(ns) configurada(s).` : "Criar o primeiro ADS do grupo."}</small></span><ChevronRight /></button>
+        <button type="button" className="bot-advanced-card" onClick={() => setMode("responses")}><MessageCircle /><span><b>Respostas automáticas</b><small>{autoResponses ? `${autoResponses} resposta(s) configurada(s).` : "Nenhuma resposta configurada."}</small></span><ChevronRight /></button>
+      </div>
+    </section>
+    {mode && <BotAdvancedConfigModal mode={mode} settings={settings} groupId={groupId} groupName={groupName} onClose={() => setMode(null)} onSaved={onSaved} />}
+  </>;
 }
 
 function BotGroupAutomationModal({
@@ -5973,6 +6254,7 @@ function BotGroupAutomationModal({
               <i />
             </label>
           </section>
+          {settings && <BotAdvancedControls settings={settings} groupId={groupId} groupName={moduleItemTitle("groups", group)} onSaved={(next) => setSettings(next)} />}
           {loading ? (
             <div className="settings-loading"><RefreshCw className="spin" /> Carregando ativações…</div>
           ) : settings ? (
@@ -8657,6 +8939,7 @@ function InternalGroupSettingsModal({
               <i />
             </label>
           </section>
+          {botSettings && <BotAdvancedControls settings={botSettings} groupId={Number(group?.botGroupId || 0)} groupName={thread.title} onSaved={(next) => setBotSettings(next)} />}
           <form className="quick-form" onSubmit={saveText}>
             <label>
               Nome do grupo

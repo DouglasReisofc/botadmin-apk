@@ -877,6 +877,27 @@ export const api = {
       `/api/bot-groups/${groupId}/settings`,
       { method: "PATCH", body: JSON.stringify(payload) },
     ),
+  botGroupAds: (groupId: number | string) =>
+    request<{ ads?: JsonRecord[] }>(`/api/bot-groups/${groupId}/ads`),
+  createBotGroupAd: (groupId: number | string, payload: JsonRecord) =>
+    request<{ ad?: JsonRecord; ads?: JsonRecord[] }>(
+      `/api/bot-groups/${groupId}/ads`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  updateBotGroupAd: (
+    groupId: number | string,
+    adId: string,
+    payload: JsonRecord,
+  ) =>
+    request<{ ad?: JsonRecord; ads?: JsonRecord[] }>(
+      `/api/bot-groups/${groupId}/ads/${encodeURIComponent(adId)}`,
+      { method: "PATCH", body: JSON.stringify(payload) },
+    ),
+  deleteBotGroupAd: (groupId: number | string, adId: string) =>
+    request<{ ads?: JsonRecord[] }>(
+      `/api/bot-groups/${groupId}/ads/${encodeURIComponent(adId)}`,
+      { method: "DELETE" },
+    ),
   uploadBotGroupMessageMedia: (
     groupId: number | string,
     kind: "welcome" | "farewell",
