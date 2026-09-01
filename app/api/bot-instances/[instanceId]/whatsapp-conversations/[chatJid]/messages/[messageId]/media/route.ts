@@ -758,7 +758,7 @@ export async function GET(request: Request, context: Context) {
       );
     if (mediaExpired) {
       console.info("WhatsApp media is no longer available from the CDN", {
-        instanceId,
+        instanceId: instance.id,
         chatJid,
         messageKey: messageKey.slice(0, 12),
       });
