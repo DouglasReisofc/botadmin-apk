@@ -16,7 +16,6 @@ import {
   Bot,
   CheckSquare,
   ChevronLeft,
-  ChevronRight,
   CircleDashed,
   ContactRound,
   Copy,
@@ -62,6 +61,7 @@ import {
   type ChatMessage,
   type ConversationAction,
   type ConversationThread,
+  type GiphyMediaItem,
   type JsonRecord,
   type SessionUser,
   type SweepstakeGroupSnapshot,
@@ -1798,11 +1798,13 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     /\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct);
   // Do not fan out authenticated recovery requests for every historical
   // attachment while a conversation is opening. A direct CDN/R2 URL is both
-  // faster and less likely to hit a transient worker gateway. Recovery is
-  // requested only when there is no direct URL or after the user explicitly
-  // taps retry; this keeps a stale batch from turning a chat open into a
-  // cascade of 502 responses while retaining a deterministic recovery path.
-  const shouldRecover = refresh || !directSource;
+  // faster and less likely to hit a transient worker gateway. Keep the
+  // authenticated endpoint as a lazy fallback, though: WhatsApp CDN links
+  // expire frequently and otherwise leave a permanent broken-media card even
+  // when the server can still recover the bytes from the connected instance.
+  // The endpoint is only requested after the browser reports an error for the
+  // direct source (or after the user explicitly taps retry).
+  const shouldRecover = refresh || !directSource || recoverable;
   const mediaSources = Array.from(
     new Set(
       [
@@ -1967,7 +1969,187 @@ const composerEmojis = [
   "🏆",
   "💰",
   "🚀",
+  "🙂",
+  "🙃",
+  "😉",
+  "😌",
+  "🤩",
+  "🥳",
+  "😇",
+  "🤗",
+  "🤭",
+  "🫢",
+  "🫣",
+  "🤫",
+  "🫡",
+  "🤐",
+  "🤨",
+  "😐",
+  "😑",
+  "😶",
+  "🫥",
+  "🙄",
+  "😏",
+  "😣",
+  "😥",
+  "😮‍💨",
+  "🤐",
+  "😯",
+  "😲",
+  "🥱",
+  "😴",
+  "🤤",
+  "😵",
+  "🤯",
+  "🤠",
+  "🥸",
+  "😈",
+  "👿",
+  "👹",
+  "👺",
+  "💀",
+  "☠️",
+  "👻",
+  "👽",
+  "🤖",
+  "💩",
+  "😺",
+  "😸",
+  "😹",
+  "😻",
+  "😼",
+  "😽",
+  "🙀",
+  "😿",
+  "😾",
+  "🫶",
+  "🤝",
+  "✌️",
+  "🤞",
+  "🤟",
+  "🤘",
+  "🤙",
+  "👈",
+  "👉",
+  "👆",
+  "👇",
+  "☝️",
+  "✋",
+  "🤚",
+  "🖐️",
+  "🖖",
+  "👌",
+  "🤏",
+  "🤌",
+  "👊",
+  "✊",
+  "🤲",
+  "🙇",
+  "💅",
+  "👋",
+  "🤍",
+  "🖤",
+  "💙",
+  "💜",
+  "💛",
+  "🧡",
+  "🤎",
+  "💔",
+  "❣️",
+  "💕",
+  "💞",
+  "💓",
+  "💗",
+  "💖",
+  "💘",
+  "💝",
+  "💟",
+  "💫",
+  "💥",
+  "💦",
+  "💨",
+  "💬",
+  "💭",
+  "⭐",
+  "🌟",
+  "✨",
+  "⚡",
+  "☀️",
+  "🌈",
+  "🌙",
+  "🌻",
+  "🌹",
+  "🌺",
+  "🌸",
+  "🌼",
+  "🍀",
+  "🌿",
+  "🍎",
+  "🍕",
+  "🍔",
+  "🍟",
+  "🍿",
+  "🍩",
+  "🍪",
+  "🍫",
+  "🍓",
+  "🍉",
+  "🍇",
+  "🍌",
+  "🍍",
+  "🥑",
+  "☕",
+  "🍺",
+  "🍻",
+  "🍷",
+  "🥂",
+  "⚽",
+  "🏀",
+  "🏈",
+  "🎾",
+  "🏆",
+  "🎯",
+  "🎮",
+  "🎲",
+  "🎸",
+  "🎤",
+  "🎧",
+  "🎨",
+  "🎥",
+  "📱",
+  "💻",
+  "📷",
+  "📚",
+  "💡",
+  "🔔",
+  "🔒",
+  "🔑",
+  "✅",
+  "❎",
+  "⚠️",
+  "❗",
+  "❓",
+  "‼️",
+  "⁉️",
+  "➕",
+  "➖",
+  "🔴",
+  "🟠",
+  "🟡",
+  "🟢",
+  "🔵",
+  "🟣",
+  "⚫",
+  "⚪",
 ];
+
+type MediaSendOptions = {
+  mediaKind?: "sticker" | "gif";
+  mediaSource?: string;
+  mediaUrl?: string;
+  mediaThumbnail?: string;
+  isAnimated?: boolean;
+};
 
 function Tick({ state }: { state?: string }) {
   if (state === "pending") return <span className="ticks pending">◷</span>;
@@ -2329,7 +2511,7 @@ function Chat({
   loading: boolean;
   onBack: () => void;
   onSend: (text: string) => Promise<void>;
-  onSendMedia: (file: File) => Promise<void>;
+  onSendMedia: (file: File, options?: MediaSendOptions) => Promise<void>;
   onAction: (thread: ConversationThread, action: ConversationUiAction) => void;
   onMessageAction: (
     message: ChatMessage,
@@ -2343,6 +2525,17 @@ function Chat({
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [recording, setRecording] = useState(false);
+  const [recordingCancelling, setRecordingCancelling] = useState(false);
+  const [recordingDraft, setRecordingDraft] = useState<File | null>(null);
+  const [recordingPreviewUrl, setRecordingPreviewUrl] = useState("");
+  const [recordingError, setRecordingError] = useState("");
+  const [giphyKind, setGiphyKind] = useState<"gifs" | "stickers" | null>(
+    null,
+  );
+  const [giphyQuery, setGiphyQuery] = useState("");
+  const [giphyItems, setGiphyItems] = useState<GiphyMediaItem[]>([]);
+  const [giphyLoading, setGiphyLoading] = useState(false);
+  const [giphyError, setGiphyError] = useState("");
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
   const [reactionMenuId, setReactionMenuId] = useState<string | null>(null);
   const [sweepstakes, setSweepstakes] =
@@ -2358,6 +2551,10 @@ function Chat({
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
   const recorderChunksRef = useRef<Blob[]>([]);
+  const recordingPointerActiveRef = useRef(false);
+  const recordingCancelledRef = useRef(false);
+  const recordingStopActionRef = useRef<"send" | "cancel">("send");
+  const recordingStartPointRef = useRef({ x: 0, y: 0 });
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messageAreaRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
@@ -2387,9 +2584,40 @@ function Chat({
   useEffect(
     () => () => {
       recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
+      if (recordingPreviewUrl) URL.revokeObjectURL(recordingPreviewUrl);
     },
-    [],
+    [recordingPreviewUrl],
   );
+  useEffect(() => {
+    if (!giphyKind) return;
+    let cancelled = false;
+    const timer = window.setTimeout(() => {
+      setGiphyLoading(true);
+      setGiphyError("");
+      void api
+        .giphySearch(giphyKind, giphyQuery)
+        .then((result) => {
+          if (!cancelled) setGiphyItems(result.items || []);
+        })
+        .catch((cause) => {
+          if (!cancelled) {
+            setGiphyItems([]);
+            setGiphyError(
+              cause instanceof Error
+                ? cause.message
+                : "Não foi possível carregar as mídias.",
+            );
+          }
+        })
+        .finally(() => {
+          if (!cancelled) setGiphyLoading(false);
+        });
+    }, 180);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [giphyKind, giphyQuery]);
   const isGroupChat = Boolean(
     thread &&
     (thread.chatType === "internal_group" ||
@@ -2566,14 +2794,35 @@ function Chat({
       input?.setSelectionRange(start + emoji.length, start + emoji.length);
     });
   };
-  const startRecording = async () => {
-    if (recording || !navigator.mediaDevices?.getUserMedia) return;
+  const startRecording = async (event?: ReactPointerEvent<HTMLButtonElement>) => {
+    if (
+      recording ||
+      recordingDraft ||
+      !navigator.mediaDevices?.getUserMedia ||
+      typeof MediaRecorder === "undefined"
+    )
+      return;
+    recordingPointerActiveRef.current = true;
+    recordingCancelledRef.current = false;
+    recordingStopActionRef.current = "send";
+    recordingStartPointRef.current = {
+      x: event?.clientX || 0,
+      y: event?.clientY || 0,
+    };
+    setRecordingError("");
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The pointer can be released while the permission prompt is open. Do
+      // not start a recorder after that release; it would otherwise leave the
+      // microphone running invisibly and create an unexpected audio message.
+      if (!recordingPointerActiveRef.current) {
+        stream.getTracks().forEach((track) => track.stop());
+        return;
+      }
       const recorder = new MediaRecorder(stream);
       recorderChunksRef.current = [];
-      recorder.ondataavailable = (event) => {
-        if (event.data.size) recorderChunksRef.current.push(event.data);
+      recorder.ondataavailable = (dataEvent) => {
+        if (dataEvent.data.size) recorderChunksRef.current.push(dataEvent.data);
       };
       recorder.onstop = () => {
         const blob = new Blob(recorderChunksRef.current, {
@@ -2583,21 +2832,99 @@ function Chat({
         recorderStreamRef.current = null;
         recorderRef.current = null;
         setRecording(false);
-        if (blob.size)
-          void onSendMedia(
-            new File([blob], `audio-${Date.now()}.webm`, { type: blob.type }),
-          );
+        const cancelled =
+          recordingCancelledRef.current ||
+          recordingStopActionRef.current === "cancel";
+        if (cancelled || !blob.size) {
+          setRecordingCancelling(false);
+          return;
+        }
+        const file = new File([blob], `audio-${Date.now()}.webm`, {
+          type: blob.type || "audio/webm",
+        });
+        setRecordingDraft(file);
+        setRecordingPreviewUrl((current) => {
+          if (current) URL.revokeObjectURL(current);
+          return URL.createObjectURL(file);
+        });
+        setRecordingCancelling(false);
       };
       recorderStreamRef.current = stream;
       recorderRef.current = recorder;
-      recorder.start();
+      recorder.start(120);
       setRecording(true);
-    } catch {
+    } catch (cause) {
+      recordingPointerActiveRef.current = false;
       setRecording(false);
+      setRecordingError(
+        cause instanceof DOMException && cause.name === "NotAllowedError"
+          ? "Permita o microfone para gravar áudios."
+          : "Não foi possível acessar o microfone.",
+      );
     }
   };
-  const stopRecording = () => {
+  const stopRecording = (cancel = false) => {
+    if (!cancel && recordingCancelledRef.current) return;
+    recordingPointerActiveRef.current = false;
+    recordingCancelledRef.current = cancel;
+    recordingStopActionRef.current = cancel ? "cancel" : "send";
+    setRecordingCancelling(cancel);
     if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+  };
+  const clearRecordingDraft = () => {
+    setRecordingDraft(null);
+    setRecordingPreviewUrl((current) => {
+      if (current) URL.revokeObjectURL(current);
+      return "";
+    });
+  };
+  const sendRecordingDraft = async () => {
+    const file = recordingDraft;
+    if (!file) return;
+    clearRecordingDraft();
+    await onSendMedia(file);
+  };
+  const sendGiphy = async (item: GiphyMediaItem) => {
+    if (!giphyKind) return;
+    const source =
+      giphyKind === "stickers"
+        ? item.webpUrl || item.originalUrl || item.previewUrl
+        : item.originalUrl || item.mp4Url || item.previewUrl;
+    if (!source) return;
+    setGiphyLoading(true);
+    setGiphyError("");
+    try {
+      const blob = await api.giphyMedia(source);
+      const fallbackType = giphyKind === "stickers" ? "image/webp" : "image/gif";
+      const mime = blob.type || fallbackType;
+      const extension = mime.includes("webp")
+        ? "webp"
+        : mime.includes("mp4")
+          ? "mp4"
+          : mime.includes("gif")
+            ? "gif"
+            : "bin";
+      const file = new File([blob], `giphy-${item.id}.${extension}`, {
+        type: mime,
+      });
+      await onSendMedia(file, {
+        mediaKind: giphyKind === "stickers" ? "sticker" : "gif",
+        mediaSource: "giphy",
+        mediaUrl: source,
+        mediaThumbnail: item.previewUrl,
+        isAnimated: giphyKind === "gifs",
+      });
+      setGiphyKind(null);
+      setAttachmentOpen(false);
+    } catch (cause) {
+      setGiphyError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível enviar esta mídia.",
+      );
+    } finally {
+      setGiphyLoading(false);
+    }
   };
   const reactionMap = new Map<string, string[]>();
   for (const message of messages) {
@@ -3059,31 +3386,134 @@ function Chat({
             <Plus />
           </button>
           {attachmentOpen && (
-            <div className="attachment-menu">
-              <button
-                onClick={() => {
-                  setAttachmentOpen(false);
-                  mediaInput.current?.click();
-                }}
-              >
-                <Paperclip />
-                <span>Fotos, vídeos e documentos</span>
-              </button>
-              {isGroupChat && (
-                <button
-                  onClick={() => {
-                    setAttachmentOpen(false);
-                    setSweepstakeCreateOpen(true);
-                  }}
-                >
-                  <Trophy />
-                  <span>Sorteio</span>
-                </button>
+            <div
+              className={`attachment-menu ${giphyKind ? "attachment-menu--media-picker" : ""}`}
+              onClick={(event) => event.stopPropagation()}
+            >
+              {!giphyKind ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setAttachmentOpen(false);
+                      mediaInput.current?.click();
+                    }}
+                  >
+                    <Image />
+                    <span>Fotos, vídeos e documentos</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGiphyQuery("");
+                      setGiphyError("");
+                      setGiphyKind("gifs");
+                    }}
+                  >
+                    <Image />
+                    <span>GIFs</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setGiphyQuery("");
+                      setGiphyError("");
+                      setGiphyKind("stickers");
+                    }}
+                  >
+                    <Smile />
+                    <span>Figurinhas</span>
+                  </button>
+                  {isGroupChat && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAttachmentOpen(false);
+                        setSweepstakeCreateOpen(true);
+                      }}
+                    >
+                      <Trophy />
+                      <span>Sorteio</span>
+                    </button>
+                  )}
+                  <button type="button" onClick={() => setAttachmentOpen(false)}>
+                    <X />
+                    <span>Fechar</span>
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="giphy-picker-heading">
+                    <button
+                      type="button"
+                      aria-label="Voltar para anexos"
+                      onClick={() => setGiphyKind(null)}
+                    >
+                      <ArrowLeft />
+                    </button>
+                    <strong>{giphyKind === "gifs" ? "GIFs" : "Figurinhas"}</strong>
+                    <button
+                      type="button"
+                      aria-label="Fechar seletor de mídia"
+                      onClick={() => {
+                        setGiphyKind(null);
+                        setAttachmentOpen(false);
+                      }}
+                    >
+                      <X />
+                    </button>
+                  </div>
+                  <div className="giphy-tabs" role="tablist" aria-label="Tipo de mídia">
+                    <button
+                      type="button"
+                      className={giphyKind === "gifs" ? "active" : ""}
+                      onClick={() => setGiphyKind("gifs")}
+                    >
+                      GIFs
+                    </button>
+                    <button
+                      type="button"
+                      className={giphyKind === "stickers" ? "active" : ""}
+                      onClick={() => setGiphyKind("stickers")}
+                    >
+                      Figurinhas
+                    </button>
+                  </div>
+                  <label className="giphy-search">
+                    <Search />
+                    <input
+                      value={giphyQuery}
+                      onChange={(event) => setGiphyQuery(event.target.value)}
+                      placeholder="Pesquisar no GIPHY"
+                      aria-label="Pesquisar GIFs e figurinhas"
+                    />
+                  </label>
+                  {giphyLoading && !giphyItems.length ? (
+                    <div className="giphy-state">
+                      <RefreshCw className="spin" /> Carregando…
+                    </div>
+                  ) : giphyError ? (
+                    <div className="giphy-state giphy-state--error">{giphyError}</div>
+                  ) : giphyItems.length ? (
+                    <div className="giphy-grid">
+                      {giphyItems.map((item) => (
+                        <button
+                          type="button"
+                          className="giphy-item"
+                          key={item.id}
+                          title={item.title}
+                          disabled={giphyLoading}
+                          onClick={() => void sendGiphy(item)}
+                        >
+                          <img src={absoluteMediaUrl(item.previewUrl)} alt={item.title} loading="lazy" />
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="giphy-state">Nenhuma mídia encontrada.</div>
+                  )}
+                </>
               )}
-              <button onClick={() => setAttachmentOpen(false)}>
-                <X />
-                <span>Fechar</span>
-              </button>
             </div>
           )}
           <input
@@ -3119,42 +3549,75 @@ function Chat({
             </div>
           )}
         </div>
-        <textarea
-          ref={textareaRef}
-          rows={1}
-          placeholder="Digite uma mensagem"
-          value={draft}
-          onChange={(event) => setDraft(event.target.value)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" && !event.shiftKey) {
-              event.preventDefault();
-              void submit();
-            }
-          }}
-        />
-        {draft.trim() ? (
-          <button className="send" title="Enviar" onClick={() => void submit()}>
-            <Send />
-          </button>
+        {recordingDraft ? (
+          <div className="composer-recording-preview">
+            <audio controls src={recordingPreviewUrl} aria-label="Prévia do áudio gravado" />
+            <button
+              type="button"
+              className="composer-recording-cancel"
+              title="Descartar áudio"
+              aria-label="Descartar áudio"
+              onClick={clearRecordingDraft}
+            >
+              <X />
+            </button>
+            <button
+              type="button"
+              className="send"
+              title="Enviar áudio"
+              aria-label="Enviar áudio"
+              onClick={() => void sendRecordingDraft()}
+            >
+              <Send />
+            </button>
+          </div>
         ) : (
-          <button
-            className={recording ? "recording" : ""}
-            title={
-              recording ? "Soltar para enviar" : "Segure para gravar áudio"
-            }
-            onPointerDown={(event) => {
-              event.currentTarget.setPointerCapture(event.pointerId);
-              void startRecording();
-            }}
-            onPointerUp={stopRecording}
-            onPointerCancel={stopRecording}
-            onClick={() => {
-              if (recording) stopRecording();
-            }}
-          >
-            <Mic />
-          </button>
+          <>
+            <textarea
+              ref={textareaRef}
+              rows={1}
+              placeholder="Digite uma mensagem"
+              value={draft}
+              onChange={(event) => setDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submit();
+                }
+              }}
+            />
+            {draft.trim() ? (
+              <button type="button" className="send" title="Enviar" onClick={() => void submit()}>
+                <Send />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className={recording ? "recording" : ""}
+                title={recording ? "Solte para revisar o áudio" : "Segure para gravar áudio"}
+                onPointerDown={(event) => {
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  void startRecording(event);
+                }}
+                onPointerMove={(event) => {
+                  if (!recordingPointerActiveRef.current) return;
+                  const deltaY = event.clientY - recordingStartPointRef.current.y;
+                  if (deltaY < -76) stopRecording(true);
+                }}
+                onPointerUp={() => stopRecording(false)}
+                onPointerCancel={() => stopRecording(true)}
+              >
+                <Mic />
+                {recording && (
+                  <span className="recording-hint">
+                    {recordingCancelling ? "Solte para cancelar" : "Solte para revisar"}
+                  </span>
+                )}
+              </button>
+            )}
+          </>
         )}
+        {recordingError && <span className="recording-error">{recordingError}</span>}
       </footer>
     </main>
   );
@@ -7879,7 +8342,6 @@ export function DashboardApp() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [section, setSection] = useState<Section>(initialSection);
   const [filter, setFilter] = useState<Filter>("all");
-  const [mobileNavStart, setMobileNavStart] = useState(0);
   const [query, setQuery] = useState("");
   const [loadingThreads, setLoadingThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
@@ -7910,6 +8372,13 @@ export function DashboardApp() {
   const lastDashboardReload = useRef(0);
   const lastMessageReload = useRef(0);
   const activeInstanceRef = useRef<number | null>(null);
+  const mobileNavTrackRef = useRef<HTMLDivElement>(null);
+  const mobileNavDragRef = useRef<{
+    startX: number;
+    startScrollLeft: number;
+    moved: boolean;
+  } | null>(null);
+  const mobileNavIgnoreClickRef = useRef(false);
   const updateSessionProfile = useCallback((next: SessionUser) => {
     setSession((current) => {
       const merged = current ? { ...current, ...next } : next;
@@ -7917,6 +8386,12 @@ export function DashboardApp() {
       return merged;
     });
   }, []);
+  useEffect(() => {
+    const active = mobileNavTrackRef.current?.querySelector<HTMLElement>(
+      `[data-nav-section="${section}"]`,
+    );
+    active?.scrollIntoView({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [section]);
 
   useEffect(() => {
     let cancelled = false;
@@ -8491,7 +8966,7 @@ export function DashboardApp() {
     }
   };
 
-  const sendMedia = async (file: File) => {
+  const sendMedia = async (file: File, options: MediaSendOptions = {}) => {
     if (!selected || !session) return;
     const clientMessageId = makeClientId();
     const localUrl = URL.createObjectURL(file);
@@ -8511,17 +8986,29 @@ export function DashboardApp() {
       mediaUrl: localUrl,
       mediaMimeType: file.type,
       fileName: file.name,
-      messageType: mediaType,
+      messageType: options.mediaKind === "sticker" ? "sticker" : mediaType,
       isMine: true,
       direction: "outbound",
       createdAt: new Date().toISOString(),
       deliveryState: "pending",
       optimistic: true,
+      media: {
+        source: options.mediaSource || null,
+        mediaKind: options.mediaKind || null,
+        isAnimated: Boolean(options.isAnimated),
+      },
     };
     setMessages((current) => [...current, optimistic]);
     let serverMediaConfirmed = false;
     try {
-      const result = await api.sendMedia(selected, file, "", clientMessageId);
+      const result = await api.sendMedia(
+        selected,
+        file,
+        "",
+        clientMessageId,
+        false,
+        options,
+      );
       serverMediaConfirmed = Boolean(
         result.message &&
         (result.message.mediaUrl ||
@@ -9199,6 +9686,42 @@ export function DashboardApp() {
     target.addEventListener("pointercancel", finish);
   };
 
+  const handleMobileNavPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) return;
+    const track = event.currentTarget;
+    mobileNavDragRef.current = {
+      startX: event.clientX,
+      startScrollLeft: track.scrollLeft,
+      moved: false,
+    };
+    track.setPointerCapture(event.pointerId);
+    track.classList.add("is-dragging");
+  };
+  const handleMobileNavPointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const drag = mobileNavDragRef.current;
+    if (!drag) return;
+    const track = event.currentTarget;
+    const delta = event.clientX - drag.startX;
+    if (Math.abs(delta) > 5) drag.moved = true;
+    if (drag.moved) {
+      event.preventDefault();
+      track.scrollLeft = drag.startScrollLeft - delta;
+    }
+  };
+  const handleMobileNavPointerEnd = (event: ReactPointerEvent<HTMLDivElement>) => {
+    const track = event.currentTarget;
+    const drag = mobileNavDragRef.current;
+    if (drag?.moved) {
+      mobileNavIgnoreClickRef.current = true;
+      window.setTimeout(() => {
+        mobileNavIgnoreClickRef.current = false;
+      }, 0);
+    }
+    mobileNavDragRef.current = null;
+    track.classList.remove("is-dragging");
+    if (track.hasPointerCapture(event.pointerId)) track.releasePointerCapture(event.pointerId);
+  };
+
   if (session === undefined) return <Loader />;
   if (!session) {
     if (["localhost", "127.0.0.1", "0.0.0.0"].includes(location.hostname))
@@ -9301,21 +9824,23 @@ export function DashboardApp() {
           }}
         />
       )}
-      <nav className="mobile-nav">
-        <button
-          aria-label="Itens anteriores"
-          disabled={mobileNavStart === 0}
-          onClick={() => setMobileNavStart((value) => Math.max(0, value - 1))}
+      <nav className="mobile-nav" aria-label="Navegação do painel">
+        <div
+          className="mobile-nav-track"
+          ref={mobileNavTrackRef}
+          onPointerDown={handleMobileNavPointerDown}
+          onPointerMove={handleMobileNavPointerMove}
+          onPointerUp={handleMobileNavPointerEnd}
+          onPointerCancel={handleMobileNavPointerEnd}
         >
-          <ChevronLeft />
-        </button>
-        {navigation
-          .slice(mobileNavStart, mobileNavStart + 4)
-          .map(({ section: item, icon: Icon, label }) => (
+          {navigation.map(({ section: item, icon: Icon, label }) => (
             <button
+              type="button"
               key={item}
+              data-nav-section={item}
               className={section === item ? "active" : ""}
               onClick={() => {
+                if (mobileNavIgnoreClickRef.current) return;
                 setSection(item);
                 persistSectionInUrl(item);
               }}
@@ -9324,17 +9849,7 @@ export function DashboardApp() {
               <span>{label}</span>
             </button>
           ))}
-        <button
-          aria-label="Mais itens"
-          disabled={mobileNavStart >= navigation.length - 4}
-          onClick={() =>
-            setMobileNavStart((value) =>
-              Math.min(navigation.length - 4, value + 1),
-            )
-          }
-        >
-          <ChevronRight />
-        </button>
+        </div>
       </nav>
       {toast && (
         <div className={`toast ${toastSuccess ? "toast--success" : ""}`}>

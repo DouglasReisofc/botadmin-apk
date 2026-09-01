@@ -153,6 +153,19 @@ export type SweepstakeGroupSnapshot = {
 
 export type JsonRecord = Record<string, unknown>;
 
+export type GiphyMediaItem = {
+  id: string;
+  title: string;
+  type: "gifs" | "stickers";
+  previewUrl: string;
+  originalUrl: string;
+  mp4Url?: string;
+  webpUrl?: string;
+  width?: number | null;
+  height?: number | null;
+  source: "giphy";
+};
+
 export type AuthRegisterResponse = {
   user?: SessionUser;
   message?: string;
@@ -481,12 +494,25 @@ export const api = {
     text: string,
     clientMessageId: string,
     viewOnce = false,
+    options: {
+      mediaKind?: "sticker" | "gif";
+      mediaSource?: string;
+      mediaUrl?: string;
+      mediaThumbnail?: string;
+      isAnimated?: boolean;
+    } = {},
   ) => {
     const form = new FormData();
     form.append("file", file);
     form.append("text", text);
     form.append("clientMessageId", clientMessageId);
     form.append("viewOnce", String(viewOnce));
+    if (options.mediaKind) form.append("mediaKind", options.mediaKind);
+    if (options.mediaSource) form.append("mediaSource", options.mediaSource);
+    if (options.mediaUrl) form.append("mediaUrl", options.mediaUrl);
+    if (options.mediaThumbnail)
+      form.append("mediaThumbnail", options.mediaThumbnail);
+    if (options.isAnimated) form.append("isAnimated", "true");
     if (thread.chatType === "internal_group") {
       const groupId = String(thread.chatJid).replace("internal:", "");
       return request<{ message?: ChatMessage }>(
@@ -499,6 +525,23 @@ export const api = {
       { method: "POST", body: form },
     );
   },
+  giphySearch: (type: "gifs" | "stickers", query = "", offset = 0) =>
+    request<{ items?: GiphyMediaItem[]; pagination?: JsonRecord | null }>(
+      `/api/giphy?type=${encodeURIComponent(type)}&q=${encodeURIComponent(query)}&offset=${Math.max(0, offset)}`,
+    ),
+  giphyMedia: (url: string) =>
+    fetch(`/api/giphy/media?url=${encodeURIComponent(url)}`, {
+      credentials: "include",
+      headers: { Accept: "image/*,video/*,*/*" },
+    }).then(async (response) => {
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as JsonRecord;
+        throw new Error(
+          String(payload.message || "Não foi possível baixar a mídia."),
+        );
+      }
+      return response.blob();
+    }),
   messageAction: (
     thread: ConversationThread,
     message: ChatMessage,

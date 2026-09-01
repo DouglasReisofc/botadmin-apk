@@ -1359,6 +1359,7 @@ img {
   width: 17px;
 }
 .composer {
+  position: relative;
   min-height: 68px;
   padding: 9px 12px;
   display: flex;
@@ -1380,6 +1381,9 @@ img {
 }
 .composer svg {
   width: 23px;
+  height: 23px;
+  flex: 0 0 auto;
+  display: block;
 }
 .composer textarea {
   min-width: 0;
@@ -1439,6 +1443,7 @@ img {
   color: #26353d;
   text-align: left;
   font-size: 12px;
+  white-space: nowrap;
 }
 .attachment-menu button:hover {
   color: #008069;
@@ -1446,6 +1451,159 @@ img {
 }
 .attachment-menu svg {
   width: 18px;
+  height: 18px;
+  flex: 0 0 18px;
+}
+.attachment-menu--media-picker {
+  width: min(340px, calc(100vw - 24px));
+}
+.giphy-picker-heading {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 5px;
+  color: #172b33;
+}
+.giphy-picker-heading strong {
+  flex: 1;
+  font-size: 13px;
+}
+.giphy-picker-heading button {
+  width: 30px;
+  min-height: 30px;
+  padding: 0;
+  justify-content: center;
+}
+.giphy-picker-heading button svg {
+  width: 17px;
+  height: 17px;
+}
+.giphy-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  margin-bottom: 7px;
+  border-bottom: 1px solid #e2e8e9;
+}
+.giphy-tabs button {
+  min-height: 31px;
+  justify-content: center;
+  border-radius: 6px 6px 0 0;
+  color: #667781;
+  font-weight: 700;
+}
+.giphy-tabs button.active {
+  color: #008069;
+  border-bottom: 2px solid #00a884;
+}
+.giphy-search {
+  height: 34px;
+  margin-bottom: 8px;
+  padding: 0 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid #dce3e5;
+  border-radius: 8px;
+  background: #f7f9f9;
+}
+.giphy-search svg {
+  width: 16px;
+  height: 16px;
+  color: #667781;
+}
+.giphy-search input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  color: #172b33;
+  background: transparent;
+  font-size: 12px;
+}
+.giphy-grid {
+  max-height: 250px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 5px;
+  overflow-y: auto;
+}
+.giphy-item {
+  width: 100%;
+  height: 62px;
+  padding: 0;
+  overflow: hidden;
+  border-radius: 7px;
+  background: #eef2f2;
+}
+.giphy-item img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+}
+.giphy-item:hover {
+  outline: 2px solid #00a884;
+}
+.giphy-state {
+  min-height: 72px;
+  display: grid;
+  place-items: center;
+  color: #667781;
+  font-size: 12px;
+  text-align: center;
+}
+.giphy-state--error {
+  padding: 8px;
+  color: #b42318;
+  line-height: 1.35;
+}
+.composer-recording-preview {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 24px;
+  background: #fff;
+}
+.composer-recording-preview audio {
+  min-width: 0;
+  flex: 1;
+  height: 34px;
+}
+.composer-recording-preview button {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+.composer-recording-preview .composer-recording-cancel {
+  color: #b42318;
+}
+.recording-hint {
+  position: absolute;
+  right: 57px;
+  bottom: calc(100% + 7px);
+  padding: 5px 9px;
+  border-radius: 8px;
+  color: #fff;
+  background: #233138;
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.recording-error {
+  position: absolute;
+  right: 10px;
+  bottom: calc(100% + 6px);
+  max-width: min(270px, calc(100vw - 20px));
+  padding: 6px 9px;
+  border-radius: 8px;
+  color: #8b1e1e;
+  background: #fff1f0;
+  font-size: 11px;
 }
 .active-sweepstake-button {
   position: absolute;
@@ -6943,6 +7101,22 @@ img {
 .mobile-nav {
   display: none;
 }
+.mobile-nav-track {
+  display: flex;
+  min-width: 0;
+  height: 100%;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none;
+  touch-action: pan-x;
+}
+.mobile-nav-track::-webkit-scrollbar {
+  display: none;
+}
+.mobile-nav-track.is-dragging {
+  cursor: grabbing;
+  scroll-behavior: auto;
+}
 .local-auth-screen {
   min-height: 100dvh;
   display: grid;
@@ -7459,6 +7633,16 @@ img {
     height: 46px;
     padding-inline: 12px;
   }
+  .composer-recording-preview {
+    padding-inline: 6px;
+  }
+  .composer-recording-preview audio {
+    width: 0;
+    min-width: 0;
+  }
+  .recording-hint {
+    right: 48px;
+  }
   .empty-pane {
     display: none;
   }
@@ -7467,16 +7651,20 @@ img {
     z-index: 25;
     inset: auto 0 0;
     height: 69px;
-    display: grid;
-    grid-template-columns: 33px repeat(4, 1fr) 33px;
+    display: block;
     border-top: 1px solid #e1e6e8;
     background: #fff;
   }
   .app-shell.chat-open .mobile-nav {
     display: none;
   }
+  .mobile-nav-track {
+    padding-inline: 5px;
+  }
   .mobile-nav button {
-    min-width: 0;
+    width: 82px;
+    min-width: 82px;
+    flex: 0 0 82px;
     padding: 5px 1px 3px;
     display: flex;
     flex-direction: column;
@@ -7503,10 +7691,6 @@ img {
   .mobile-nav button:disabled {
     opacity: 0.35;
     cursor: default;
-  }
-  .mobile-nav button:first-child svg,
-  .mobile-nav button:last-child svg {
-    width: 19px;
   }
   .module {
     height: calc(100dvh - 69px);
@@ -8369,6 +8553,28 @@ img {
   background: #233138;
 }
 .theme-dark .emoji-menu button:hover {
+  background: #35434b;
+}
+.theme-dark .giphy-picker-heading {
+  color: #e9edef;
+}
+.theme-dark .giphy-tabs {
+  border-color: #40515a;
+}
+.theme-dark .giphy-tabs button {
+  color: #aebac1;
+}
+.theme-dark .giphy-tabs button.active {
+  color: #66d9bd;
+}
+.theme-dark .giphy-search {
+  border-color: #40515a;
+  background: #111b21;
+}
+.theme-dark .giphy-search input {
+  color: #e9edef;
+}
+.theme-dark .giphy-item {
   background: #35434b;
 }
 .theme-dark .settings-card,
