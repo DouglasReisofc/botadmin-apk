@@ -2913,6 +2913,7 @@ function Chat({
         isAnimated: giphyKind === "gifs",
       });
       setGiphyKind(null);
+      setEmojiOpen(false);
       setAttachmentOpen(false);
     } catch (cause) {
       setGiphyError(
@@ -3384,67 +3385,114 @@ function Chat({
             <Plus />
           </button>
           {attachmentOpen && (
+            <div className="attachment-menu" onClick={(event) => event.stopPropagation()}>
+              <button
+                type="button"
+                onClick={() => {
+                  setAttachmentOpen(false);
+                  mediaInput.current?.click();
+                }}
+              >
+                <Image />
+                <span>Fotos, vídeos e documentos</span>
+              </button>
+              {isGroupChat && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAttachmentOpen(false);
+                    setSweepstakeCreateOpen(true);
+                  }}
+                >
+                  <Trophy />
+                  <span>Sorteio</span>
+                </button>
+              )}
+              <button type="button" onClick={() => setAttachmentOpen(false)}>
+                <X />
+                <span>Fechar</span>
+              </button>
+            </div>
+          )}
+          <input
+            ref={mediaInput}
+            type="file"
+            hidden
+            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
+            onChange={(event) => {
+              const file = event.target.files?.[0];
+              event.target.value = "";
+              if (file) void onSendMedia(file);
+            }}
+          />
+        </div>
+        <div className="composer-emoji">
+          <button
+            title="Emojis"
+            aria-expanded={emojiOpen}
+            onClick={() => {
+              setAttachmentOpen(false);
+              setGiphyKind(null);
+              setEmojiOpen((value) => !value);
+            }}
+          >
+            <Smile />
+          </button>
+          {emojiOpen && (
             <div
-              className={`attachment-menu ${giphyKind ? "attachment-menu--media-picker" : ""}`}
+              className={`emoji-menu ${giphyKind ? "emoji-menu--media-picker" : ""}`}
               onClick={(event) => event.stopPropagation()}
             >
               {!giphyKind ? (
                 <>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setAttachmentOpen(false);
-                      mediaInput.current?.click();
-                    }}
-                  >
-                    <Image />
-                    <span>Fotos, vídeos e documentos</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGiphyQuery("");
-                      setGiphyError("");
-                      setGiphyKind("gifs");
-                    }}
-                  >
-                    <Image />
-                    <span>GIFs</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setGiphyQuery("");
-                      setGiphyError("");
-                      setGiphyKind("stickers");
-                    }}
-                  >
-                    <Smile />
-                    <span>Figurinhas</span>
-                  </button>
-                  {isGroupChat && (
+                  <div className="emoji-tabs" role="tablist" aria-label="Emojis e mídias">
                     <button
                       type="button"
+                      className="active"
+                      role="tab"
+                      aria-selected="true"
+                    >
+                      Emojis
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
                       onClick={() => {
-                        setAttachmentOpen(false);
-                        setSweepstakeCreateOpen(true);
+                        setGiphyQuery("");
+                        setGiphyError("");
+                        setGiphyKind("gifs");
                       }}
                     >
-                      <Trophy />
-                      <span>Sorteio</span>
+                      GIFs
                     </button>
-                  )}
-                  <button type="button" onClick={() => setAttachmentOpen(false)}>
-                    <X />
-                    <span>Fechar</span>
-                  </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected="false"
+                      onClick={() => {
+                        setGiphyQuery("");
+                        setGiphyError("");
+                        setGiphyKind("stickers");
+                      }}
+                    >
+                      Figurinhas
+                    </button>
+                  </div>
+                  <div className="emoji-grid">
+                    {composerEmojis.map((emoji) => (
+                      <button type="button" key={emoji} onClick={() => insertEmoji(emoji)}>
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </>
               ) : (
                 <>
                   <div className="giphy-picker-heading">
                     <button
                       type="button"
-                      aria-label="Voltar para anexos"
+                      aria-label="Voltar para emojis"
                       onClick={() => setGiphyKind(null)}
                     >
                       <ArrowLeft />
@@ -3455,7 +3503,7 @@ function Chat({
                       aria-label="Fechar seletor de mídia"
                       onClick={() => {
                         setGiphyKind(null);
-                        setAttachmentOpen(false);
+                        setEmojiOpen(false);
                       }}
                     >
                       <X />
@@ -3512,38 +3560,6 @@ function Chat({
                   )}
                 </>
               )}
-            </div>
-          )}
-          <input
-            ref={mediaInput}
-            type="file"
-            hidden
-            accept="image/*,video/*,audio/*,.pdf,.doc,.docx,.xls,.xlsx"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              event.target.value = "";
-              if (file) void onSendMedia(file);
-            }}
-          />
-        </div>
-        <div className="composer-emoji">
-          <button
-            title="Emojis"
-            aria-expanded={emojiOpen}
-            onClick={() => {
-              setAttachmentOpen(false);
-              setEmojiOpen((value) => !value);
-            }}
-          >
-            <Smile />
-          </button>
-          {emojiOpen && (
-            <div className="emoji-menu">
-              {composerEmojis.map((emoji) => (
-                <button key={emoji} onClick={() => insertEmoji(emoji)}>
-                  {emoji}
-                </button>
-              ))}
             </div>
           )}
         </div>
