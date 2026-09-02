@@ -4733,12 +4733,90 @@ export const recordWhatsappMessageFromNormalized = async (options: {
   });
 };
 
-export const listWhatsappConversationThreads = async (
+export type WhatsappConversationThreadPage = {
+  threads: WhatsappConversationThread[];
+  hasMore: boolean;
+  nextCursor: string | null;
+};
+
+const parseThreadCursor = (value: string | null | undefined) => {
+  const raw = typeof value === "string" ? value.trim() : "";
+  if (!raw) return null;
+  const parts = raw.split("|");
+  if (parts.length < 3) return null;
+  const lastMessageAt = parts[0] === "null" ? null : new Date(parts[0]);
+  const updatedAt = parts[1] === "null" ? null : new Date(parts[1]);
+  const id = Number.parseInt(parts[2] || "", 10);
+  if (lastMessageAt && Number.isNaN(lastMessageAt.getTime())) return null;
+  if (updatedAt && Number.isNaN(updatedAt.getTime())) return null;
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return { lastMessageAt, updatedAt, id };
+};
+
+const serializeThreadCursor = (thread: WhatsappConversationThread) =>
+  `${thread.lastMessageAt ? new Date(thread.lastMessageAt).toISOString() : "null"}|${thread.updatedAt ? new Date(thread.updatedAt).toISOString() : "null"}|${thread.id}`;
+
+export const listWhatsappConversationThreadPage = async (
   userId: number,
   instanceId: number,
-): Promise<WhatsappConversationThread[]> => {
+  options: { limit?: number; before?: string | null } = {},
+): Promise<WhatsappConversationThreadPage> => {
   await ensureWhatsappConversationTables();
   const db = getDb();
+  const requestedLimit = Number(options.limit ?? 0);
+  const hasLimit = Number.isFinite(requestedLimit) && requestedLimit > 0;
+  const limit = hasLimit
+    ? Math.min(Math.max(Math.floor(requestedLimit), 1), 200)
+    : 0;
+  const cursor = parseThreadCursor(options.before);
+  const where: string[] = [
+    "c.user_id = ?",
+    "c.instance_id = ?",
+    "c.chat_type <> 'broadcast'",
+    "c.chat_jid NOT LIKE '%@broadcast'",
+    "c.chat_jid <> 'status@broadcast'",
+  ];
+  const params: Array<number | Date> = [userId, instanceId];
+  if (cursor) {
+    if (cursor.lastMessageAt) {
+      // The directory ordering places conversations without activity after
+      // every active conversation. Keep the tie-breakers identical to the
+      // ORDER BY so a cursor never repeats or skips a row.
+      where.push(`
+        (
+          c.last_message_at < ?
+          OR (
+            c.last_message_at = ?
+            AND (
+              c.updated_at < ?
+              OR (c.updated_at = ? AND c.id < ?)
+            )
+          )
+          OR c.last_message_at IS NULL
+        )
+      `);
+      params.push(
+        cursor.lastMessageAt,
+        cursor.lastMessageAt,
+        cursor.updatedAt ?? cursor.lastMessageAt,
+        cursor.updatedAt ?? cursor.lastMessageAt,
+        cursor.id,
+      );
+    } else {
+      // Once the cursor reaches inactive rows, only the updated/id tie
+      // breakers remain relevant.
+      where.push(`
+        c.last_message_at IS NULL
+        AND (
+          c.updated_at < ?
+          OR (c.updated_at = ? AND c.id < ?)
+        )
+      `);
+      const fallbackUpdated = cursor.updatedAt ?? new Date(0);
+      params.push(fallbackUpdated, fallbackUpdated, cursor.id);
+    }
+  }
+  const sqlLimit = hasLimit ? `LIMIT ${limit + 1}` : "";
   const [rows] = await db.query<ThreadRow[]>(
     `
       SELECT
@@ -4770,20 +4848,32 @@ export const listWhatsappConversationThreads = async (
         ON n.user_id = c.user_id
        AND n.instance_id = c.instance_id
        AND n.chat_jid = c.chat_jid
-      WHERE c.user_id = ?
-        AND c.instance_id = ?
-        AND c.chat_type <> 'broadcast'
-        AND c.chat_jid NOT LIKE '%@broadcast'
-        AND c.chat_jid <> 'status@broadcast'
+      WHERE ${where.join("\n        AND ")}
       ORDER BY
         CASE WHEN c.last_message_at IS NULL THEN 1 ELSE 0 END ASC,
         c.last_message_at DESC,
         c.updated_at DESC,
         c.id DESC
+      ${sqlLimit}
     `,
-    [userId, instanceId],
+    params,
   );
-  return rows.map(mapThreadRow);
+  const hasMore = hasLimit && rows.length > limit;
+  const pageRows = hasMore ? rows.slice(0, limit) : rows;
+  const threads = pageRows.map(mapThreadRow);
+  return {
+    threads,
+    hasMore,
+    nextCursor: hasMore && threads.length ? serializeThreadCursor(threads[threads.length - 1]) : null,
+  };
+};
+
+export const listWhatsappConversationThreads = async (
+  userId: number,
+  instanceId: number,
+): Promise<WhatsappConversationThread[]> => {
+  const page = await listWhatsappConversationThreadPage(userId, instanceId);
+  return page.threads;
 };
 
 export const listWhatsappHistorySyncAnchors = async (

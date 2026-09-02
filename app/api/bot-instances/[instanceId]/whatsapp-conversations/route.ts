@@ -9,6 +9,7 @@ import {
   getWhatsappChatPhone,
   getWhatsappChatType,
   listKnownWhatsappSenderIdentitiesForUser,
+  listWhatsappConversationThreadPage,
   listWhatsappConversationThreads,
   normalizeWhatsappChatJid,
   restoreWhatsappConversationThreadsFromRealtimeEvents,
@@ -23,6 +24,11 @@ import {
 // requests (and trigger provider rate limits).
 const directorySyncAt = new Map<number, number>();
 const DIRECTORY_SYNC_COOLDOWN_MS = 30_000;
+// Restoring events is a recovery operation, not part of every directory
+// read. Running it on every page open scans thousands of rows and performs an
+// upsert for each chat before the user can see the first conversation.
+const realtimeThreadRestoreAt = new Map<number, number>();
+const REALTIME_THREAD_RESTORE_COOLDOWN_MS = 30_000;
 import type { BotGroup } from "types/bot-groups";
 
 type Context = { params: Promise<{ instanceId: string }> };
@@ -388,6 +394,46 @@ const sortThreads = (threads: WhatsappConversationThread[]) =>
     return leftTitle.localeCompare(rightTitle, "pt-BR");
   });
 
+type ConversationCursor = {
+  lastMessageAt: number | null;
+  updatedAt: number | null;
+  id: number;
+};
+
+const parseConversationCursor = (value: string | null): ConversationCursor | null => {
+  if (!value) return null;
+  const parts = value.split("|");
+  if (parts.length < 3) return null;
+  const lastMessageAt = parts[0] === "null" ? null : Date.parse(parts[0]);
+  const updatedAt = parts[1] === "null" ? null : Date.parse(parts[1]);
+  const id = Number.parseInt(parts[2] || "", 10);
+  if ((lastMessageAt !== null && !Number.isFinite(lastMessageAt)) ||
+      (updatedAt !== null && !Number.isFinite(updatedAt)) ||
+      !Number.isFinite(id) || id <= 0) {
+    return null;
+  }
+  return { lastMessageAt, updatedAt, id };
+};
+
+const isThreadBeforeCursor = (
+  thread: WhatsappConversationThread,
+  cursor: ConversationCursor | null,
+) => {
+  if (!cursor) return true;
+  const lastMessageAt = thread.lastMessageAt ? Date.parse(thread.lastMessageAt) : null;
+  if (cursor.lastMessageAt === null) {
+    if (lastMessageAt !== null) return false;
+  } else if (lastMessageAt === null) {
+    return true;
+  } else if (lastMessageAt !== cursor.lastMessageAt) {
+    return lastMessageAt < cursor.lastMessageAt;
+  }
+  const updatedAt = thread.updatedAt ? Date.parse(thread.updatedAt) : 0;
+  const cursorUpdatedAt = cursor.updatedAt ?? 0;
+  if (updatedAt !== cursorUpdatedAt) return updatedAt < cursorUpdatedAt;
+  return Number(thread.id || 0) < cursor.id;
+};
+
 const hasRecordedConversationActivity = (thread: WhatsappConversationThread) => {
   const preview = (thread.lastMessagePreview || "").trim();
   return Boolean(
@@ -408,13 +454,17 @@ const parseBooleanQueryFlag = (value: string | null) => {
 
 const shouldExposeThread = (
   thread: WhatsappConversationThread,
-  options: { includeContacts?: boolean } = {},
+  _options: { includeContacts?: boolean } = {},
 ) => {
   const chatType = thread.chatType === "unknown" ? getWhatsappChatType(thread.chatJid) : thread.chatType;
   if (chatType === "broadcast") return false;
   if (chatType === "contact" && isLikelyWhatsappGroupDigits(thread.chatJid)) return false;
   if (chatType !== "contact") return true;
-  return options.includeContacts === true && hasRecordedConversationActivity(thread);
+  // includeContacts controls identity enrichment, not visibility. A private
+  // conversation with recorded activity belongs in the fast local snapshot;
+  // hiding it until the slower hydration request was the main reason the
+  // directory appeared empty or incomplete after opening the panel.
+  return hasRecordedConversationActivity(thread);
 };
 
 const getAvatarRenderableUrl = (avatar: Awaited<ReturnType<typeof getUserAvatar>>) => {
@@ -682,23 +732,59 @@ export async function GET(request: Request, context: Context) {
       Date.now() - lastDirectorySync >= DIRECTORY_SYNC_COOLDOWN_MS;
     const includeContacts = parseBooleanQueryFlag(url.searchParams.get("includeContacts"));
     const refreshAvatars = parseBooleanQueryFlag(url.searchParams.get("refreshAvatars"));
+    const requestedLimitRaw = Number.parseInt(url.searchParams.get("limit") || "", 10);
+    const requestedLimit = Number.isFinite(requestedLimitRaw)
+      ? Math.min(Math.max(requestedLimitRaw, 1), 100)
+      : null;
+    const requestedBefore = url.searchParams.get("before")?.trim() || null;
     const invalidConversationTitles = new Set(
       [instance.name, instance.phone]
         .flatMap((value) => [normalizeIdentityText(value), normalizeIdentityDigits(value)])
         .filter(Boolean),
     );
 
-    if (isOwnerInstance) {
-      await restoreWhatsappConversationThreadsFromRealtimeEvents(storageUserId, instance.id).catch((error) => {
+    // The local conversation index is the source for the first paint. A
+    // realtime-event restore is only needed for recovery/explicit sync, and
+    // is coalesced so opening two tabs cannot trigger two full scans.
+    let basePage = requestedLimit
+      ? await listWhatsappConversationThreadPage(storageUserId, instance.id, {
+          limit: requestedLimit,
+          before: requestedBefore,
+        })
+      : null;
+    let rawBaseThreads = basePage
+      ? basePage.threads
+      : await listWhatsappConversationThreads(storageUserId, instance.id);
+    const lastRestore = realtimeThreadRestoreAt.get(instance.id) ?? 0;
+    const shouldRestoreThreads =
+      isOwnerInstance &&
+      (requestedDirectorySync || rawBaseThreads.length === 0) &&
+      Date.now() - lastRestore >= REALTIME_THREAD_RESTORE_COOLDOWN_MS;
+    if (shouldRestoreThreads) {
+      realtimeThreadRestoreAt.set(instance.id, Date.now());
+      await restoreWhatsappConversationThreadsFromRealtimeEvents(
+        storageUserId,
+        instance.id,
+        // A normal empty-index recovery only needs the latest window. An
+        // explicit sync can still replay the larger recovery window.
+        { limit: requestedDirectorySync ? 5000 : 500 },
+      ).catch((error) => {
         console.warn("[whatsapp-conversations] failed to restore threads from realtime events", {
           userId: storageUserId,
           instanceId: instance.id,
           error,
         });
       });
+      basePage = requestedLimit
+        ? await listWhatsappConversationThreadPage(storageUserId, instance.id, {
+            limit: requestedLimit,
+            before: requestedBefore,
+          })
+        : null;
+      rawBaseThreads = basePage
+        ? basePage.threads
+        : await listWhatsappConversationThreads(storageUserId, instance.id);
     }
-
-    const rawBaseThreads = await listWhatsappConversationThreads(storageUserId, instance.id);
     const baseThreads = isOwnerInstance
       ? rawBaseThreads
       : rawBaseThreads.filter((thread) => allowedChatJids.has(thread.chatJid));
@@ -707,7 +793,15 @@ export async function GET(request: Request, context: Context) {
 
     try {
       const savedGroups = isOwnerInstance
-        ? await listGroupsForUser(user.id, { includeParticipants: true })
+        ? await listGroupsForUser(user.id, {
+            // Participant JSON is only required by the group settings modal.
+            // Avoid parsing it for every row while opening the directory.
+            includeParticipants: requestedDirectorySync,
+            // License/slot maintenance runs on writes and scheduled jobs. It
+            // must not block the first conversation snapshot.
+            skipMaintenance: !requestedDirectorySync,
+            instanceId: instance.id,
+          })
         : sharedGroups;
       for (const group of savedGroups) {
         if (group.instanceId !== instance.id) {
@@ -743,18 +837,26 @@ export async function GET(request: Request, context: Context) {
             : "Somente administradores podem enviar mensagens.",
           directorySource: "groups",
         });
-        await persistThreadIdentityIfUseful(merged.get(chatJid), thread, invalidConversationTitles);
+        if (requestedDirectorySync) {
+          await persistThreadIdentityIfUseful(merged.get(chatJid), thread, invalidConversationTitles);
+        }
         mergeThread(merged, thread, { invalidTitles: invalidConversationTitles });
       }
     } catch (error) {
       console.warn("[whatsapp-conversations] failed to merge saved groups", { error });
     }
 
+    // Status refresh performs a remote worker round-trip. The directory is
+    // intentionally read-only on the hot path; the dedicated status endpoint
+    // and explicit directory sync keep this value current without delaying the
+    // first conversation snapshot.
     let sessionStatus = instance.sessionStatus;
-    try {
-      sessionStatus = await refreshInstanceStatus(storageUserId, instance.id);
-    } catch (error) {
-      console.warn("[whatsapp-conversations] failed to refresh instance status", { error });
+    if (requestedDirectorySync) {
+      try {
+        sessionStatus = await refreshInstanceStatus(storageUserId, instance.id);
+      } catch (error) {
+        console.warn("[whatsapp-conversations] failed to refresh instance status", { error });
+      }
     }
 
     if (isOwnerInstance && syncDirectory && sessionStatus === "conectado" && instance.serverBaseUrl) {
@@ -895,17 +997,39 @@ export async function GET(request: Request, context: Context) {
       });
     }
 
-    await enrichContactThreadsFromCachedIdentities({
-      merged,
-      userId: storageUserId,
-      instanceId: instance.id,
-      invalidTitles: invalidConversationTitles,
-    });
+    if (includeContacts) {
+      await enrichContactThreadsFromCachedIdentities({
+        merged,
+        userId: storageUserId,
+        instanceId: instance.id,
+        invalidTitles: invalidConversationTitles,
+      });
+    }
 
-      const responseThreads = sortThreads(
+      const orderedThreads = sortThreads(
         Array.from(merged.values()).filter((thread) => shouldExposeThread(thread, { includeContacts })),
-      )
-        .map(sanitizeWhatsappConversationThreadForTransport);
+      );
+      // Directory entries from saved groups/contacts are merged with the
+      // local index. Apply the page boundary after merging so the first page
+      // remains globally sorted even when a group was hydrated from metadata.
+      const cursor = requestedLimit ? parseConversationCursor(requestedBefore) : null;
+      const pageCandidates = requestedLimit
+        ? orderedThreads.filter((thread) => isThreadBeforeCursor(thread, cursor))
+        : orderedThreads;
+      const responseThreads = requestedLimit
+        ? pageCandidates.slice(0, requestedLimit)
+        : pageCandidates;
+      const hasMore = requestedLimit
+        ? Boolean(basePage?.hasMore || pageCandidates.length > requestedLimit)
+        : false;
+      const nextCursor =
+        hasMore && responseThreads.length
+          ? (() => {
+              const last = responseThreads[responseThreads.length - 1];
+              return `${last.lastMessageAt ? new Date(last.lastMessageAt).toISOString() : "null"}|${last.updatedAt ? new Date(last.updatedAt).toISOString() : "null"}|${last.id}`;
+            })()
+          : null;
+      const serializedThreads = responseThreads.map(sanitizeWhatsappConversationThreadForTransport);
 
 	    return NextResponse.json({
 	      instance: {
@@ -914,7 +1038,9 @@ export async function GET(request: Request, context: Context) {
         phone: instance.phone,
         sessionStatus,
       },
-      threads: responseThreads,
+      threads: serializedThreads,
+      hasMore,
+      nextCursor,
       directoryErrors,
     });
   } catch (error) {

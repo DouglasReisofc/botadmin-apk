@@ -404,13 +404,20 @@ export const api = {
     ),
   conversations: (
     instanceId: number,
-    options: { includeContacts?: boolean; refreshAvatars?: boolean } = {},
+    options: {
+      includeContacts?: boolean;
+      refreshAvatars?: boolean;
+      limit?: number;
+      before?: string | number | null;
+    } = {},
   ) =>
     request<{
       conversations?: ConversationThread[];
       threads?: ConversationThread[];
+      hasMore?: boolean;
+      nextCursor?: string | null;
     }>(
-      `/api/bot-instances/${instanceId}/whatsapp-conversations?sync=0&includeContacts=${options.includeContacts === false ? 0 : 1}${options.refreshAvatars ? "&refreshAvatars=1" : ""}`,
+      `/api/bot-instances/${instanceId}/whatsapp-conversations?sync=0&includeContacts=${options.includeContacts === false ? 0 : 1}${options.refreshAvatars ? "&refreshAvatars=1" : ""}${options.limit ? `&limit=${encodeURIComponent(String(options.limit))}` : ""}${options.before !== null && options.before !== undefined ? `&before=${encodeURIComponent(String(options.before))}` : ""}`,
     ),
   internalGroups: async () => {
     const result = await request<{ groups?: InternalGroup[] }>(

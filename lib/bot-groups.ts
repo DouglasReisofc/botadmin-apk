@@ -80,6 +80,10 @@ export type BotGroupAccess = {
 type ListGroupsForUserOptions = {
   includeParticipants?: boolean;
   includeShared?: boolean;
+  /** Avoid subscription/slot maintenance on latency-sensitive directory reads. */
+  skipMaintenance?: boolean;
+  /** Restrict admin-wide results to the instance currently being opened. */
+  instanceId?: number;
 };
 
 type GroupContextRow = BotGroupRow & {
@@ -2393,9 +2397,16 @@ export const listGroupsForUser = async (
   options: ListGroupsForUserOptions = {},
 ): Promise<BotGroup[]> => {
   await ensureBotGroupTable();
-  await refreshBasePlanGroupLicensesForUser(userId);
-  await normalizeActiveGroupSlotsForUser(userId);
+  if (!options.skipMaintenance) {
+    await refreshBasePlanGroupLicensesForUser(userId);
+    await normalizeActiveGroupSlotsForUser(userId);
+  }
   const db = getDb();
+  const instanceId = Number(options.instanceId ?? 0);
+  const hasInstanceFilter = Number.isFinite(instanceId) && instanceId > 0;
+  const instanceClause = hasInstanceFilter ? " AND bg.instance_id = ?" : "";
+  const ownParams: number[] = [userId];
+  if (hasInstanceFilter) ownParams.push(instanceId);
   const [rows] = await db.query<(BotGroupWithInstanceRow & RowDataPacket)[]>(
     `
       SELECT
@@ -2405,10 +2416,11 @@ export const listGroupsForUser = async (
       FROM bot_groups bg
       LEFT JOIN bot_instances bi ON bi.id = bg.instance_id
       WHERE bg.user_id = ?
+        ${instanceClause}
         AND bg.remote_id NOT LIKE 'botadmin-internal:%'
       ORDER BY bg.slot ASC, bg.id ASC
     `,
-    [userId],
+    ownParams,
   );
 
   const ownGroups = Array.isArray(rows) ? rows.map((row) => mapRowToGroup(row, options)) : [];
@@ -2417,6 +2429,8 @@ export const listGroupsForUser = async (
     if (!isAdmin) {
       return ownGroups;
     }
+    const adminParams: number[] = [];
+    if (hasInstanceFilter) adminParams.push(instanceId);
     const [adminRows] = await db.query<(BotGroupWithInstanceRow & RowDataPacket)[]>(
       `
         SELECT
@@ -2426,8 +2440,10 @@ export const listGroupsForUser = async (
         FROM bot_groups bg
         LEFT JOIN bot_instances bi ON bi.id = bg.instance_id
         WHERE bg.remote_id NOT LIKE 'botadmin-internal:%'
+          ${instanceClause}
         ORDER BY bg.slot ASC, bg.id ASC
       `,
+      adminParams,
     );
     const byId = new Map<number, BotGroup>();
     for (const group of Array.isArray(adminRows) ? adminRows.map((row) => mapRowToGroup(row, options)) : []) {
@@ -2447,10 +2463,11 @@ export const listGroupsForUser = async (
       INNER JOIN bot_groups bg ON bg.id = bgs.group_id
       LEFT JOIN bot_instances bi ON bi.id = bg.instance_id
       WHERE bgs.shared_user_id = ?
+        ${hasInstanceFilter ? " AND bg.instance_id = ?" : ""}
         AND bg.remote_id NOT LIKE 'botadmin-internal:%'
       ORDER BY bg.slot ASC, bg.id ASC
     `,
-    [userId],
+    hasInstanceFilter ? [userId, instanceId] : [userId],
   );
   const sharedGroups = Array.isArray(sharedRows)
     ? sharedRows.map((row) => ({
@@ -2464,6 +2481,8 @@ export const listGroupsForUser = async (
     byId.set(group.id, group);
   }
   if (isAdmin) {
+    const adminParams: number[] = [];
+    if (hasInstanceFilter) adminParams.push(instanceId);
     const [adminRows] = await db.query<(BotGroupWithInstanceRow & RowDataPacket)[]>(
       `
         SELECT
@@ -2473,8 +2492,10 @@ export const listGroupsForUser = async (
         FROM bot_groups bg
         LEFT JOIN bot_instances bi ON bi.id = bg.instance_id
         WHERE bg.remote_id NOT LIKE 'botadmin-internal:%'
+          ${instanceClause}
         ORDER BY bg.slot ASC, bg.id ASC
       `,
+      adminParams,
     );
     for (const group of Array.isArray(adminRows) ? adminRows.map((row) => mapRowToGroup(row, options)) : []) {
       byId.set(group.id, group);

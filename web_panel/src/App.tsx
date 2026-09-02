@@ -217,6 +217,7 @@ const persistSectionInUrl = (section: Section) => {
 };
 
 const API_ORIGIN = "https://botadmin.shop";
+const DIRECTORY_PAGE_SIZE = 40;
 const brandLogo = `${API_ORIGIN}/images/brand/botadmin-logo.webp`;
 const emptyLogo = `${API_ORIGIN}/images/brand/messages-empty-logo.png`;
 const normalizePublicLink = (value: string) => {
@@ -898,6 +899,24 @@ function normalizeThreads(threads: ConversationThread[]) {
   );
 }
 
+const recentThreadWindow = (
+  threads: ConversationThread[],
+  instanceId?: number | null,
+) => {
+  const normalized = normalizeThreads(threads);
+  const internal = normalized.filter(
+    (thread) => thread.chatType === "internal_group",
+  );
+  const whatsapp = normalized
+    .filter(
+      (thread) =>
+        thread.chatType !== "internal_group" &&
+        (!instanceId || thread.instanceId === instanceId),
+    )
+    .slice(0, DIRECTORY_PAGE_SIZE);
+  return normalizeThreads([...internal, ...whatsapp]);
+};
+
 const normalizeChatIdentity = (value: unknown) =>
   String(value ?? "").trim().toLowerCase();
 
@@ -1336,6 +1355,9 @@ function ThreadList({
   loading,
   onSelect,
   onAction,
+  onLoadMore,
+  loadingMore,
+  hasMore,
 }: {
   threads: ConversationThread[];
   selected: ConversationThread | null;
@@ -1344,6 +1366,9 @@ function ThreadList({
   loading: boolean;
   onSelect: (thread: ConversationThread) => void;
   onAction: (thread: ConversationThread, action: ConversationUiAction) => void;
+  onLoadMore: () => void;
+  loadingMore: boolean;
+  hasMore: boolean;
 }) {
   const [contextMenu, setContextMenu] = useState<{
     thread: ConversationThread;
@@ -1443,7 +1468,22 @@ function ThreadList({
       );
       return;
     }
+    const wasLoading = loadingRef.current;
     loadingRef.current = false;
+    // Treat the first ordered snapshot after a cache/API hydration as a new
+    // baseline. It must not run the reorder animation or scroll correction:
+    // those are for live directory changes only and otherwise make the recent
+    // conversation visibly jump while the page is opening.
+    if (wasLoading) {
+      threadSignatureRef.current = signature;
+      threadPositionsRef.current = new Map(
+        Array.from(list.querySelectorAll<HTMLElement>("[data-thread-key]")).map(
+          (element) => [element.dataset.threadKey || "", element.offsetTop],
+        ),
+      );
+      if (!viewportAnchorRef.current && visible.length) rememberViewport();
+      return;
+    }
     if (!filterChanged && previousSignature && signature !== previousSignature) {
       const atTop = list.scrollTop <= 48;
       const anchor = viewportAnchorRef.current;
@@ -1502,11 +1542,9 @@ function ThreadList({
     [],
   );
 
-  // Never paint a stale cache while the initial directory snapshot is being
-  // reconciled. Rendering it first and sorting it again after the API response
-  // is what made the most recent conversation visibly oscillate to the top.
-  // The cache is still used by DashboardApp as a fallback if the request fails.
-  if (loading) {
+  // A cached directory is valid content, not a loading placeholder. It should
+  // stay interactive while the server hydrates newer rows in the background.
+  if (loading && !threads.length) {
     return (
       <div className="thread-list" aria-busy="true">
         <div className="list-state" role="status" aria-live="polite">
@@ -1523,6 +1561,15 @@ function ThreadList({
       ref={listRef}
       onScroll={() => {
         rememberViewport();
+        const list = listRef.current;
+        if (
+          list &&
+          hasMore &&
+          !loadingMore &&
+          list.scrollHeight - list.scrollTop - list.clientHeight < 280
+        ) {
+          onLoadMore();
+        }
       }}
     >
       {visible.map((thread) => {
@@ -1649,6 +1696,19 @@ function ThreadList({
           )}
         </div>
       )}
+      {hasMore && (
+        <div className="list-state thread-list-more" aria-live="polite">
+          {loadingMore ? (
+            <>
+              <RefreshCw className="spin" /> Carregando mais conversas…
+            </>
+          ) : (
+            <button type="button" className="ghost-button" onClick={onLoadMore}>
+              Carregar mais conversas
+            </button>
+          )}
+        </div>
+      )}
       {contextMenu && (
         <div
           className="thread-context-menu"
@@ -1708,6 +1768,9 @@ function Directory({
   onFilter,
   onSelect,
   onAction,
+  onLoadMore,
+  loadingMore,
+  hasMore,
   onDirectoryAction,
 }: {
   threads: ConversationThread[];
@@ -1721,6 +1784,9 @@ function Directory({
   onFilter: (filter: Filter) => void;
   onSelect: (thread: ConversationThread) => void;
   onAction: (thread: ConversationThread, action: ConversationUiAction) => void;
+  onLoadMore: () => void;
+  loadingMore: boolean;
+  hasMore: boolean;
   onDirectoryAction: (action: DirectoryAction) => void;
 }) {
   const [headerMenuOpen, setHeaderMenuOpen] = useState(false);
@@ -1729,9 +1795,10 @@ function Directory({
       typeof Notification !== "undefined" &&
       Notification.permission === "default",
   );
-  // Keep counters and rows in the same atomic snapshot. An old cache must not
-  // flash in the filter badges while the directory is waiting for hydration.
-  const directoryThreads = loading ? [] : threads;
+  // Keep the cached snapshot in the counters and filters while the API
+  // hydrates. This avoids a blank directory and keeps the newest known chat
+  // usable from the first frame after authentication.
+  const directoryThreads = threads;
   const count = (predicate: (thread: ConversationThread) => boolean) =>
     directoryThreads.filter(predicate).length;
   const filters: Array<[Filter, string, number | null]> = [
@@ -1955,6 +2022,9 @@ function Directory({
           loading,
           onSelect,
           onAction,
+          onLoadMore,
+          loadingMore,
+          hasMore,
         }}
       />
       <button
@@ -10177,6 +10247,8 @@ export function DashboardApp() {
   // Start in the directory-loading state so a stale/empty placeholder cannot
   // flash between authentication and the first ordered conversation snapshot.
   const [loadingThreads, setLoadingThreads] = useState(true);
+  const [loadingMoreThreads, setLoadingMoreThreads] = useState(false);
+  const [hasMoreThreads, setHasMoreThreads] = useState(false);
   const [loadingMessages, setLoadingMessages] = useState(false);
   const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
   const [hasOlderMessages, setHasOlderMessages] = useState(false);
@@ -10210,6 +10282,7 @@ export function DashboardApp() {
   const lastDashboardReload = useRef(0);
   const lastMessageReload = useRef(0);
   const directoryRequestRef = useRef(0);
+  const threadCursorRef = useRef<string | null>(null);
   const directoryInitialLoadingRef = useRef(true);
   const pendingRealtimeThreadsRef = useRef<Map<string, ConversationThread>>(
     new Map(),
@@ -10313,7 +10386,7 @@ export function DashboardApp() {
       const threadCache = cacheKey("threads", user.id);
       const internalCache = cacheKey("internal-groups", user.id);
       if (!quiet) {
-        const cached = normalizeThreads(
+        const cached = recentThreadWindow(
           safeJsonRead<ConversationThread[]>(threadCache, []),
         );
         if (cached.length) setThreads(cached);
@@ -10321,6 +10394,8 @@ export function DashboardApp() {
         // gate closed to the list until API hydration has produced one atomic
         // ordered snapshot. ThreadList therefore never paints stale rows first.
         directoryInitialLoadingRef.current = true;
+        threadCursorRef.current = null;
+        setHasMoreThreads(false);
         setLoadingThreads(true);
       }
       try {
@@ -10365,9 +10440,17 @@ export function DashboardApp() {
         const [activeResult, internalResult, botGroups] = await Promise.all([
           activeId
             ? api
-                .conversations(activeId, { includeContacts: quiet })
+                .conversations(activeId, {
+                  includeContacts: quiet,
+                  limit: DIRECTORY_PAGE_SIZE,
+                })
                 .catch(() => null)
-            : Promise.resolve({ threads: [], conversations: [] }),
+            : Promise.resolve({
+                threads: [],
+                conversations: [],
+                hasMore: false,
+                nextCursor: null,
+              }),
           internalPromise,
           botGroupsPromise,
         ]);
@@ -10405,11 +10488,27 @@ export function DashboardApp() {
           ]),
           botGroups,
         );
-        setThreads(nextThreads);
-        localStorage.setItem(threadCache, JSON.stringify(nextThreads));
+        if (!quiet) {
+          threadCursorRef.current = activeResult.nextCursor || null;
+          setHasMoreThreads(Boolean(activeResult.hasMore));
+        }
+        setThreads((current) => {
+          const mergedThreads = quiet
+            ? normalizeThreads([...current, ...nextThreads])
+            : nextThreads;
+          localStorage.setItem(threadCache, JSON.stringify(mergedThreads));
+          return mergedThreads;
+        });
+        // The local index already contains the ordered recent conversations.
+        // Release the blocking state now; contact/avatar hydration below is a
+        // background reconciliation and must never delay the first paint.
+        if (!quiet) setLoadingThreads(false);
         if (activeId && !quiet) {
-          await api
-            .conversations(activeId, { includeContacts: true })
+          void api
+            .conversations(activeId, {
+              includeContacts: true,
+              limit: DIRECTORY_PAGE_SIZE,
+            })
             .then((directoryResult) => {
               if (
                 requestId !== directoryRequestRef.current ||
@@ -10425,6 +10524,8 @@ export function DashboardApp() {
                   ? directoryResult.conversations || []
                   : [];
               const latePending = [...pendingRealtimeThreadsRef.current.values()];
+              threadCursorRef.current = directoryResult.nextCursor || null;
+              setHasMoreThreads(Boolean(directoryResult.hasMore));
               const hydrated = mergeBotGroupThreads(
                 normalizeThreads([
                   ...internalResult,
@@ -10435,8 +10536,11 @@ export function DashboardApp() {
                 botGroups,
               );
               pendingRealtimeThreadsRef.current.clear();
-              setThreads(hydrated);
-              localStorage.setItem(threadCache, JSON.stringify(hydrated));
+              setThreads((current) => {
+                const next = normalizeThreads([...current, ...hydrated]);
+                localStorage.setItem(threadCache, JSON.stringify(next));
+                return next;
+              });
             })
             .catch(() => {
               if (requestId !== directoryRequestRef.current) return;
@@ -10467,38 +10571,93 @@ export function DashboardApp() {
     [],
   );
 
+  const loadMoreThreads = useCallback(async () => {
+    if (
+      !session ||
+      !selectedInstance ||
+      !hasMoreThreads ||
+      loadingMoreThreads ||
+      !threadCursorRef.current
+    ) {
+      return;
+    }
+    const requestId = directoryRequestRef.current;
+    const cursor = threadCursorRef.current;
+    setLoadingMoreThreads(true);
+    try {
+      const result = await api.conversations(selectedInstance, {
+        includeContacts: false,
+        limit: DIRECTORY_PAGE_SIZE,
+        before: cursor,
+      });
+      if (
+        requestId !== directoryRequestRef.current ||
+        activeInstanceRef.current !== selectedInstance
+      ) {
+        return;
+      }
+      const incoming = result.threads || result.conversations || [];
+      setThreads((current) => {
+        const next = normalizeThreads([...current, ...incoming]);
+        localStorage.setItem(
+          cacheKey("threads", session.id),
+          JSON.stringify(next),
+        );
+        return next;
+      });
+      threadCursorRef.current = result.nextCursor || null;
+      setHasMoreThreads(Boolean(result.hasMore));
+    } catch {
+      // Keep the already rendered directory usable. The scroll sentinel can
+      // retry this page on the next pass without replacing the current rows.
+    } finally {
+      setLoadingMoreThreads(false);
+    }
+  }, [hasMoreThreads, loadingMoreThreads, selectedInstance, session]);
+
   const changeInstance = useCallback(
     async (id: number) => {
       if (!session) return;
       const requestId = ++directoryRequestRef.current;
       directoryInitialLoadingRef.current = true;
+      threadCursorRef.current = null;
+      setHasMoreThreads(false);
       setSelectedInstance(id);
       activeInstanceRef.current = id;
       setSelected(null);
       setLoadingThreads(true);
       localStorage.setItem(cacheKey("instance", session.id), String(id));
       try {
-        const cachedThreads = normalizeThreads(
+        const cachedThreads = recentThreadWindow(
           safeJsonRead<ConversationThread[]>(
             cacheKey("threads", session.id),
             [],
           ),
-        ).filter(
-          (thread) =>
-            thread.chatType === "internal_group" || thread.instanceId === id,
+          id,
         );
         const internalCache = cacheKey("internal-groups", session.id);
         const cachedInternal = normalizeThreads(
           safeJsonRead<ConversationThread[]>(internalCache, []),
         );
+        if (cachedThreads.length) {
+          // Keep the remembered profile's latest local directory visible while
+          // the new profile request is in flight. The selected chat is reset,
+          // but the list itself should never flash an empty loading screen.
+          setThreads(cachedThreads);
+        }
         const [result, internal, botGroups] = await Promise.all([
           api
-            .conversations(id, { includeContacts: false })
+            .conversations(id, {
+              includeContacts: false,
+              limit: DIRECTORY_PAGE_SIZE,
+            })
             .catch(() => ({
               threads: cachedThreads.filter(
                 (thread) => thread.chatType !== "internal_group",
               ),
               conversations: [],
+              hasMore: false,
+              nextCursor: null,
             })),
           api
             .internalGroups()
@@ -10521,13 +10680,19 @@ export function DashboardApp() {
           ...internal,
           ...(result.threads || result.conversations || []),
         ]), botGroups);
+        threadCursorRef.current = result.nextCursor || null;
+        setHasMoreThreads(Boolean(result.hasMore));
         setThreads(next);
         localStorage.setItem(
           cacheKey("threads", session.id),
           JSON.stringify(next),
         );
-        await api
-          .conversations(id, { includeContacts: true })
+        setLoadingThreads(false);
+        void api
+          .conversations(id, {
+            includeContacts: true,
+            limit: DIRECTORY_PAGE_SIZE,
+          })
           .then((hydratedResult) => {
             if (
               requestId !== directoryRequestRef.current ||
@@ -12036,6 +12201,9 @@ export function DashboardApp() {
             onAction={(thread, action) =>
               void runConversationAction(thread, action)
             }
+            onLoadMore={() => void loadMoreThreads()}
+            loadingMore={loadingMoreThreads}
+            hasMore={hasMoreThreads}
             onDirectoryAction={(action) => void runDirectoryAction(action)}
           />
           <div className="splitter" onPointerDown={startResize} />
