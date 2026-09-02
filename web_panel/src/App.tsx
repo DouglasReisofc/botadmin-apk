@@ -2158,18 +2158,16 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     hasInteractiveHeader ||
     mime.startsWith("image") ||
     /\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct);
-  // Do not fan out authenticated recovery requests for every historical
-  // attachment while a conversation is opening. A direct CDN/R2 URL is both
-  // faster and less likely to hit a transient worker gateway. Recovery is
-  // requested only when there is no direct URL or after the user explicitly
-  // taps retry; this keeps a stale batch from turning a chat open into a
-  // cascade of 502 responses while retaining a deterministic recovery path.
-  const shouldRecover = refresh || !directSource;
+  // Keep the direct CDN/R2 URL first for a fast paint, but always retain the
+  // authenticated recovery endpoints as fallbacks. Browsers request only the
+  // first source; the next one is tried after an actual media error, so this
+  // does not fan out downloads while a conversation is opening and it also
+  // repairs expired WhatsApp URLs without requiring a manual Retry click.
   const mediaSources = Array.from(
     new Set(
       [
         directSource,
-        ...(shouldRecover
+        ...(recoverable
           ? [
               absoluteMediaUrl(mediaEndpoint),
               absoluteMediaUrl(mediaRefreshEndpoint),
@@ -2245,7 +2243,7 @@ function MessageMedia({ message }: { message: ChatMessage }) {
         className="message-video"
         controls
         playsInline
-        preload="none"
+        preload="metadata"
         src={source}
         onError={onMediaError}
       />
@@ -2259,7 +2257,7 @@ function MessageMedia({ message }: { message: ChatMessage }) {
       <audio
         className="message-audio"
         controls
-        preload="none"
+        preload="metadata"
         src={source}
         onError={onMediaError}
       />
