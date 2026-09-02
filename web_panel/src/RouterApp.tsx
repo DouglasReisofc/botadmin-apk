@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 
 import { DashboardApp, DashboardErrorBoundary } from "./App";
+import { AdminApp } from "./AdminApp";
 import InternalGroupInviteRoute from "./InternalGroupInvite";
 import { LandingPage } from "./LandingPage";
 
@@ -8,6 +9,12 @@ const productionOrigin = "https://botadmin.shop";
 
 const isDashboardPath = (pathname: string) =>
   pathname.startsWith("/dashboard/react") || pathname.startsWith("/dashboard/user");
+
+// Support both the clean local route and the static production mount used by
+// the React bundle.  The latter is important when the server serves the app
+// from `/dashboard/react/` and a browser opens `/dashboard/react/admin`.
+const isAdminPath = (pathname: string) =>
+  pathname.startsWith("/dashboard/admin") || pathname.startsWith("/dashboard/react/admin");
 
 const internalInviteToken = (pathname: string) => {
   const match = pathname.match(/^\/g\/([^/]+)\/?$/);
@@ -69,6 +76,7 @@ export default function RouterApp() {
   if (isLocalHost) {
     const inviteToken = internalInviteToken(location.pathname);
     if (inviteToken) return <InternalGroupInviteRoute token={inviteToken} />;
+    if (isAdminPath(location.pathname)) return <AdminApp />;
     if (isDashboardPath(location.pathname)) return <DashboardErrorBoundary><DashboardApp /></DashboardErrorBoundary>;
     // Public pages stay inside the isolated React app as well. This prevents
     // a local navigation (for example /comandos or /tutorials) from falling
@@ -76,6 +84,7 @@ export default function RouterApp() {
     if (isPublicPath(location.pathname)) return <LandingPage />;
     return <DashboardErrorBoundary><DashboardApp /></DashboardErrorBoundary>;
   }
+  if (isAdminPath(location.pathname)) return <AdminApp />;
   if (isDashboardPath(location.pathname)) return <DashboardErrorBoundary><DashboardApp /></DashboardErrorBoundary>;
   return <OriginalApplicationRoute />;
 }

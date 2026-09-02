@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { RowDataPacket } from "mysql2";
 
 import { getCurrentUser } from "lib/auth";
+import { performInstanceAction } from "lib/bot-instances";
 import { ensureBotInstanceProxyTable, ensurePartnerProgramTables, getDb } from "lib/db";
 import {
   applyConfiguredProxyToRemote,
@@ -24,7 +25,7 @@ type ManagedInstance = RowDataPacket & {
 
 const connected = (status: unknown) => {
   const value = String(status ?? "").toLowerCase();
-  return value.includes("conect") && !value.includes("desconect");
+  return /connected|conectado|conectada|online|pairing/.test(value) && !/desconect|logged.?out/.test(value);
 };
 
 const scopeSql = (role: string) => role === "owner"
@@ -117,7 +118,14 @@ export async function PUT(request: Request) {
       source: "partner",
     });
     const isConnected = connected(instance.session_status);
-    if (!isConnected) {
+    if (isConnected) {
+      // Applying a new route must never revoke the WhatsApp device session.
+      // A safe transport restart is enough and keeps the existing pairing.
+      // A reseller manages the customer's instance but does not own it in the
+      // instance service. Restart with the real owner so the pairing is kept
+      // and the service's ownership guard remains effective.
+      await performInstanceAction(Number(instance.user_id), instanceId, "restart");
+    } else {
       await applyConfiguredProxyToRemote({
         instanceId,
         serverBaseUrl: instance.server_base_url,
@@ -133,10 +141,10 @@ export async function PUT(request: Request) {
     });
     return NextResponse.json({
       message: isConnected
-        ? "Proxy salvo. O cliente deverá reconectar o perfil para aplicar."
+        ? "Proxy salvo e aplicado com reinício seguro da conexão."
         : "Proxy testado, salvo e preparado para a conexão.",
       proxy,
-      requiresReconnect: isConnected,
+      requiresReconnect: false,
     });
   } catch (error) {
     return fail(error);

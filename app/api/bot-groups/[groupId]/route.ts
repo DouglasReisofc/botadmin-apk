@@ -15,6 +15,7 @@ import {
   updateGroupLockedForUser,
 } from "lib/bot-groups";
 import { upsertGroupSettings } from "lib/bot-group-settings";
+import { publishBotGroupRealtimeUpdate } from "lib/bot-group-realtime";
 import { getInstanceForUser } from "lib/bot-instances";
 import { evaluatePlanGuard } from "lib/plan-guard";
 import { SubscriptionPlanError } from "lib/plans";
@@ -301,6 +302,14 @@ export async function PATCH(
     if (Object.keys(settingsUpdates).length > 0) {
       const settings = await upsertGroupSettings(groupId, settingsUpdates);
       invalidateGroupSettingsCache(groupId);
+      const updated = await getGroupByIdForUser(ownerUserId, groupId);
+      if (updated) {
+        void publishBotGroupRealtimeUpdate(
+          [user.id, ownerUserId],
+          updated,
+          "bot.group.settings.updated",
+        );
+      }
       return NextResponse.json({
         message: "Configurações atualizadas com sucesso.",
         settings,
@@ -314,6 +323,11 @@ export async function PATCH(
     const group = updatedGroup ?? (await getGroupByIdForUser(ownerUserId, groupId));
     if (group) {
       invalidateGroupByRemoteIdCache(group.instanceId, group.remoteId);
+      void publishBotGroupRealtimeUpdate(
+        [user.id, ownerUserId],
+        group,
+        "bot.group.updated",
+      );
     }
     return NextResponse.json({
       message: "Configurações atualizadas com sucesso.",

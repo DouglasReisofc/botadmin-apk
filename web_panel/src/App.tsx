@@ -100,7 +100,8 @@ const fullPhoneText = (value: unknown, fallback = "Número não informado") => {
 };
 const connectedInstance = (value: unknown) => {
   const status = String(value || "").toLocaleLowerCase("pt-BR");
-  return status.includes("conect") && !status.includes("desconect");
+  return /connected|conectado|conectada|online|pairing/.test(status) &&
+    !/desconect|logged.?out/.test(status);
 };
 
 type Section =
@@ -397,7 +398,13 @@ const initials = (name = "") =>
     .join("")
     .toUpperCase() || "BA";
 const dateValue = (thread: ConversationThread) =>
-  new Date(thread.lastMessageAt || thread.lastActivity || 0).getTime() || 0;
+  new Date(
+    thread.lastMessageAt ||
+      thread.lastActivity ||
+      thread.updatedAt ||
+      thread.createdAt ||
+      0,
+  ).getTime() || 0;
 const formatThreadTime = (value?: string | null) => {
   if (!value) return "";
   const date = new Date(value);
@@ -437,7 +444,17 @@ const threadTypeLabel = (thread: ConversationThread) =>
         ? "Comunidade"
         : String(thread.chatType || "").includes("group")
           ? "Grupo"
-          : "";
+        : "";
+const isGroupThread = (thread: ConversationThread) =>
+  thread.chatType === "internal_group" ||
+  String(thread.chatType || "").includes("group") ||
+  String(thread.chatType || "").includes("communit") ||
+  normalizeChatIdentity(thread.chatJid).endsWith("@g.us");
+const canManageGroupThread = (thread: ConversationThread) =>
+  isGroupThread(thread) &&
+  (thread.chatType === "internal_group"
+    ? Boolean(thread.canManage)
+    : Boolean(thread.linkedGroupId) || thread.instanceIsAdmin !== false);
 const cacheKey = (name: string, userId: number) =>
   `botadmin.react.${userId}.${name}`;
 const makeClientId = () =>
@@ -802,7 +819,7 @@ export function LocalLoginScreen({ redirectPath }: { redirectPath?: string } = {
         {(error || notice) && <div className={error ? "form-error" : "form-notice"} role="status">{error || notice}</div>}
         {mode === "forgot" && <button type="button" className="local-auth-link" onClick={() => selectMode("login")}>Voltar para entrar</button>}
         {forgotDone && <button type="button" className="primary-button" onClick={() => selectMode("login")}>Ir para o login</button>}
-        <small className="local-auth-footer">Acesso seguro ao BotAdmin · <a href="/" >Página inicial</a></small>
+        <small className="local-auth-footer">Acesso seguro ao BotAdmin · <button type="button" className="local-auth-link local-auth-home-link" onClick={() => { window.location.assign("/"); }}>Página inicial</button></small>
       </form>
     </main>
   );
@@ -831,14 +848,197 @@ function normalizeThreads(threads: ConversationThread[]) {
       lastMessagePreview: thread.lastMessagePreview ?? thread.lastMessage ?? "",
       lastMessageAt: thread.lastMessageAt ?? thread.lastActivity,
     };
-    deduped.set(`${normalized.instanceId}:${normalized.chatJid}`, normalized);
+    const key = `${normalized.instanceId}:${normalized.chatJid}`;
+    const previous = deduped.get(key);
+    if (!previous) {
+      deduped.set(key, normalized);
+      continue;
+    }
+    // The conversations endpoint can expose the same chat in both `threads`
+    // and `conversations`, with one of the records missing preview/avatar or
+    // timestamp fields. Keep the record with the newest activity as the base,
+    // then fill any fields absent from it with the other record. This avoids a
+    // temporary drop to epoch (and the resulting jump to the bottom) during
+    // reconciliation.
+    const previousIsNewer = dateValue(previous) > dateValue(normalized);
+    const primary = previousIsNewer ? previous : normalized;
+    const secondary = previousIsNewer ? normalized : previous;
+    const merged: ConversationThread = { ...secondary, ...primary };
+    for (const [field, value] of Object.entries(secondary)) {
+      const current = merged[field as keyof ConversationThread];
+      const missing =
+        current === undefined ||
+        current === null ||
+        (typeof current === "string" && current.trim() === "");
+      if (missing) {
+        (merged as Record<string, unknown>)[field] = value;
+      }
+    }
+    deduped.set(key, merged);
   }
   return [...deduped.values()].sort(
-    (a, b) =>
-      Number(Boolean(b.pinned)) - Number(Boolean(a.pinned)) ||
-      dateValue(b) - dateValue(a),
+    (a, b) => {
+      const pinnedDelta =
+        Number(Boolean(b.pinned)) - Number(Boolean(a.pinned));
+      if (pinnedDelta !== 0) return pinnedDelta;
+      const dateDelta = dateValue(b) - dateValue(a);
+      if (dateDelta !== 0) return dateDelta;
+      const leftId = Number(a.id);
+      const rightId = Number(b.id);
+      if (Number.isFinite(leftId) && Number.isFinite(rightId) && leftId !== rightId)
+        return rightId - leftId;
+      // A deterministic final key prevents equal/missing timestamps from
+      // changing order when cache, internal groups and API results arrive in
+      // different batches during a page reload.
+      return `${a.instanceId}:${a.chatJid}`.localeCompare(
+        `${b.instanceId}:${b.chatJid}`,
+        "pt-BR",
+      );
+    },
   );
 }
+
+const normalizeChatIdentity = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase();
+
+/**
+ * A bot group is persisted separately from the WhatsApp conversation index.
+ * Join both snapshots before painting the directory so a real WhatsApp group
+ * gets the same robot shortcut as the BotAdmin internal groups, including its
+ * current active/paused state.
+ */
+const mergeBotGroupThreads = (
+  threads: ConversationThread[],
+  rawGroups: unknown,
+) => {
+  if (!Array.isArray(rawGroups) || rawGroups.length === 0) return threads;
+  const byId = new Map<number, JsonRecord>();
+  const byRemote = new Map<string, JsonRecord>();
+  for (const value of rawGroups) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const group = value as JsonRecord;
+    const id = Number(group.id || 0);
+    if (Number.isFinite(id) && id > 0) byId.set(id, group);
+    const remote = normalizeChatIdentity(group.remoteId || group.remote_id);
+    const instanceId = Number(group.instanceId || group.instance_id || 0);
+    if (remote) byRemote.set(`${instanceId}:${remote}`, group);
+  }
+  return threads.map((thread) => {
+    if (thread.chatType === "internal_group") return thread;
+    const byLinkedId = Number(thread.linkedGroupId || 0);
+    const group =
+      (byLinkedId > 0 ? byId.get(byLinkedId) : undefined) ||
+      byRemote.get(
+        `${thread.instanceId}:${normalizeChatIdentity(thread.chatJid)}`,
+      );
+    if (!group) return thread;
+    const status = String(group.status || "").trim().toLowerCase();
+    return {
+      ...thread,
+      linkedGroupId: Number(group.id || thread.linkedGroupId || 0) || null,
+      internalBotEnabled:
+        status === "active" || status === "ativo" || status === "enabled",
+      title: String(group.name || thread.title || "").trim() || thread.title,
+      avatarUrl:
+        String(group.imageUrl || group.avatarUrl || thread.avatarUrl || "") ||
+        null,
+      participantsCount: Number(
+        group.participantCount ??
+          group.participantsCount ??
+          thread.participantsCount ??
+          0,
+      ),
+    };
+  });
+};
+
+const messageKey = (message: ChatMessage) => {
+  const messageId = String(message.messageId || "").trim();
+  if (messageId) return `message:${messageId}`;
+  const clientMessageId = String(message.clientMessageId || "").trim();
+  if (clientMessageId) return `client:${clientMessageId}`;
+  return `id:${String(message.id)}`;
+};
+
+const messageTimeValue = (message: ChatMessage) => {
+  const parsed = Date.parse(String(message.createdAt || message.timestamp || ""));
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sortMessages = (messages: ChatMessage[]) =>
+  [...messages].sort((left, right) => {
+    const timeDelta = messageTimeValue(left) - messageTimeValue(right);
+    if (timeDelta !== 0) return timeDelta;
+    const leftId = Number(left.id);
+    const rightId = Number(right.id);
+    if (Number.isFinite(leftId) && Number.isFinite(rightId)) return leftId - rightId;
+    return messageKey(left).localeCompare(messageKey(right));
+  });
+
+/**
+ * Merge a recent server window into the local window without throwing away
+ * messages already loaded by the upward paginator. This is deliberately
+ * idempotent because the WebSocket and the send response can contain the same
+ * message at nearly the same time.
+ */
+const mergeConversationMessages = (
+  existing: ChatMessage[],
+  incoming: ChatMessage[],
+) => {
+  const result: ChatMessage[] = [];
+  const indexByKey = new Map<string, number>();
+  const add = (message: ChatMessage) => {
+    const key = messageKey(message);
+    const currentIndex = indexByKey.get(key);
+    if (currentIndex === undefined) {
+      indexByKey.set(key, result.length);
+      result.push(message);
+      return;
+    }
+    result[currentIndex] = { ...result[currentIndex], ...message };
+  };
+  for (const message of existing) add(message);
+  for (const serverMessage of incoming) {
+    const clientId = String(serverMessage.clientMessageId || "").trim();
+    const clientIndex = clientId
+      ? result.findIndex(
+          (message) =>
+            Boolean(message.optimistic) &&
+            String(message.clientMessageId || "").trim() === clientId,
+        )
+      : -1;
+    if (clientIndex >= 0) {
+      result[clientIndex] = {
+        ...result[clientIndex],
+        ...serverMessage,
+        optimistic: false,
+      };
+      indexByKey.set(messageKey(result[clientIndex]), clientIndex);
+      continue;
+    }
+    const serverText = messageComparableText(serverMessage);
+    const serverTime = messageTimeValue(serverMessage);
+    const fallbackIndex = serverText
+      ? result.findIndex((message) => {
+          if (!message.optimistic || messageComparableText(message) !== serverText)
+            return false;
+          const localTime = messageTimeValue(message);
+          return !localTime || !serverTime || Math.abs(localTime - serverTime) <= 30_000;
+        })
+      : -1;
+    if (fallbackIndex >= 0) {
+      result[fallbackIndex] = {
+        ...result[fallbackIndex],
+        ...serverMessage,
+        optimistic: false,
+      };
+      indexByKey.set(messageKey(result[fallbackIndex]), fallbackIndex);
+      continue;
+    }
+    add(serverMessage);
+  }
+  return sortMessages(result);
+};
 
 function Rail({
   section,
@@ -1024,7 +1224,7 @@ function ConversationMenu({
       ? [
           { action: "details", label: "Dados do grupo", icon: UsersRound },
           { action: "group-links", label: "Link do grupo", icon: Paperclip },
-          ...(thread.canManage
+          ...(canManageGroupThread(thread)
             ? [
                 {
                   action: "toggle-bot" as const,
@@ -1063,6 +1263,15 @@ function ConversationMenu({
             label: isGroup ? "Dados do grupo" : "Dados do contato",
             icon: isGroup ? UsersRound : ContactRound,
           },
+          ...(isGroup && canManageGroupThread(thread)
+            ? [
+                {
+                  action: "group-settings" as const,
+                  label: "Bot e ativações do grupo",
+                  icon: Settings,
+                },
+              ]
+            : []),
           { action: "refresh", label: "Atualizar mensagens", icon: RefreshCw },
           {
             action: "copy-id",
@@ -1143,7 +1352,14 @@ function ThreadList({
   } | null>(null);
   const longPressTimer = useRef<number | null>(null);
   const listRef = useRef<HTMLDivElement>(null);
-  const scrollTopRef = useRef(0);
+  const viewportAnchorRef = useRef<{ key: string; offsetTop: number } | null>(
+    null,
+  );
+  const threadSignatureRef = useRef("");
+  const threadPositionsRef = useRef<Map<string, number>>(new Map());
+  const reorderFrameRef = useRef<number | null>(null);
+  const loadingRef = useRef(false);
+  const filterKeyRef = useRef(`${filter}\u0000${query}`);
   useEffect(() => {
     if (!contextMenu) return;
     const close = () => setContextMenu(null);
@@ -1177,16 +1393,136 @@ function ThreadList({
         .includes(needle);
     });
   }, [threads, query, filter]);
+  const threadKey = (thread: ConversationThread) =>
+    `${thread.instanceId}:${thread.chatJid}`;
+  const rememberViewport = () => {
+    const list = listRef.current;
+    if (!list) return;
+    const scrollTop = list.scrollTop;
+    const anchor = Array.from(
+      list.querySelectorAll<HTMLElement>("[data-thread-key]"),
+    ).find((element) => element.offsetTop + element.offsetHeight > scrollTop + 1);
+    if (anchor) {
+      viewportAnchorRef.current = {
+        key: anchor.dataset.threadKey || "",
+        offsetTop: anchor.offsetTop - scrollTop,
+      };
+    }
+  };
   useLayoutEffect(() => {
-    if (listRef.current) listRef.current.scrollTop = scrollTopRef.current;
-  }, [threads, query, filter, loading]);
+    const list = listRef.current;
+    if (!list) return;
+    const filterKey = `${filter}\u0000${query}`;
+    const filterChanged = filterKey !== filterKeyRef.current;
+    if (filterChanged) {
+      filterKeyRef.current = filterKey;
+      viewportAnchorRef.current = null;
+      list.scrollTop = 0;
+    }
+    const signature = visible.map(threadKey).join("|");
+    const previousSignature = threadSignatureRef.current;
+    if (loading) {
+      // During a reload/profile switch the cache, internal groups and hydrated
+      // WhatsApp directory can resolve in different orders. Keep the latest
+      // rendered snapshot as the baseline and do not animate those transient
+      // snapshots or restore an old scroll anchor.
+      if (reorderFrameRef.current !== null) {
+        window.cancelAnimationFrame(reorderFrameRef.current);
+        reorderFrameRef.current = null;
+      }
+      if (!loadingRef.current) {
+        list.scrollTop = 0;
+        viewportAnchorRef.current = null;
+      }
+      loadingRef.current = true;
+      threadSignatureRef.current = signature;
+      threadPositionsRef.current = new Map(
+        Array.from(list.querySelectorAll<HTMLElement>("[data-thread-key]")).map(
+          (element) => [element.dataset.threadKey || "", element.offsetTop],
+        ),
+      );
+      return;
+    }
+    loadingRef.current = false;
+    if (!filterChanged && previousSignature && signature !== previousSignature) {
+      const atTop = list.scrollTop <= 48;
+      const anchor = viewportAnchorRef.current;
+      if (!atTop && anchor?.key) {
+        const currentAnchor = Array.from(
+          list.querySelectorAll<HTMLElement>("[data-thread-key]"),
+        ).find((element) => element.dataset.threadKey === anchor.key);
+        if (currentAnchor) {
+          const nextOffset = currentAnchor.offsetTop - list.scrollTop;
+          const delta = nextOffset - anchor.offsetTop;
+          if (Math.abs(delta) > 0.5) list.scrollTop += delta;
+        }
+      }
+      // FLIP animation makes a conversation moving in the directory visible,
+      // while the anchor correction above keeps the user's viewport stable.
+      const previousPositions = threadPositionsRef.current;
+      const moved: Array<{ element: HTMLElement; delta: number }> = [];
+      for (const element of Array.from(
+        list.querySelectorAll<HTMLElement>("[data-thread-key]"),
+      )) {
+        const key = element.dataset.threadKey || "";
+        const previousTop = previousPositions.get(key);
+        if (previousTop === undefined) continue;
+        const delta = previousTop - element.offsetTop;
+        if (Math.abs(delta) > 0.5) moved.push({ element, delta });
+      }
+      if (reorderFrameRef.current !== null)
+        window.cancelAnimationFrame(reorderFrameRef.current);
+      for (const { element, delta } of moved) {
+        element.style.transition = "none";
+        element.style.transform = `translateY(${delta}px)`;
+      }
+      if (moved.length) {
+        reorderFrameRef.current = window.requestAnimationFrame(() => {
+          for (const { element } of moved) {
+            element.style.transition = "transform 220ms cubic-bezier(.2,.8,.2,1)";
+            element.style.transform = "";
+          }
+          reorderFrameRef.current = null;
+        });
+      }
+    }
+    threadSignatureRef.current = signature;
+    threadPositionsRef.current = new Map(
+      Array.from(list.querySelectorAll<HTMLElement>("[data-thread-key]")).map(
+        (element) => [element.dataset.threadKey || "", element.offsetTop],
+      ),
+    );
+    if (!viewportAnchorRef.current && visible.length) rememberViewport();
+  }, [visible, filter, query, loading]);
+  useEffect(
+    () => () => {
+      if (reorderFrameRef.current !== null)
+        window.cancelAnimationFrame(reorderFrameRef.current);
+    },
+    [],
+  );
+
+  // Never paint a stale cache while the initial directory snapshot is being
+  // reconciled. Rendering it first and sorting it again after the API response
+  // is what made the most recent conversation visibly oscillate to the top.
+  // The cache is still used by DashboardApp as a fallback if the request fails.
+  if (loading) {
+    return (
+      <div className="thread-list" aria-busy="true">
+        <div className="list-state" role="status" aria-live="polite">
+          <RefreshCw className="spin" />
+          Carregando conversas recentes…
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
       className="thread-list"
       ref={listRef}
       onScroll={() => {
-        if (listRef.current) scrollTopRef.current = listRef.current.scrollTop;
+        rememberViewport();
       }}
     >
       {visible.map((thread) => {
@@ -1194,26 +1530,24 @@ function ThreadList({
           selected?.chatJid === thread.chatJid &&
           selected.instanceId === thread.instanceId;
         const time = thread.lastMessageAt || thread.lastActivity;
-        const rememberScroll = () => {
-          if (listRef.current) scrollTopRef.current = listRef.current.scrollTop;
-        };
         return (
           <div
-            key={`${thread.instanceId}-${thread.chatJid}`}
+            key={threadKey(thread)}
+            data-thread-key={threadKey(thread)}
             className={`thread ${active ? "selected" : ""}`}
             role="button"
             tabIndex={0}
             onClick={() => {
-              rememberScroll();
+              rememberViewport();
               onSelect(thread);
             }}
             onContextMenu={(event) => {
               event.preventDefault();
-              rememberScroll();
+              rememberViewport();
               setContextMenu({ thread, x: event.clientX, y: event.clientY });
             }}
             onPointerDown={(event) => {
-              rememberScroll();
+              rememberViewport();
               if (event.pointerType !== "touch") return;
               const x = event.clientX;
               const y = event.clientY;
@@ -1233,7 +1567,7 @@ function ThreadList({
             onKeyDown={(event) => {
               if (event.key === "Enter" || event.key === " ") {
                 event.preventDefault();
-                rememberScroll();
+                rememberViewport();
                 onSelect(thread);
               }
             }}
@@ -1267,11 +1601,18 @@ function ThreadList({
             </div>
             <div className="thread-meta">
               <time>{formatThreadTime(time)}</time>
-              {thread.chatType === "internal_group" && thread.canManage && (
+              {canManageGroupThread(thread) && (
                 <button
                   className={`thread-bot-button ${thread.internalBotEnabled ? "is-active" : ""}`}
-                  title={thread.internalBotEnabled ? "Configurar robô" : "Ativar robô"}
-                  aria-label={thread.internalBotEnabled ? "Configurar robô" : "Ativar robô"}
+                  title={
+                    thread.chatType !== "internal_group" &&
+                    thread.internalBotEnabled === undefined
+                      ? "Abrir robô e ativações"
+                      : thread.internalBotEnabled
+                        ? "Configurar robô"
+                        : "Ativar robô"
+                  }
+                  aria-label="Abrir robô e ativações do grupo"
                   onClick={(event) => {
                     event.stopPropagation();
                     onAction(thread, "group-settings");
@@ -1388,14 +1729,20 @@ function Directory({
       typeof Notification !== "undefined" &&
       Notification.permission === "default",
   );
+  // Keep counters and rows in the same atomic snapshot. An old cache must not
+  // flash in the filter badges while the directory is waiting for hydration.
+  const directoryThreads = loading ? [] : threads;
   const count = (predicate: (thread: ConversationThread) => boolean) =>
-    threads.filter(predicate).length;
+    directoryThreads.filter(predicate).length;
   const filters: Array<[Filter, string, number | null]> = [
     ["all", "Tudo", null],
     [
       "unread",
       "Não lidas",
-      threads.reduce((sum, item) => sum + Number(item.unreadCount || 0), 0),
+      directoryThreads.reduce(
+        (sum, item) => sum + Number(item.unreadCount || 0),
+        0,
+      ),
     ],
     [
       "private",
@@ -1600,7 +1947,15 @@ function Directory({
         </div>
       )}
       <ThreadList
-        {...{ threads, selected, query, filter, loading, onSelect, onAction }}
+        {...{
+          threads: directoryThreads,
+          selected,
+          query,
+          filter,
+          loading,
+          onSelect,
+          onAction,
+        }}
       />
       <button
         className="mobile-new-conversation"
@@ -2552,6 +2907,9 @@ function Chat({
   thread,
   messages,
   loading,
+  loadingOlder,
+  hasOlder,
+  onLoadOlder,
   onBack,
   onSend,
   onSendMedia,
@@ -2561,6 +2919,9 @@ function Chat({
   thread: ConversationThread | null;
   messages: ChatMessage[];
   loading: boolean;
+  loadingOlder: boolean;
+  hasOlder: boolean;
+  onLoadOlder: () => void;
   onBack: () => void;
   onSend: (text: string) => Promise<void>;
   onSendMedia: (file: File, options?: MediaSendOptions) => Promise<void>;
@@ -2613,28 +2974,124 @@ function Chat({
   const messageAreaRef = useRef<HTMLDivElement>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const previousThread = useRef("");
-  const previousMessageCount = useRef(0);
-  useEffect(() => {
+  const previousMessageKeys = useRef<string[]>([]);
+  const scrollMetricsRef = useRef({
+    top: 0,
+    height: 0,
+    atBottom: true,
+    initialized: false,
+    anchorKey: "",
+    anchorOffset: 0,
+  });
+  const olderRequestRef = useRef(false);
+  const applyScrollMetrics = () => {
+    const area = messageAreaRef.current;
+    if (!area) return;
+    const distanceFromBottom = area.scrollHeight - area.scrollTop - area.clientHeight;
+    const areaTop = area.getBoundingClientRect().top;
+    let anchorKey = "";
+    let anchorOffset = 0;
+    for (const bubble of area.querySelectorAll<HTMLElement>(
+      "[data-message-key]",
+    )) {
+      const bounds = bubble.getBoundingClientRect();
+      if (bounds.bottom > areaTop + 1) {
+        anchorKey = bubble.dataset.messageKey || "";
+        anchorOffset = bounds.top - areaTop;
+        break;
+      }
+    }
+    scrollMetricsRef.current = {
+      top: area.scrollTop,
+      height: area.scrollHeight,
+      atBottom: distanceFromBottom <= 120,
+      initialized: scrollMetricsRef.current.initialized,
+      anchorKey,
+      anchorOffset,
+    };
+  };
+  useLayoutEffect(() => {
     const key = thread ? `${thread.instanceId}:${thread.chatJid}` : "";
     const area = messageAreaRef.current;
     if (key !== previousThread.current) {
       previousThread.current = key;
-      previousMessageCount.current = messages.length;
-      requestAnimationFrame(() => {
-        if (area) area.scrollTop = area.scrollHeight;
-      });
+      previousMessageKeys.current = [];
+      scrollMetricsRef.current = {
+        top: 0,
+        height: area?.scrollHeight || 0,
+        atBottom: true,
+        initialized: false,
+        anchorKey: "",
+        anchorOffset: 0,
+      };
+      olderRequestRef.current = false;
+    }
+    if (!area || !thread || !messages.length) {
+      previousMessageKeys.current = messages.map(messageKey);
+      if (area) applyScrollMetrics();
       return;
     }
-    if (messages.length > previousMessageCount.current && area) {
-      const nearBottom =
-        area.scrollHeight - area.scrollTop - area.clientHeight < 140;
-      if (nearBottom)
-        requestAnimationFrame(() => {
-          area.scrollTop = area.scrollHeight;
-        });
+    const previousKeys = previousMessageKeys.current;
+    const currentKeys = messages.map(messageKey);
+    const previousMetrics = scrollMetricsRef.current;
+    if (!previousMetrics.initialized) {
+      area.scrollTop = area.scrollHeight;
+      scrollMetricsRef.current.initialized = true;
+    } else if (previousKeys.length && currentKeys.length) {
+      const previousFirst = previousKeys[0];
+      const previousLast = previousKeys[previousKeys.length - 1];
+      const currentFirstIndex = currentKeys.indexOf(previousFirst);
+      const currentLastIndex = currentKeys.indexOf(previousLast);
+      const prepended = currentFirstIndex > 0 && currentLastIndex >= currentFirstIndex;
+      if (previousMetrics.atBottom) {
+        area.scrollTop = area.scrollHeight;
+      } else if (previousMetrics.anchorKey) {
+        const anchor = [...area.querySelectorAll<HTMLElement>("[data-message-key]")]
+          .find((bubble) => bubble.dataset.messageKey === previousMetrics.anchorKey);
+        if (anchor) {
+          const currentOffset =
+            anchor.getBoundingClientRect().top - area.getBoundingClientRect().top;
+          area.scrollTop += currentOffset - previousMetrics.anchorOffset;
+        } else if (prepended) {
+          area.scrollTop =
+            previousMetrics.top + (area.scrollHeight - previousMetrics.height);
+        } else {
+          area.scrollTop = Math.min(
+            previousMetrics.top,
+            Math.max(0, area.scrollHeight - area.clientHeight),
+          );
+        }
+      } else if (prepended) {
+        area.scrollTop =
+          previousMetrics.top + (area.scrollHeight - previousMetrics.height);
+      } else {
+        // A realtime refresh or a delivery receipt never steals the user's
+        // reading position when they are not at the bottom.
+        area.scrollTop = Math.min(
+          previousMetrics.top,
+          Math.max(0, area.scrollHeight - area.clientHeight),
+        );
+      }
     }
-    previousMessageCount.current = messages.length;
-  }, [thread, messages.length]);
+    previousMessageKeys.current = currentKeys;
+    applyScrollMetrics();
+  }, [thread, messages]);
+  useEffect(() => {
+    if (!loadingOlder) olderRequestRef.current = false;
+  }, [loadingOlder]);
+  useEffect(() => {
+    const area = messageAreaRef.current;
+    if (
+      !area ||
+      !hasOlder ||
+      loadingOlder ||
+      olderRequestRef.current ||
+      area.scrollHeight > area.clientHeight + 1
+    )
+      return;
+    olderRequestRef.current = true;
+    onLoadOlder();
+  }, [hasOlder, loadingOlder, messages.length, onLoadOlder]);
   useEffect(
     () => () => {
       recorderStreamRef.current?.getTracks().forEach((track) => track.stop());
@@ -3079,11 +3536,14 @@ function Chat({
           >
             <Search />
           </button>
-          {thread.chatType === "internal_group" && thread.canManage && (
+          {canManageGroupThread(thread) && (
             <button
               className={`group-bot-shortcut ${thread.internalBotEnabled ? "is-active" : ""}`}
               title={
-                thread.internalBotEnabled
+                thread.chatType !== "internal_group" &&
+                thread.internalBotEnabled === undefined
+                  ? "Abrir robô e ativações"
+                  : thread.internalBotEnabled
                   ? "Robô ativo · abrir ativações"
                   : "Ativar e configurar robô"
               }
@@ -3121,6 +3581,20 @@ function Chat({
       <div
         className="message-area"
         ref={messageAreaRef}
+        onScroll={() => {
+          applyScrollMetrics();
+          const area = messageAreaRef.current;
+          if (
+            area &&
+            area.scrollTop <= 180 &&
+            hasOlder &&
+            !loadingOlder &&
+            !olderRequestRef.current
+          ) {
+            olderRequestRef.current = true;
+            onLoadOlder();
+          }
+        }}
         style={
           thread.chatType === "internal_group" && thread.wallpaperUrl
             ? {
@@ -3131,6 +3605,14 @@ function Chat({
             : undefined
         }
       >
+        {loadingOlder && (
+          <div className="message-history-loader" role="status" aria-live="polite">
+            <span>
+              <RefreshCw className="spin" />
+              Carregando mensagens antigas…
+            </span>
+          </div>
+        )}
         {loading && !messages.length && (
           <div className="message-loading">
             <RefreshCw className="spin" />
@@ -3188,7 +3670,7 @@ function Chat({
             ) || []),
             ...ownReactions,
           ];
-          const messageKey = String(message.messageId || message.id);
+          const renderedMessageKey = String(message.messageId || message.id);
           const canEdit =
             thread.chatType === "internal_group" &&
             mine &&
@@ -3199,14 +3681,15 @@ function Chat({
             !message.optimistic && (mine || Boolean(thread.canManage));
           return (
             <article
-              key={String(message.id)}
+              key={messageKey(message)}
+              data-message-key={messageKey(message)}
               className={`bubble ${mine ? "outgoing" : "incoming"} ${message.optimistic ? "optimistic" : ""}`}
               onMouseLeave={() => {
                 setMessageMenuId((current) =>
-                  current === messageKey ? null : current,
+                  current === renderedMessageKey ? null : current,
                 );
                 setReactionMenuId((current) =>
-                  current === messageKey ? null : current,
+                  current === renderedMessageKey ? null : current,
                 );
               }}
             >
@@ -3215,18 +3698,20 @@ function Chat({
                   <button
                     className="message-action-trigger"
                     aria-label="Ações da mensagem"
-                    aria-expanded={messageMenuId === messageKey}
+                    aria-expanded={messageMenuId === renderedMessageKey}
                     onClick={(event) => {
                       event.stopPropagation();
                       setMessageMenuId((current) =>
-                        current === messageKey ? null : messageKey,
+                        current === renderedMessageKey
+                          ? null
+                          : renderedMessageKey,
                       );
                       setReactionMenuId(null);
                     }}
                   >
                     ⌄
                   </button>
-                  {messageMenuId === messageKey && (
+                  {messageMenuId === renderedMessageKey && (
                     <div
                       className="message-action-menu"
                       role="menu"
@@ -3235,13 +3720,15 @@ function Chat({
                       <button
                         onClick={() => {
                           setReactionMenuId((current) =>
-                            current === messageKey ? null : messageKey,
+                            current === renderedMessageKey
+                              ? null
+                              : renderedMessageKey,
                           );
                         }}
                       >
                         <Smile size={15} /> Reagir
                       </button>
-                      {reactionMenuId === messageKey && (
+                      {reactionMenuId === renderedMessageKey && (
                         <div className="reaction-choices">
                           {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
                             <button
@@ -3357,7 +3844,7 @@ function Chat({
                       key={button.id || index}
                       disabled={
                         interactivePending ===
-                        `${messageKey}:${button.id || index}`
+                        `${renderedMessageKey}:${button.id || index}`
                       }
                       onClick={() => {
                         const label =
@@ -3386,7 +3873,7 @@ function Chat({
                           window.location.href = `tel:${button.phoneNumber || label}`;
                           return;
                         }
-                        const pendingKey = `${messageKey}:${button.id || index}`;
+                        const pendingKey = `${renderedMessageKey}:${button.id || index}`;
                         setInteractivePending(pendingKey);
                         const interactiveAction: MessageUiAction =
                           thread.chatType === "internal_group" &&
@@ -3407,7 +3894,7 @@ function Chat({
                       }}
                     >
                       {interactivePending ===
-                      `${messageKey}:${button.id || index}`
+                      `${renderedMessageKey}:${button.id || index}`
                         ? "Enviado ✓"
                         : button.title || button.label || "Selecionar"}
                     </button>
@@ -6123,7 +6610,7 @@ function BotGroupAutomationModal({
 }: {
   item: JsonRecord;
   onClose: () => void;
-  onChanged: () => void;
+  onChanged: (group?: JsonRecord) => void;
 }) {
   const groupId = Number(item.id || 0);
   const [group, setGroup] = useState(item);
@@ -6141,8 +6628,16 @@ function BotGroupAutomationModal({
     setLoading(true);
     setError("");
     try {
-      const result = await api.botGroupSettings(groupId);
-      setSettings((result.settings || {}) as JsonRecord);
+      const [settingsResult, groupsResult] = await Promise.all([
+        api.botGroupSettings(groupId),
+        api.botGroups().catch(() => ({ groups: [] })),
+      ]);
+      setSettings((settingsResult.settings || {}) as JsonRecord);
+      const groups = Array.isArray(groupsResult.groups)
+        ? (groupsResult.groups as JsonRecord[])
+        : [];
+      const current = groups.find((candidate) => Number(candidate.id) === groupId);
+      if (current) setGroup(current);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -6167,8 +6662,12 @@ function BotGroupAutomationModal({
     setError("");
     try {
       const result = await api.updateBotGroup(groupId, { active: value });
-      setGroup((result.group || { ...group, status: value ? "active" : "disabled" }) as JsonRecord);
-      onChanged();
+      const updated = (result.group || {
+        ...group,
+        status: value ? "active" : "disabled",
+      }) as JsonRecord;
+      setGroup(updated);
+      onChanged(updated);
     } catch (cause) {
       setGroup(previous);
       setError(
@@ -6239,7 +6738,9 @@ function BotGroupAutomationModal({
             <span>
               <b>Robô no grupo</b>
               <small>
-                {botEnabled
+                {loading
+                  ? "Consultando o estado do robô…"
+                  : botEnabled
                   ? "Bot operando neste grupo."
                   : "Bot pausado neste grupo."}
               </small>
@@ -6248,7 +6749,7 @@ function BotGroupAutomationModal({
               <input
                 type="checkbox"
                 checked={botEnabled}
-                disabled={saving !== null}
+                disabled={saving !== null || loading}
                 onChange={(event) => void saveBot(event.target.checked)}
               />
               <i />
@@ -6660,6 +7161,110 @@ function ProfileRenewModal({
   );
 }
 
+function InstanceProxyModal({
+  instance,
+  onClose,
+  onSaved,
+}: {
+  instance: BotInstance;
+  onClose: () => void;
+  onSaved: (proxy: JsonRecord) => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [testing, setTesting] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [policy, setPolicy] = useState<JsonRecord>({});
+  const [enabled, setEnabled] = useState(false);
+  const [protocol, setProtocol] = useState("socks5");
+  const [host, setHost] = useState("");
+  const [port, setPort] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [hasUsername, setHasUsername] = useState(false);
+  const [hasPassword, setHasPassword] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.instanceProxy(instance.id).then((response) => {
+      if (cancelled) return;
+      const proxy = (response.proxy || {}) as JsonRecord;
+      setPolicy((response.policy || {}) as JsonRecord);
+      setEnabled(proxy.enabled === true);
+      setProtocol(["http", "https", "socks4", "socks4a", "socks5", "socks5h"].includes(String(proxy.protocol)) ? String(proxy.protocol) : "socks5");
+      setHost(textOf(proxy.host));
+      setPort(proxy.port ? String(proxy.port) : "");
+      setHasUsername(proxy.hasUsername === true);
+      setHasPassword(proxy.hasPassword === true);
+      if (proxy.lastError) setError(textOf(proxy.lastError));
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : "Não foi possível carregar o proxy."))
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [instance.id]);
+
+  const canConfigure = policy.allowCustomerProxy !== false;
+  const payload = (): JsonRecord => ({
+    enabled,
+    protocol,
+    host: host.trim(),
+    port: Number(port),
+    username: username.trim(),
+    password,
+    preserveUsername: !username.trim() && hasUsername,
+    preservePassword: !password && hasPassword,
+  });
+
+  const validate = () => {
+    if (!enabled) return true;
+    if (!host.trim()) {
+      setError("Informe o host, IPv4 ou IPv6 do proxy.");
+      return false;
+    }
+    const parsedPort = Number(port);
+    if (!Number.isInteger(parsedPort) || parsedPort < 1 || parsedPort > 65535) {
+      setError("Informe uma porta válida entre 1 e 65535.");
+      return false;
+    }
+    return true;
+  };
+
+  const test = async () => {
+    if (testing || saving || !validate()) return;
+    setTesting(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await api.testInstanceProxy(instance.id, payload());
+      const check = response.check && typeof response.check === "object" ? response.check as JsonRecord : null;
+      setNotice(check
+        ? `Proxy aprovado para o WhatsApp. IP ${textOf(check.resolvedIp, "confirmado")}${check.regionName ? ` · ${textOf(check.regionName)}` : ""}${check.latencyMs ? ` · ${textOf(check.latencyMs)} ms` : ""}.`
+        : "Proxy desativado; esta instância usará conexão direta.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "O proxy foi recusado no teste.");
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const save = async () => {
+    if (saving || testing || !canConfigure || !validate()) return;
+    setSaving(true);
+    setError("");
+    try {
+      const response = await api.saveInstanceProxy(instance.id, payload());
+      onSaved((response.proxy || {}) as JsonRecord);
+      onClose();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível salvar o proxy.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="quick-modal instance-proxy-modal" role="dialog" aria-modal="true"><header><div><div className="modal-heading-line"><h2>Proxy da conexão</h2><InfoTip label="Proxy por perfil">O teste confirma a saída pública e o túnel do WhatsApp Web antes de salvar. Ao aplicar, o sistema reinicia somente a conexão e preserva o pareamento.</InfoTip></div><small>{instance.name} · {fullPhoneText(instance.phone)}</small></div><button onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button></header>{loading ? <div className="settings-loading"><RefreshCw className="spin" />Carregando proxy…</div> : <div className="quick-form proxy-form"><label className="proxy-toggle-row"><span><b>Usar proxy</b><small>Desative para voltar à rota direta.</small></span><button type="button" className={`toggle ${enabled ? "active" : ""}`} aria-pressed={enabled} onClick={() => setEnabled((value) => !value)} disabled={!canConfigure}><i /></button></label>{!canConfigure && <div className="form-error">{textOf(policy.instructions, "O responsável comercial não liberou proxy personalizado para esta conta.")}</div>}<div className="proxy-fields"><label>Protocolo<select value={protocol} onChange={(event) => setProtocol(event.target.value)} disabled={!enabled || !canConfigure}><option value="http">HTTP / CONNECT</option><option value="https">HTTPS / CONNECT seguro</option><option value="socks4">SOCKS4</option><option value="socks4a">SOCKS4A</option><option value="socks5">SOCKS5</option><option value="socks5h">SOCKS5H · DNS pelo proxy</option></select></label><label>Host, IPv4 ou IPv6<input value={host} onChange={(event) => setHost(event.target.value)} placeholder="2001:db8::10 ou proxy.exemplo.com" disabled={!enabled || !canConfigure} /></label><label>Porta<input value={port} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="59100" disabled={!enabled || !canConfigure} /></label><label>Usuário opcional<input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={hasUsername ? "Já configurado" : "Sem autenticação"} disabled={!enabled || !canConfigure} autoComplete="off" /></label><label>Senha opcional<input value={password} onChange={(event) => setPassword(event.target.value)} placeholder={hasPassword ? "Já configurada" : "Sem autenticação"} disabled={!enabled || !canConfigure} type="password" autoComplete="new-password" /></label></div>{notice && <div className="inline-notice success">{notice}</div>}{error && <div className="form-error">{error}</div>}<p className="settings-muted">É possível configurar um proxy diferente em cada perfil. São aceitos DNS, IPv4 e IPv6, com ou sem autenticação.</p><div className="modal-actions"><button className="secondary-button" type="button" onClick={() => void test()} disabled={testing || saving || !canConfigure}>{testing ? "Testando…" : "Testar em tempo real"}</button><button className="primary-button" type="button" onClick={() => void save()} disabled={saving || testing || !canConfigure}>{saving ? "Aplicando…" : "Salvar e aplicar"}</button></div></div>}</section></div>;
+}
+
 function ProfilesWorkspace({
   instances,
   onProfilesChanged,
@@ -6682,6 +7287,7 @@ function ProfilesWorkspace({
   const [notice, setNotice] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [renewOpen, setRenewOpen] = useState(false);
+  const [proxyOpen, setProxyOpen] = useState(false);
   const [pairData, setPairData] = useState<JsonRecord | null>(null);
   const [editingName, setEditingName] = useState("");
   const [editingPushName, setEditingPushName] = useState("");
@@ -6695,7 +7301,8 @@ function ProfilesWorkspace({
   );
   const connected = (value: unknown) => {
     const text = String(value || "").toLowerCase();
-    return text.includes("conect") && !text.includes("desconect");
+    return /connected|conectado|conectada|online|pairing/.test(text) &&
+      !/desconect|logged.?out/.test(text);
   };
   const reload = useCallback(async () => {
     setLoading(true);
@@ -7190,6 +7797,13 @@ function ProfilesWorkspace({
                   >
                     <BadgeDollarSign /> Renovar perfil
                   </button>
+                  <button
+                    className="secondary-button"
+                    disabled={busy}
+                    onClick={() => setProxyOpen(true)}
+                  >
+                    <ShieldCheck /> {proxy?.enabled ? "Editar proxy" : "Adicionar proxy"}
+                  </button>
                 </div>
               </section>
               <section className="settings-card profile-instance-settings-card">
@@ -7262,6 +7876,16 @@ function ProfilesWorkspace({
             setNotice(
               "Pagamento gerado. A validade será atualizada após a aprovação.",
             );
+          }}
+        />
+      )}
+      {proxyOpen && selected && (
+        <InstanceProxyModal
+          instance={selected}
+          onClose={() => setProxyOpen(false)}
+          onSaved={(nextProxy) => {
+            setProxy(nextProxy);
+            setNotice("Proxy salvo e aplicado com reinício seguro da conexão.");
           }}
         />
       )}
@@ -9335,19 +9959,26 @@ export function DashboardApp() {
   const [section, setSection] = useState<Section>(initialSection);
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");
-  const [loadingThreads, setLoadingThreads] = useState(false);
+  // Start in the directory-loading state so a stale/empty placeholder cannot
+  // flash between authentication and the first ordered conversation snapshot.
+  const [loadingThreads, setLoadingThreads] = useState(true);
   const [loadingMessages, setLoadingMessages] = useState(false);
+  const [loadingOlderMessages, setLoadingOlderMessages] = useState(false);
+  const [hasOlderMessages, setHasOlderMessages] = useState(false);
   const [mobileChatOpen, setMobileChatOpen] = useState(false);
   const [directoryWidth, setDirectoryWidth] = useState(
     () => Number(localStorage.getItem("botadmin.react.directoryWidth")) || 570,
   );
   const [toast, setToast] = useState("");
   const [toastSuccess, setToastSuccess] = useState(false);
+  const [returningToOrigin, setReturningToOrigin] = useState(false);
   const [conversationDetails, setConversationDetails] = useState<{
     thread: ConversationThread;
     data?: JsonRecord;
   } | null>(null);
   const [internalSettingsThread, setInternalSettingsThread] =
+    useState<ConversationThread | null>(null);
+  const [botSettingsThread, setBotSettingsThread] =
     useState<ConversationThread | null>(null);
   const [internalLinksThread, setInternalLinksThread] =
     useState<ConversationThread | null>(null);
@@ -9363,6 +9994,15 @@ export function DashboardApp() {
   const reloadTimer = useRef<number | null>(null);
   const lastDashboardReload = useRef(0);
   const lastMessageReload = useRef(0);
+  const directoryRequestRef = useRef(0);
+  const directoryInitialLoadingRef = useRef(true);
+  const pendingRealtimeThreadsRef = useRef<Map<string, ConversationThread>>(
+    new Map(),
+  );
+  const realtimeSequenceRef = useRef(0);
+  const messageThreadKeyRef = useRef("");
+  const messageRequestIdRef = useRef(0);
+  const messageCursorRef = useRef<string | number | null>(null);
   const activeInstanceRef = useRef<number | null>(null);
   const mobileNavTrackRef = useRef<HTMLDivElement>(null);
   const mobileNavDragRef = useRef<{
@@ -9378,6 +10018,26 @@ export function DashboardApp() {
       return merged;
     });
   }, []);
+  const returnToOrigin = useCallback(async () => {
+    if (returningToOrigin) return;
+    setReturningToOrigin(true);
+    try {
+      const result = await api.returnToImpersonator();
+      const target =
+        typeof result.redirectTo === "string" && result.redirectTo.trim()
+          ? result.redirectTo
+          : "/dashboard/admin";
+      window.location.assign(target);
+    } catch (cause) {
+      setReturningToOrigin(false);
+      setToastSuccess(false);
+      setToast(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível retornar ao painel de origem.",
+      );
+    }
+  }, [returningToOrigin]);
   useEffect(() => {
     const active = mobileNavTrackRef.current?.querySelector<HTMLElement>(
       `[data-nav-section="${section}"]`,
@@ -9430,17 +10090,27 @@ export function DashboardApp() {
 
   const loadDashboard = useCallback(
     async (user: SessionUser, quiet = false) => {
+      // Never let a realtime refresh race the first directory snapshot. The
+      // initial request owns the loading gate until its complete, ordered
+      // result is ready; any response from an older request is ignored.
+      if (quiet && directoryInitialLoadingRef.current) return;
+      const requestId = ++directoryRequestRef.current;
       const threadCache = cacheKey("threads", user.id);
       const internalCache = cacheKey("internal-groups", user.id);
       if (!quiet) {
-        const cached = safeJsonRead<ConversationThread[]>(threadCache, []);
+        const cached = normalizeThreads(
+          safeJsonRead<ConversationThread[]>(threadCache, []),
+        );
         if (cached.length) setThreads(cached);
-        setLoadingThreads(!cached.length);
+        // Keep the cache in state as a failure fallback, but leave the loading
+        // gate closed to the list until API hydration has produced one atomic
+        // ordered snapshot. ThreadList therefore never paints stale rows first.
+        directoryInitialLoadingRef.current = true;
+        setLoadingThreads(true);
       }
       try {
-        const cachedInternal = safeJsonRead<ConversationThread[]>(
-          internalCache,
-          [],
+        const cachedInternal = normalizeThreads(
+          safeJsonRead<ConversationThread[]>(internalCache, []),
         );
         const internalPromise = api
           .internalGroups()
@@ -9449,7 +10119,16 @@ export function DashboardApp() {
             return result;
           })
           .catch(() => cachedInternal);
+        const botGroupsPromise = quiet
+          ? Promise.resolve<JsonRecord[]>([])
+          : api
+              .botGroups()
+              .then((result) =>
+                Array.isArray(result.groups) ? (result.groups as JsonRecord[]) : [],
+              )
+              .catch(() => []);
         const instanceResult = await api.instances();
+        if (requestId !== directoryRequestRef.current) return;
         const nextInstances = instanceResult.instances || [];
         setInstances(nextInstances);
         const rememberedId = Number(
@@ -9464,46 +10143,64 @@ export function DashboardApp() {
             ? current
             : activeId,
         );
-        // Internal groups are local to BotAdmin and usually resolve first. Paint
-        // them as soon as their cache/API call returns instead of waiting for
-        // the slower WhatsApp directory request.
-        void internalPromise.then((internal) => {
-          setThreads((current) =>
-            normalizeThreads([
-              ...internal,
-              ...current.filter(
-                (thread) => thread.chatType !== "internal_group",
-              ),
-            ]),
-          );
-        });
-        // Paint the persisted conversation index first. Contact/group directory
-        // hydration is intentionally a second request so a slow WhatsApp worker
-        // never blocks the first screen.
-        const [activeResult, internalResult] = await Promise.all([
+        // Resolve the local BotAdmin groups and WhatsApp directory together.
+        // Painting one reconciled snapshot avoids the list moving once for each
+        // source while a reload is still in progress; a cached snapshot remains
+        // visible immediately above when available.
+        const [activeResult, internalResult, botGroups] = await Promise.all([
           activeId
-            ? api.conversations(activeId, { includeContacts: quiet })
+            ? api
+                .conversations(activeId, { includeContacts: quiet })
+                .catch(() => null)
             : Promise.resolve({ threads: [], conversations: [] }),
           internalPromise,
+          botGroupsPromise,
         ]);
+        if (requestId !== directoryRequestRef.current) return;
+        if (activeResult === null) {
+          // Keep the last verified WhatsApp directory when its worker is
+          // temporarily unavailable; local BotAdmin groups can still update.
+          const pending = [...pendingRealtimeThreadsRef.current.values()];
+          pendingRealtimeThreadsRef.current.clear();
+          setThreads((current) =>
+            mergeBotGroupThreads(
+              normalizeThreads([
+                ...internalResult,
+                ...current.filter((thread) => thread.chatType !== "internal_group"),
+                ...pending,
+              ]),
+              botGroups,
+            ),
+          );
+          return;
+        }
         const activeThreads =
           "threads" in activeResult ? activeResult.threads || [] : [];
         const activeConversations =
           "conversations" in activeResult
             ? activeResult.conversations || []
             : [];
-        const nextThreads = normalizeThreads([
-          ...internalResult,
-          ...activeThreads,
-          ...activeConversations,
-        ]);
+        const pending = [...pendingRealtimeThreadsRef.current.values()];
+        const nextThreads = mergeBotGroupThreads(
+          normalizeThreads([
+            ...internalResult,
+            ...activeThreads,
+            ...activeConversations,
+            ...pending,
+          ]),
+          botGroups,
+        );
         setThreads(nextThreads);
         localStorage.setItem(threadCache, JSON.stringify(nextThreads));
         if (activeId && !quiet) {
-          void api
+          await api
             .conversations(activeId, { includeContacts: true })
             .then((directoryResult) => {
-              if (activeInstanceRef.current !== activeId) return;
+              if (
+                requestId !== directoryRequestRef.current ||
+                activeInstanceRef.current !== activeId
+              )
+                return;
               const directoryThreads =
                 "threads" in directoryResult
                   ? directoryResult.threads || []
@@ -9512,15 +10209,33 @@ export function DashboardApp() {
                 "conversations" in directoryResult
                   ? directoryResult.conversations || []
                   : [];
-              const hydrated = normalizeThreads([
-                ...internalResult,
-                ...directoryThreads,
-                ...directoryConversations,
-              ]);
+              const latePending = [...pendingRealtimeThreadsRef.current.values()];
+              const hydrated = mergeBotGroupThreads(
+                normalizeThreads([
+                  ...internalResult,
+                  ...directoryThreads,
+                  ...directoryConversations,
+                  ...latePending,
+                ]),
+                botGroups,
+              );
+              pendingRealtimeThreadsRef.current.clear();
               setThreads(hydrated);
               localStorage.setItem(threadCache, JSON.stringify(hydrated));
             })
-            .catch(() => undefined);
+            .catch(() => {
+              if (requestId !== directoryRequestRef.current) return;
+              const latePending = [...pendingRealtimeThreadsRef.current.values()];
+              pendingRealtimeThreadsRef.current.clear();
+              if (latePending.length) {
+                setThreads((current) =>
+                  mergeBotGroupThreads(
+                    normalizeThreads([...current, ...latePending]),
+                    botGroups,
+                  ),
+                );
+              }
+            });
         }
       } catch {
         // A background conversation sync must not cover the already rendered
@@ -9528,7 +10243,10 @@ export function DashboardApp() {
         // temporarily unavailable). Cached threads and module data remain usable
         // and the user can retry from the relevant area.
       } finally {
-        setLoadingThreads(false);
+        if (requestId === directoryRequestRef.current) {
+          if (!quiet) directoryInitialLoadingRef.current = false;
+          if (!directoryInitialLoadingRef.current) setLoadingThreads(false);
+        }
       }
     },
     [],
@@ -9537,19 +10255,36 @@ export function DashboardApp() {
   const changeInstance = useCallback(
     async (id: number) => {
       if (!session) return;
+      const requestId = ++directoryRequestRef.current;
+      directoryInitialLoadingRef.current = true;
       setSelectedInstance(id);
       activeInstanceRef.current = id;
       setSelected(null);
       setLoadingThreads(true);
       localStorage.setItem(cacheKey("instance", session.id), String(id));
       try {
-        const internalCache = cacheKey("internal-groups", session.id);
-        const cachedInternal = safeJsonRead<ConversationThread[]>(
-          internalCache,
-          [],
+        const cachedThreads = normalizeThreads(
+          safeJsonRead<ConversationThread[]>(
+            cacheKey("threads", session.id),
+            [],
+          ),
+        ).filter(
+          (thread) =>
+            thread.chatType === "internal_group" || thread.instanceId === id,
         );
-        const [result, internal] = await Promise.all([
-          api.conversations(id, { includeContacts: false }),
+        const internalCache = cacheKey("internal-groups", session.id);
+        const cachedInternal = normalizeThreads(
+          safeJsonRead<ConversationThread[]>(internalCache, []),
+        );
+        const [result, internal, botGroups] = await Promise.all([
+          api
+            .conversations(id, { includeContacts: false })
+            .catch(() => ({
+              threads: cachedThreads.filter(
+                (thread) => thread.chatType !== "internal_group",
+              ),
+              conversations: [],
+            })),
           api
             .internalGroups()
             .then((groups) => {
@@ -9557,24 +10292,37 @@ export function DashboardApp() {
               return groups;
             })
             .catch(() => cachedInternal),
+          api
+            .botGroups()
+            .then((response) =>
+              Array.isArray(response.groups)
+                ? (response.groups as JsonRecord[])
+                : [],
+            )
+            .catch(() => []),
         ]);
-        const next = normalizeThreads([
+        if (requestId !== directoryRequestRef.current) return;
+        const next = mergeBotGroupThreads(normalizeThreads([
           ...internal,
           ...(result.threads || result.conversations || []),
-        ]);
+        ]), botGroups);
         setThreads(next);
         localStorage.setItem(
           cacheKey("threads", session.id),
           JSON.stringify(next),
         );
-        void api
+        await api
           .conversations(id, { includeContacts: true })
           .then((hydratedResult) => {
-            if (activeInstanceRef.current !== id) return;
-            const hydrated = normalizeThreads([
+            if (
+              requestId !== directoryRequestRef.current ||
+              activeInstanceRef.current !== id
+            )
+              return;
+            const hydrated = mergeBotGroupThreads(normalizeThreads([
               ...internal,
               ...(hydratedResult.threads || hydratedResult.conversations || []),
-            ]);
+            ]), botGroups);
             setThreads(hydrated);
             localStorage.setItem(
               cacheKey("threads", session.id),
@@ -9590,7 +10338,10 @@ export function DashboardApp() {
             : "Não foi possível trocar de perfil.",
         );
       } finally {
-        setLoadingThreads(false);
+        if (requestId === directoryRequestRef.current) {
+          directoryInitialLoadingRef.current = false;
+          setLoadingThreads(false);
+        }
       }
     },
     [session],
@@ -9603,21 +10354,45 @@ export function DashboardApp() {
   const loadMessages = useCallback(
     async (thread: ConversationThread, quiet = false) => {
       if (!session) return;
+      const threadKey = `${thread.instanceId}:${thread.chatJid}`;
+      if (!quiet) {
+        messageThreadKeyRef.current = threadKey;
+        messageRequestIdRef.current += 1;
+        messageCursorRef.current = null;
+        setHasOlderMessages(false);
+        setLoadingOlderMessages(false);
+      } else if (messageThreadKeyRef.current !== threadKey) {
+        return;
+      }
+      const requestId = messageRequestIdRef.current;
       const key = cacheKey(
         `messages.${thread.instanceId}.${encodeURIComponent(thread.chatJid)}`,
         session.id,
       );
       if (!quiet) {
-        const cached = safeJsonRead<ChatMessage[]>(key, []).map((message) => ({
-          ...message,
-          instanceId: message.instanceId ?? thread.instanceId,
-          chatJid: message.chatJid ?? thread.chatJid,
-        }));
+        const cached = mergeConversationMessages(
+          [],
+          sortMessages(safeJsonRead<ChatMessage[]>(key, []))
+            .slice(-50)
+            .map((message) => ({
+              ...message,
+              instanceId: message.instanceId ?? thread.instanceId,
+              chatJid: message.chatJid ?? thread.chatJid,
+            })),
+        );
         setMessages(cached);
         setLoadingMessages(!cached.length);
       }
       try {
-        const result = await api.messages(thread);
+        const result = await api.messages(thread, {
+          limit: 50,
+          warm: true,
+        });
+        if (
+          messageThreadKeyRef.current !== threadKey ||
+          messageRequestIdRef.current !== requestId
+        )
+          return;
         setMessages((current) => {
           const serverMessages = (result.messages || []).map((message) => ({
             ...message,
@@ -9627,63 +10402,21 @@ export function DashboardApp() {
             instanceId: message.instanceId ?? thread.instanceId,
             chatJid: message.chatJid ?? thread.chatJid,
           }));
-          const uniqueServerMessages = [
-            ...new Map(
-              serverMessages.map((message) => [
-                String(message.messageId || message.id),
-                message,
-              ]),
-            ).values(),
-          ];
-          const matchedServerIndexes = new Set<number>();
-          const optimistic = current.filter((message) => {
-            if (!message.optimistic) return false;
-            const byClientId = uniqueServerMessages.findIndex(
-              (server, index) =>
-                !matchedServerIndexes.has(index) &&
-                Boolean(message.clientMessageId) &&
-                Boolean(server.clientMessageId) &&
-                server.clientMessageId === message.clientMessageId,
-            );
-            if (byClientId >= 0) {
-              matchedServerIndexes.add(byClientId);
-              return false;
-            }
-            // Some WhatsApp workers omit clientMessageId in the persisted row.
-            // Match one recent outbound copy by content/time to prevent a second
-            // bubble when the realtime refresh races the send response.
-            const localTime = new Date(
-              message.createdAt || message.timestamp || 0,
-            ).getTime();
-            const byContent = uniqueServerMessages.findIndex(
-              (server, index) => {
-                if (
-                  matchedServerIndexes.has(index) ||
-                  server.direction !== "outbound" ||
-                  messageComparableText(server) !==
-                    messageComparableText(message)
-                )
-                  return false;
-                const serverTime = new Date(
-                  server.createdAt || server.timestamp || 0,
-                ).getTime();
-                return (
-                  !localTime ||
-                  !serverTime ||
-                  Math.abs(serverTime - localTime) <= 30_000
-                );
-              },
-            );
-            if (byContent >= 0) {
-              matchedServerIndexes.add(byContent);
-              return false;
-            }
-            return true;
-          });
-          const next = [...uniqueServerMessages, ...optimistic];
+          const next = mergeConversationMessages(current, serverMessages);
           localStorage.setItem(key, JSON.stringify(next.slice(-100)));
           return next;
         });
+        // A realtime refresh only reconciles the newest window. It must never
+        // move the upward-pagination cursor back to a newer page.
+        if (!quiet || messageCursorRef.current === null) {
+          setHasOlderMessages(Boolean(result.hasMore));
+          messageCursorRef.current =
+            thread.chatType === "internal_group"
+              ? ("oldestId" in result ? result.oldestId ?? null : null)
+              : ("oldestCursor" in result
+                  ? result.oldestCursor ?? null
+                  : null);
+        }
       } catch (cause) {
         const message = cause instanceof Error ? cause.message : "";
         // Gateway failures from an unavailable WhatsApp worker are transient;
@@ -9698,16 +10431,96 @@ export function DashboardApp() {
           setToast("Não foi possível sincronizar novas mensagens agora.");
         }
       } finally {
-        setLoadingMessages(false);
+        if (
+          messageThreadKeyRef.current === threadKey &&
+          messageRequestIdRef.current === requestId
+        )
+          setLoadingMessages(false);
       }
     },
     [session],
   );
 
-  useEffect(() => {
-    if (selected) void loadMessages(selected);
-    else setMessages([]);
-  }, [selected, loadMessages]);
+  const loadOlderMessages = useCallback(async () => {
+    const thread = selected;
+    if (
+      !thread ||
+      !session ||
+      !hasOlderMessages ||
+      loadingOlderMessages ||
+      messageCursorRef.current === null
+    )
+      return;
+    const threadKey = `${thread.instanceId}:${thread.chatJid}`;
+    if (messageThreadKeyRef.current !== threadKey) return;
+    const cursor = messageCursorRef.current;
+    const requestId = messageRequestIdRef.current;
+    setLoadingOlderMessages(true);
+    try {
+      const result = await api.messages(thread, {
+        limit: 50,
+        warm: true,
+        before: cursor,
+      });
+      if (
+        messageThreadKeyRef.current !== threadKey ||
+        messageRequestIdRef.current !== requestId
+      )
+        return;
+      const olderMessages = (result.messages || []).map((message) => ({
+        ...message,
+        instanceId: message.instanceId ?? thread.instanceId,
+        chatJid: message.chatJid ?? thread.chatJid,
+      }));
+      setMessages((current) => mergeConversationMessages(current, olderMessages));
+      setHasOlderMessages(Boolean(result.hasMore));
+      messageCursorRef.current =
+        thread.chatType === "internal_group"
+          ? ("oldestId" in result ? result.oldestId ?? null : null)
+          : ("oldestCursor" in result ? result.oldestCursor ?? null : null);
+      if (!olderMessages.length) setHasOlderMessages(false);
+    } catch (cause) {
+      const errorMessage = cause instanceof Error ? cause.message : "";
+      // A disconnected WhatsApp worker is recoverable. Keep the pagination
+      // cursor and the current window intact; the next upward scroll retries
+      // without exposing a technical 502/503 banner over the conversation.
+      if (
+        !/\b(502|503|504)\b|bad gateway|gateway timeout|temporariamente indisponível/i.test(
+          errorMessage,
+        )
+      ) {
+        setToastSuccess(false);
+        setToast("Não foi possível carregar mensagens antigas.");
+      }
+    } finally {
+      if (
+        messageThreadKeyRef.current === threadKey &&
+        messageRequestIdRef.current === requestId
+      )
+        setLoadingOlderMessages(false);
+    }
+  }, [hasOlderMessages, loadingOlderMessages, selected, session]);
+
+  const selectedMessageThreadKey = selected
+    ? `${selected.instanceId}:${selected.chatJid}`
+    : "";
+  const selectedThreadRef = useRef<ConversationThread | null>(null);
+  useLayoutEffect(() => {
+    selectedThreadRef.current = selected;
+  }, [selected]);
+  useLayoutEffect(() => {
+    const thread = selectedThreadRef.current;
+    if (thread && selectedMessageThreadKey) {
+      void loadMessages(thread);
+    } else {
+      messageThreadKeyRef.current = "";
+      messageRequestIdRef.current += 1;
+      messageCursorRef.current = null;
+      setMessages([]);
+      setHasOlderMessages(false);
+      setLoadingMessages(false);
+    }
+  }, [selectedMessageThreadKey, loadMessages]);
 
   useEffect(() => {
     if (selected || !threads.length) return;
@@ -9731,9 +10544,17 @@ export function DashboardApp() {
     let retry: number | undefined;
     let closed = false;
     let attempt = 0;
+    const sequenceKey = cacheKey("realtime-sequence", session.id);
+    const storedSequence = Number(localStorage.getItem(sequenceKey) || 0);
+    realtimeSequenceRef.current = Number.isFinite(storedSequence)
+      ? Math.max(0, storedSequence)
+      : 0;
     const connect = () => {
       const scheme = location.protocol === "https:" ? "wss" : "ws";
-      socket = new WebSocket(`${scheme}://${location.host}/ws/whatsapp`);
+      const after = realtimeSequenceRef.current;
+      socket = new WebSocket(
+        `${scheme}://${location.host}/ws/whatsapp${after > 0 ? `?after=${after}` : ""}`,
+      );
       socket.onopen = () => {
         attempt = 0;
       };
@@ -9744,57 +10565,208 @@ export function DashboardApp() {
             eventType?: string;
             chatJid?: string;
             instanceId?: number;
+            messageId?: string | null;
+            sequenceId?: number;
             payload?: JsonRecord;
+            message?: JsonRecord;
+            thread?: JsonRecord;
           };
           if (payload.type === "ping") {
             socket?.send(JSON.stringify({ type: "pong" }));
             return;
           }
+          const sequenceId = Number(payload.sequenceId || 0);
+          if (payload.type !== "hello" && sequenceId > 0) {
+            // Backlog polling and Redis fan-out can deliver the same event more
+            // than once. Advance the cursor before touching React state so a
+            // duplicate can never reorder the directory twice.
+            if (sequenceId <= realtimeSequenceRef.current) return;
+            realtimeSequenceRef.current = sequenceId;
+            localStorage.setItem(sequenceKey, String(sequenceId));
+          }
           const now = Date.now();
+          const selectedThread = selectedThreadRef.current;
           if (
-            selected &&
-            payload.chatJid === selected.chatJid &&
+            selectedThread &&
+            payload.chatJid === selectedThread.chatJid &&
             (!payload.instanceId ||
-              payload.instanceId === selected.instanceId) &&
+              payload.instanceId === selectedThread.instanceId) &&
             now - lastMessageReload.current > 350
           ) {
             lastMessageReload.current = now;
-            void loadMessages(selected, true);
+            void loadMessages(selectedThread, true);
           }
           const eventType = String(payload.eventType || payload.type || "");
+          const eventThread =
+            payload.thread ||
+            (payload.payload?.thread as JsonRecord | undefined);
           if (
-            eventType === "conversation.message.upserted" ||
-            eventType === "message.receipt"
+            eventThread &&
+            typeof eventThread === "object" &&
+            payload.chatJid &&
+            payload.instanceId
           ) {
-            // The webhook already carries the updated thread preview. Apply it
-            // locally instead of refetching every profile and conversation.
-            const eventThread = payload.payload?.thread;
-            if (
-              eventThread &&
-              typeof eventThread === "object" &&
-              payload.chatJid &&
-              payload.instanceId
-            ) {
-              setThreads((current) =>
-                normalizeThreads(
-                  current.map((thread) =>
-                    thread.chatJid === payload.chatJid &&
-                    thread.instanceId === payload.instanceId
-                      ? { ...thread, ...(eventThread as ConversationThread) }
-                      : thread,
-                  ),
+            const threadPatch: ConversationThread = {
+              ...(eventThread as ConversationThread),
+              instanceId:
+                Number((eventThread as ConversationThread).instanceId) ||
+                Number(payload.instanceId),
+              chatJid:
+                String(
+                  (eventThread as ConversationThread).chatJid ||
+                    payload.chatJid,
+                ),
+              title: String(
+                (eventThread as ConversationThread).title ||
+                  selectedThread?.title ||
+                  "Conversa",
+              ),
+            };
+            const threadKey = `${threadPatch.instanceId}:${threadPatch.chatJid}`;
+            if (directoryInitialLoadingRef.current) {
+              // Preserve events that arrive between the fast directory call
+              // and its contact hydration. They are merged into the first
+              // atomic paint instead of being overwritten by a stale response.
+              pendingRealtimeThreadsRef.current.set(threadKey, threadPatch);
+            } else {
+              setThreads((current) => {
+                const exists = current.some(
+                  (thread) =>
+                    thread.instanceId === threadPatch.instanceId &&
+                    thread.chatJid === threadPatch.chatJid,
+                );
+                const next = exists
+                  ? current.map((thread) =>
+                      thread.instanceId === threadPatch.instanceId &&
+                      thread.chatJid === threadPatch.chatJid
+                        ? { ...thread, ...threadPatch }
+                        : thread,
+                    )
+                  : [...current, threadPatch];
+                const normalized = normalizeThreads(next);
+                localStorage.setItem(
+                  cacheKey("threads", session.id),
+                  JSON.stringify(normalized),
+                );
+                return normalized;
+              });
+              setSelected((current) =>
+                current &&
+                current.instanceId === threadPatch.instanceId &&
+                current.chatJid === threadPatch.chatJid
+                  ? { ...current, ...threadPatch }
+                  : current,
+              );
+            }
+          }
+          const sameSelectedChat = Boolean(
+            selectedThread &&
+              payload.chatJid === selectedThread.chatJid &&
+              (!payload.instanceId ||
+                payload.instanceId === selectedThread.instanceId),
+          );
+          const eventPayload = payload.payload || {};
+          const eventMessage =
+            payload.message || (eventPayload.message as JsonRecord | undefined);
+          if (
+            sameSelectedChat &&
+            eventMessage &&
+            typeof eventMessage === "object" &&
+            (eventType === "conversation.message.upserted" ||
+              eventType === "conversation.message.updated" ||
+              eventType === "conversation.message.deleted" ||
+              eventType === "conversation.reaction.upserted")
+          ) {
+            const nextMessage = eventMessage as ChatMessage;
+            setMessages((current) => {
+              const next = mergeConversationMessages(current, [nextMessage]);
+              localStorage.setItem(
+                cacheKey(
+                  `messages.${selectedThread?.instanceId}.${encodeURIComponent(selectedThread?.chatJid || "")}`,
+                  session.id,
+                ),
+                JSON.stringify(next),
+              );
+              return next;
+            });
+          } else if (
+            sameSelectedChat &&
+            eventType === "conversation.message.deleted" &&
+            payload.messageId
+          ) {
+            const deletedMessageId = String(payload.messageId);
+            setMessages((current) =>
+              current.map((message) =>
+                String(message.messageId || message.id) === deletedMessageId
+                  ? {
+                      ...message,
+                      deleted: true,
+                      text: null,
+                      body: null,
+                      mediaUrl: null,
+                      mediaSourceUrl: null,
+                      mediaProxyUrl: null,
+                    }
+                  : message,
+              ),
+            );
+          } else if (sameSelectedChat && eventType === "message.receipt") {
+            const receipt =
+              eventPayload.receipt && typeof eventPayload.receipt === "object"
+                ? (eventPayload.receipt as JsonRecord)
+                : {};
+            const state = String(
+              eventPayload.action ||
+                receipt.state ||
+                receipt.status ||
+                "delivered",
+            ).toLowerCase();
+            const deliveryState =
+              state === "read" || state === "played" || state === "seen"
+                ? "read"
+                : "delivered";
+            if (payload.messageId) {
+              const receiptMessageId = String(payload.messageId);
+              setMessages((current) =>
+                current.map((message) =>
+                  String(message.messageId || message.id) === receiptMessageId
+                    ? {
+                        ...message,
+                        deliveryState,
+                        receiptSummary: {
+                          ...(message.receiptSummary || {}),
+                          lastState: deliveryState,
+                          recipientName:
+                            receipt.recipientName ||
+                            receipt.participantName ||
+                            receipt.remoteJid ||
+                            null,
+                          updatedAt:
+                            eventPayload.occurredAt ||
+                            new Date().toISOString(),
+                        },
+                      }
+                    : message,
                 ),
               );
             }
+          }
+          if (
+            eventType === "conversation.message.upserted" ||
+            eventType === "conversation.message.updated" ||
+            eventType === "conversation.message.deleted" ||
+            eventType === "conversation.reaction.upserted" ||
+            eventType === "message.receipt"
+          ) {
+            // Message/reaction/receipt events are complete enough to update
+            // the open chat locally. The directory patch above also handles a
+            // brand-new chat that was not present in the initial snapshot.
             return;
           }
           // Coalesce bursts from webhook/realtime events. The open chat is
           // refreshed above; the directory only needs a lightweight periodic
           // reconciliation so scrolling and typing are never interrupted.
-          if (
-            !eventType.startsWith("instance.") &&
-            !eventType.startsWith("internal.group")
-          )
+          if (!eventType.startsWith("instance.") && !eventType.startsWith("internal.group"))
             return;
           if (now - lastDashboardReload.current < 5000) return;
           lastDashboardReload.current = now;
@@ -9826,7 +10798,7 @@ export function DashboardApp() {
       if (retry) window.clearTimeout(retry);
       socket?.close();
     };
-  }, [session, selected, loadMessages, loadDashboard]);
+  }, [session, loadMessages, loadDashboard]);
 
   // Internal BotAdmin groups have their own SSE channel. This keeps group
   // messages, wallpaper and permission changes instant without polling the
@@ -10266,8 +11238,59 @@ export function DashboardApp() {
         return;
       }
       if (action === "group-settings") {
-        if (thread.chatType === "internal_group" && thread.canManage)
+        if (thread.chatType === "internal_group" && canManageGroupThread(thread))
           setInternalSettingsThread(thread);
+        else if (
+          thread.chatType !== "internal_group" &&
+          canManageGroupThread(thread)
+        ) {
+          if (Number(thread.linkedGroupId || 0) > 0) {
+            setBotSettingsThread(thread);
+          } else {
+            setToastSuccess(true);
+            setToast("Preparando o robô deste grupo…");
+            try {
+              const result = await api.linkBotGroup(thread.instanceId, thread.chatJid);
+              const group = (result.group || {}) as JsonRecord;
+              const linkedGroupId = Number(group.id || 0);
+              if (!linkedGroupId) throw new Error("Não foi possível vincular este grupo ao robô.");
+              const linkedThread: ConversationThread = {
+                ...thread,
+                linkedGroupId,
+                title: String(group.name || thread.title),
+                avatarUrl: String(group.imageUrl || thread.avatarUrl || "") || null,
+                participantsCount: Number(
+                  group.participantCount ?? thread.participantsCount ?? 0,
+                ),
+              };
+              setThreads((current) =>
+                current.map((item) =>
+                  item.chatJid === thread.chatJid && item.instanceId === thread.instanceId
+                    ? linkedThread
+                    : item,
+                ),
+              );
+              setSelected((current) =>
+                current?.chatJid === thread.chatJid && current.instanceId === thread.instanceId
+                  ? linkedThread
+                  : current,
+              );
+              setBotSettingsThread(linkedThread);
+            } catch (cause) {
+              setToastSuccess(false);
+              setToast(
+                cause instanceof Error
+                  ? cause.message
+                  : "Não foi possível preparar o robô deste grupo.",
+              );
+            }
+          }
+        } else if (isGroupThread(thread)) {
+          setToastSuccess(false);
+          setToast(
+            "Este grupo ainda não está vinculado ao robô BotAdmin ou você não é administrador.",
+          );
+        }
         return;
       }
       if (action === "group-links") {
@@ -10276,28 +11299,41 @@ export function DashboardApp() {
         return;
       }
       if (action === "toggle-bot") {
-        if (!internalGroupId || !thread.canManage) return;
+        const botGroupId = Number(thread.linkedGroupId || 0);
+        const canManage = canManageGroupThread(thread);
+        if (!canManage || (thread.chatType === "internal_group" && !internalGroupId) ||
+            (thread.chatType !== "internal_group" && !botGroupId)) return;
         try {
           const next = !thread.internalBotEnabled;
-          const result = await api.updateInternalGroup(internalGroupId, {
-            botEnabled: next,
-          });
+          const result = thread.chatType === "internal_group"
+            ? await api.updateInternalGroup(internalGroupId as string, {
+                botEnabled: next,
+              })
+            : await api.updateBotGroup(botGroupId, { active: next });
           const group = (result.group || {}) as JsonRecord;
           setThreads((current) =>
             current.map((item) =>
-              item.chatJid === thread.chatJid
+              item.chatJid === thread.chatJid &&
+              item.instanceId === thread.instanceId
                 ? {
                     ...item,
-                    internalBotEnabled: Boolean(group.botEnabled ?? next),
+                    internalBotEnabled: Boolean(
+                      group.botEnabled ??
+                        (String(group.status || "").toLowerCase() === "active" ? true : next),
+                    ),
                   }
                 : item,
             ),
           );
           setSelected((current) =>
-            current?.chatJid === thread.chatJid
+            current?.chatJid === thread.chatJid &&
+            current.instanceId === thread.instanceId
               ? {
                   ...current,
-                  internalBotEnabled: Boolean(group.botEnabled ?? next),
+                  internalBotEnabled: Boolean(
+                    group.botEnabled ??
+                      (String(group.status || "").toLowerCase() === "active" ? true : next),
+                  ),
                 }
               : current,
           );
@@ -10736,9 +11772,16 @@ export function DashboardApp() {
       }
     >
       {session.isImpersonated && (
-        <div className="impersonation">
-          <ChevronLeft /> Voltar ao painel de origem
-        </div>
+        <button
+          type="button"
+          className="impersonation"
+          onClick={() => void returnToOrigin()}
+          disabled={returningToOrigin}
+          aria-label="Voltar ao painel de origem"
+        >
+          <ChevronLeft />
+          {returningToOrigin ? "Voltando ao painel…" : "Voltar ao painel de origem"}
+        </button>
       )}
       <Rail
         section={section}
@@ -10786,6 +11829,9 @@ export function DashboardApp() {
               thread={selected}
               messages={messages}
               loading={loadingMessages}
+              loadingOlder={loadingOlderMessages}
+              hasOlder={hasOlderMessages}
+              onLoadOlder={loadOlderMessages}
               onBack={() => setMobileChatOpen(false)}
               onSend={sendText}
               onSendMedia={sendMedia}
@@ -10855,6 +11901,41 @@ export function DashboardApp() {
         <ConversationDetailsModal
           value={conversationDetails}
           onClose={() => setConversationDetails(null)}
+        />
+      )}
+      {botSettingsThread && botSettingsThread.linkedGroupId && (
+        <BotGroupAutomationModal
+          item={{
+            id: Number(botSettingsThread.linkedGroupId),
+            name: botSettingsThread.title,
+            imageUrl: botSettingsThread.avatarUrl || "",
+            status:
+              botSettingsThread.internalBotEnabled === true
+                ? "active"
+                : botSettingsThread.internalBotEnabled === false
+                  ? "disabled"
+                  : "loading",
+          }}
+          onClose={() => setBotSettingsThread(null)}
+          onChanged={(group) => {
+            const active = group
+              ? String(group.status || "").toLowerCase() === "active"
+              : true;
+            setThreads((current) =>
+              current.map((item) =>
+                item.chatJid === botSettingsThread.chatJid &&
+                item.instanceId === botSettingsThread.instanceId
+                  ? { ...item, internalBotEnabled: active }
+                  : item,
+              ),
+            );
+            setSelected((current) =>
+              current?.chatJid === botSettingsThread.chatJid &&
+              current.instanceId === botSettingsThread.instanceId
+                ? { ...current, internalBotEnabled: active }
+                : current,
+            );
+          }}
         />
       )}
       {internalSettingsThread && (

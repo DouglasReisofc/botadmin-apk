@@ -28,6 +28,8 @@ export type ConversationThread = {
   lastMessagePreview?: string | null;
   lastActivity?: string | null;
   lastMessageAt?: string | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
   lastMessageSenderName?: string | null;
   lastMessageDirection?: string | null;
   unreadCount?: number;
@@ -315,6 +317,11 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   logout: () => request<JsonRecord>("/api/auth/logout", { method: "POST" }),
+  returnToImpersonator: () =>
+    request<{ message?: string; redirectTo?: string }>(
+      "/api/admin/users/impersonate/revert",
+      { method: "POST" },
+    ),
   instances: () => request<{ instances?: BotInstance[] }>("/api/bot-instances"),
   botServers: () =>
     request<{
@@ -368,6 +375,16 @@ export const api = {
       policy?: JsonRecord;
       connected?: boolean;
     }>(`/api/bot-instances/${instanceId}/proxy`),
+  testInstanceProxy: (instanceId: number, payload: JsonRecord) =>
+    request<JsonRecord>(`/api/bot-instances/${instanceId}/proxy`, {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  saveInstanceProxy: (instanceId: number, payload: JsonRecord) =>
+    request<JsonRecord>(`/api/bot-instances/${instanceId}/proxy`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   planMobile: () => request<JsonRecord>("/api/user/plan/mobile"),
   createPlanCheckout: (payload: JsonRecord) =>
     request<JsonRecord>("/api/user/plan/checkout", {
@@ -457,15 +474,40 @@ export const api = {
     request<JsonRecord>(`/api/internal-groups/${groupId}/wallpaper`, {
       method: "DELETE",
     }),
-  messages: (thread: ConversationThread, limit = 80, warm = true) => {
+  messages: (
+    thread: ConversationThread,
+    options: {
+      limit?: number;
+      warm?: boolean;
+      before?: string | number | null;
+    } = {},
+  ) => {
+    const limit = Math.max(1, Math.min(100, Math.floor(options.limit ?? 50)));
+    const warm = options.warm !== false;
     if (thread.chatType === "internal_group") {
       const groupId = String(thread.chatJid).replace("internal:", "");
-      return request<{ messages?: ChatMessage[]; hasMore?: boolean }>(
-        `/api/internal-groups/${groupId}/messages?limit=${limit}`,
+      const params = new URLSearchParams({ limit: String(limit) });
+      if (options.before !== null && options.before !== undefined)
+        params.set("before", String(options.before));
+      return request<{
+        messages?: ChatMessage[];
+        hasMore?: boolean;
+        oldestId?: number | null;
+        latestId?: number | null;
+      }>(
+        `/api/internal-groups/${groupId}/messages?${params.toString()}`,
       );
     }
-    return request<{ messages?: ChatMessage[]; hasMore?: boolean }>(
-      `/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${encodeURIComponent(thread.chatJid)}/messages?limit=${limit}${warm ? "&warm=1" : ""}`,
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (warm) params.set("warm", "1");
+    if (options.before !== null && options.before !== undefined)
+      params.set("before", String(options.before));
+    return request<{
+      messages?: ChatMessage[];
+      hasMore?: boolean;
+      oldestCursor?: string | null;
+    }>(
+      `/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${encodeURIComponent(thread.chatJid)}/messages?${params.toString()}`,
     );
   },
   sendText: (
@@ -865,6 +907,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ instanceId, invite: inviteLink.trim() }),
     }),
+  linkBotGroup: (instanceId: number, remoteId: string) =>
+    request<{ group?: JsonRecord; message?: string }>("/api/bot-groups", {
+      method: "POST",
+      body: JSON.stringify({ instanceId, remoteId: remoteId.trim() }),
+    }),
   botGroupSettings: (groupId: number | string) =>
     request<{ settings?: JsonRecord }>(`/api/bot-groups/${groupId}/settings`),
   updateBotGroup: (groupId: number | string, payload: JsonRecord) =>
@@ -1065,4 +1112,344 @@ export const api = {
       body: JSON.stringify(payload),
     }),
   campaigns: () => request<JsonRecord>("/api/bot-ad-campaigns"),
+};
+
+/**
+ * Administrative API surface.  It intentionally lives beside the user API,
+ * but every method keeps the `/api/admin` namespace explicit so a user-panel
+ * request can never be accidentally reused for an administrator action.
+ */
+export const adminApi = {
+  dashboard: () =>
+    Promise.allSettled([
+      request<JsonRecord>("/api/admin/bot-servers"),
+      request<JsonRecord>("/api/admin/users/list?page=1&pageSize=6"),
+      request<JsonRecord>("/api/admin/support/threads"),
+      request<JsonRecord>("/api/admin/sales-events?limit=8"),
+    ]).then(([servers, users, support, sales]) => ({
+      servers: servers.status === "fulfilled" ? servers.value : {},
+      users: users.status === "fulfilled" ? users.value : {},
+      support: support.status === "fulfilled" ? support.value : {},
+      sales: sales.status === "fulfilled" ? sales.value : {},
+    })),
+  supportThreads: () => request<JsonRecord>("/api/admin/support/threads"),
+  supportConversation: (userId: number | string, whatsappId: string) =>
+    request<JsonRecord>(
+      `/api/admin/support/threads/${encodeURIComponent(String(userId))}/${encodeURIComponent(whatsappId)}`,
+    ),
+  sendSupportMessage: (payload: JsonRecord) => {
+    const form = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) form.append(key, String(value));
+    });
+    return request<JsonRecord>("/api/admin/support/messages", {
+      method: "POST",
+      body: form,
+    });
+  },
+  supportThreadAction: (
+    userId: number | string,
+    whatsappId: string,
+    payload: JsonRecord,
+  ) =>
+    request<JsonRecord>(
+      `/api/admin/support/threads/${encodeURIComponent(String(userId))}/${encodeURIComponent(whatsappId)}`,
+      {
+        // The API deliberately separates state changes (PATCH handlingMode)
+        // from lifecycle actions (POST close/reopen). Keeping that contract
+        // here prevents a close action from being interpreted as an invalid
+        // handling mode by the server.
+        method: typeof payload.action === "string" ? "POST" : "PATCH",
+        body: JSON.stringify(payload),
+      },
+    ),
+  users: (params: Record<string, string | number | undefined> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && String(value).trim()) query.set(key, String(value));
+    });
+    return request<JsonRecord>(
+      `/api/admin/users/list${query.toString() ? `?${query.toString()}` : ""}`,
+    );
+  },
+  user: (id: number | string, payload: JsonRecord, method = "PATCH") =>
+    request<JsonRecord>(`/api/admin/users/${encodeURIComponent(String(id))}`, {
+      method,
+      body: JSON.stringify(payload),
+    }),
+  createUser: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/users", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  deleteUser: (id: number | string) =>
+    request<JsonRecord>(`/api/admin/users/${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+    }),
+  userPlan: (id: number | string, payload?: JsonRecord, method = "GET") =>
+    request<JsonRecord>(
+      `/api/admin/users/${encodeURIComponent(String(id))}/plan`,
+      payload
+        ? { method, body: JSON.stringify(payload) }
+        : undefined,
+    ),
+  impersonateUser: (id: number | string) =>
+    request<JsonRecord>(`/api/admin/users/${encodeURIComponent(String(id))}/impersonate`, {
+      method: "POST",
+    }),
+  cleanupUsers: (payload?: JsonRecord) =>
+    request<JsonRecord>(
+      `/api/admin/users/cleanup${payload ? "" : "?limit=10"}`,
+      payload ? { method: "POST", body: JSON.stringify(payload) } : undefined,
+    ),
+  instances: (userId?: number | string) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances${userId ? `?userId=${encodeURIComponent(String(userId))}` : ""}`,
+    ),
+  botServers: () => request<JsonRecord>("/api/admin/bot-servers"),
+  botServer: (id: number | string, payload?: JsonRecord, method = "GET") =>
+    request<JsonRecord>(
+      `/api/admin/bot-servers${id ? `/${encodeURIComponent(String(id))}` : ""}`,
+      payload || method !== "GET"
+        ? { method, ...(payload ? { body: JSON.stringify(payload) } : {}) }
+        : undefined,
+    ),
+  botServerInstances: (params: Record<string, string | number | undefined> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && String(value).trim()) query.set(key, String(value));
+    });
+    return request<JsonRecord>(`/api/admin/bot-servers/instances${query.toString() ? `?${query}` : ""}`);
+  },
+  assignBotServerInstances: (serverId: number | string, instanceIds: Array<number | string>) =>
+    request<JsonRecord>(`/api/admin/bot-servers/${encodeURIComponent(String(serverId))}/instances`, {
+      method: "POST",
+      body: JSON.stringify({ instanceIds }),
+    }),
+  createInstance: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/bot-instances", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  instanceAction: (instanceId: number | string, action: string) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/actions`,
+      { method: "POST", body: JSON.stringify({ action }) },
+    ),
+  instanceProxy: (instanceId: number | string) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/proxy`,
+    ),
+  testInstanceProxy: (instanceId: number | string, payload: JsonRecord) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/proxy`,
+      { method: "POST", body: JSON.stringify(payload) },
+    ),
+  saveInstanceProxy: (instanceId: number | string, payload: JsonRecord) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/proxy`,
+      { method: "PUT", body: JSON.stringify(payload) },
+    ),
+  instancePair: (instanceId: number | string, mode = "auto") =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/pair`,
+      { method: "POST", body: JSON.stringify({ mode }) },
+    ),
+  instancePurge: (instanceId: number | string) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}/purge`,
+      { method: "POST" },
+    ),
+  deleteInstance: (instanceId: number | string) =>
+    request<JsonRecord>(
+      `/api/admin/bot-instances/${encodeURIComponent(String(instanceId))}`,
+      { method: "DELETE" },
+    ),
+  nativeButtons: (enabled?: boolean) =>
+    request<JsonRecord>("/api/admin/bot-instances/native-buttons", enabled === undefined ? undefined : { method: "POST", body: JSON.stringify({ enabled }) }),
+  syncAllInstanceWebhooks: () =>
+    request<JsonRecord>("/api/admin/bot-instances/webhooks", { method: "POST" }),
+  purgeDisconnectedInstances: () =>
+    request<JsonRecord>("/api/admin/bot-instances/purge-disconnected", { method: "POST" }),
+  profile: (profileId: number | string, payload: JsonRecord, method = "PUT") =>
+    request<JsonRecord>(
+      `/api/admin/profiles/${encodeURIComponent(String(profileId))}`,
+      { method, body: JSON.stringify(payload) },
+    ),
+  deleteProfile: (profileId: number | string) =>
+    request<JsonRecord>(
+      `/api/admin/profiles/${encodeURIComponent(String(profileId))}`,
+      { method: "DELETE" },
+    ),
+  plans: () => request<JsonRecord>("/api/admin/plans"),
+  createPlan: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/plans", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  mega: (payload?: JsonRecord) =>
+    request<JsonRecord>("/api/admin/mega", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  groups: (params: Record<string, string | number | undefined> = {}) => {
+    const query = new URLSearchParams();
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && String(value).trim()) query.set(key, String(value));
+    });
+    return request<JsonRecord>(`/api/admin/groups${query.toString() ? `?${query}` : ""}`);
+  },
+  group: (id: number | string, payload?: JsonRecord, method = "GET") =>
+    request<JsonRecord>(`/api/admin/groups/${encodeURIComponent(String(id))}`, payload || method !== "GET" ? { method, ...(payload ? { body: JSON.stringify(payload) } : {}) } : undefined),
+  affiliateProviders: () => request<JsonRecord>("/api/admin/affiliates/providers"),
+  affiliateProvider: (provider: string, payload?: JsonRecord) =>
+    request<JsonRecord>(`/api/admin/affiliates/providers/${encodeURIComponent(provider)}`, payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  updatePlan: (id: number | string, payload: JsonRecord) =>
+    request<JsonRecord>(`/api/admin/plans/${encodeURIComponent(String(id))}`, {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  deletePlan: (id: number | string) =>
+    request<JsonRecord>(`/api/admin/plans/${encodeURIComponent(String(id))}`, {
+      method: "DELETE",
+    }),
+  partners: () => request<JsonRecord>("/api/admin/partners"),
+  partner: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/partners", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  partnerFinance: (payload?: JsonRecord, userId?: number | string) =>
+    request<JsonRecord>(
+      `/api/user/reseller/finance${userId ? `?userId=${encodeURIComponent(String(userId))}` : ""}`,
+      payload
+        ? {
+            method: "PUT",
+            // The finance route authorizes the target from the JSON body on
+            // writes (the query parameter is only used by GET). Include it so
+            // creating/editing a partner never changes the administrator's
+            // own financial rules by mistake.
+            body: JSON.stringify({ ...payload, ...(userId ? { userId } : {}) }),
+          }
+        : undefined,
+    ),
+  partnerManualPayments: () => request<JsonRecord>("/api/user/reseller/manual-payments"),
+  reviewManualPayment: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/user/reseller/manual-payments", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  campaignsAdmin: () => request<JsonRecord>("/api/admin/campaigns"),
+  campaignDetail: (id: number | string) => request<JsonRecord>(`/api/admin/campaigns/${encodeURIComponent(String(id))}`),
+  metaTemplates: () => request<JsonRecord>("/api/admin/meta/templates"),
+  createCampaign: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/campaigns", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  campaignAction: (id: number | string, action: "start" | "send" | "update" | "delete", payload: JsonRecord = {}) =>
+    request<JsonRecord>(
+      `/api/admin/campaigns/${encodeURIComponent(String(id))}${action === "delete" || action === "update" ? "" : `/${action}`}`,
+      {
+        method: action === "delete" ? "DELETE" : action === "update" ? "PATCH" : "POST",
+        ...(Object.keys(payload).length ? { body: JSON.stringify(payload) } : {}),
+      },
+    ),
+  botInterage: () => request<JsonRecord>("/api/admin/botinterage/integrations"),
+  botInterageSettings: (payload?: JsonRecord) =>
+    request<JsonRecord>("/api/admin/botinterage", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  botInterageUsers: () => request<JsonRecord>("/api/admin/botinterage/users"),
+  addBotInterageUser: (userId: number | string) =>
+    request<JsonRecord>("/api/admin/botinterage/users", { method: "POST", body: JSON.stringify({ userId }) }),
+  removeBotInterageUser: (userId: number | string) =>
+    request<JsonRecord>("/api/admin/botinterage/users", { method: "DELETE", body: JSON.stringify({ userId }) }),
+  paymentConfig: (provider: string, payload?: JsonRecord) =>
+    request<JsonRecord>(
+      `/api/admin/payments/${provider}`,
+      payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined,
+    ),
+  paymentHistory: () => request<JsonRecord>("/api/admin/sales-events?limit=100"),
+  revealPaymentCredentials: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/payments/credentials/reveal", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  siteSettings: (payload?: JsonRecord) => {
+    if (!payload) return request<JsonRecord>("/api/admin/site");
+    const form = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) form.append(key, String(value));
+    });
+    return request<JsonRecord>("/api/admin/site", { method: "PUT", body: form });
+  },
+  officialGroupLink: (payload: JsonRecord) =>
+    request<JsonRecord>("/api/admin/site/official-group-link", { method: "POST", body: JSON.stringify(payload) }),
+  smtpSettings: (payload?: JsonRecord) =>
+    request<JsonRecord>("/api/admin/notifications/smtp", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  smtpTest: (email: string) =>
+    request<JsonRecord>("/api/admin/notifications/smtp/test", { method: "POST", body: JSON.stringify({ email }) }),
+  firebaseSettings: (payload?: JsonRecord) => {
+    if (!payload) return request<JsonRecord>("/api/admin/firebase/settings");
+    // Firebase settings are intentionally accepted as multipart by the API so
+    // the same endpoint can later receive service-account files. Sending a
+    // FormData payload here also keeps text-only edits compatible with that
+    // contract instead of producing a misleading 400 JSON error.
+    const form = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) form.append(key, String(value));
+    });
+    return request<JsonRecord>("/api/admin/firebase/settings", { method: "POST", body: form });
+  },
+  mobileSettings: (payload?: JsonRecord) => {
+    if (!payload) return request<JsonRecord>("/api/admin/mobile/settings");
+    const form = new FormData();
+    Object.entries(payload).forEach(([key, value]) => {
+      if (value !== undefined && value !== null) form.append(key, String(value));
+    });
+    return request<JsonRecord>("/api/admin/mobile/settings", { method: "PUT", body: form });
+  },
+  mobileArtifacts: (payload?: FormData) =>
+    request<JsonRecord>("/api/admin/mobile/artifacts", payload ? { method: "PUT", body: payload } : undefined),
+  mobileSigning: (payload?: FormData, method: RequestInit["method"] = "GET") =>
+    request<JsonRecord>("/api/admin/mobile/signing", payload || method !== "GET" ? { method, ...(payload ? { body: payload } : {}) } : undefined),
+  whatsappVerification: (payload?: JsonRecord) =>
+    request<JsonRecord>("/api/admin/whatsapp-verification", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  pushSubscribers: () => request<JsonRecord>("/api/admin/push/subscribers"),
+  billingNotifications: (payload?: JsonRecord) => request<JsonRecord>("/api/admin/billing-notifications", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  notificationTemplates: () => request<JsonRecord>("/api/admin/notifications/templates"),
+  notificationTemplate: (key: string, payload?: JsonRecord) => request<JsonRecord>(`/api/admin/notifications/templates/${encodeURIComponent(key)}`, payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  notificationBroadcast: (payload: JsonRecord) => request<JsonRecord>("/api/admin/notifications/broadcast", { method: "POST", body: JSON.stringify(payload) }),
+  planGuard: (payload?: FormData) => request<JsonRecord>("/api/admin/plan-guard", payload ? { method: "PUT", body: payload } : undefined),
+  planTrial: (payload?: FormData) => request<JsonRecord>("/api/admin/plans/trial", payload ? { method: "PUT", body: payload } : undefined),
+  usefulLinks: () => request<JsonRecord>("/api/admin/useful-links"),
+  usefulLink: (id: number | string, payload?: FormData, method: RequestInit["method"] = "POST") => request<JsonRecord>(id ? `/api/admin/useful-links/links/${encodeURIComponent(String(id))}` : "/api/admin/useful-links/links", payload || method !== "GET" ? { method, ...(payload ? { body: payload } : {}) } : undefined),
+  usefulBanner: (id: number | string, payload?: FormData, method: RequestInit["method"] = "POST") => request<JsonRecord>(id ? `/api/admin/useful-links/banners/${encodeURIComponent(String(id))}` : "/api/admin/useful-links/banners", payload || method !== "GET" ? { method, ...(payload ? { body: payload } : {}) } : undefined),
+  tutorials: () => request<JsonRecord>("/api/admin/tutorials"),
+  tutorial: (slug: string, payload?: FormData, method: RequestInit["method"] = "PUT") => request<JsonRecord>(`/api/admin/tutorials/${encodeURIComponent(slug)}`, payload || method !== "GET" ? { method, ...(payload ? { body: payload } : {}) } : undefined),
+  botInterageTts: (payload?: JsonRecord) => request<JsonRecord>("/api/admin/botinterage-tts", payload ? { method: "PUT", body: JSON.stringify(payload) } : undefined),
+  botInterageTtsUsers: () => request<JsonRecord>("/api/admin/botinterage-tts/users"),
+  addBotInterageTtsUser: (userId: number | string) => request<JsonRecord>("/api/admin/botinterage-tts/users", { method: "POST", body: JSON.stringify({ userId }) }),
+  removeBotInterageTtsUser: (userId: number | string) => request<JsonRecord>("/api/admin/botinterage-tts/users", { method: "DELETE", body: JSON.stringify({ userId }) }),
+  botInterageTtsVoices: () => request<JsonRecord>("/api/admin/botinterage-tts/voices"),
+  systemInstance: (payload?: JsonRecord, method?: RequestInit["method"]) =>
+    request<JsonRecord>(
+      "/api/admin/system-instance",
+      payload
+        ? { method: method || "PUT", body: JSON.stringify(payload) }
+        : undefined,
+    ),
+  systemInstancePair: () =>
+    request<JsonRecord>("/api/admin/system-instance/pair", { method: "POST", body: JSON.stringify({ mode: "auto" }) }),
+  settingsSnapshot: async () => {
+    const entries = await Promise.allSettled([
+      adminApi.siteSettings(),
+      adminApi.smtpSettings(),
+      adminApi.firebaseSettings(),
+      adminApi.mobileSettings(),
+      adminApi.whatsappVerification(),
+      adminApi.systemInstance(),
+      adminApi.pushSubscribers(),
+    ]);
+    const [site, smtp, firebase, mobile, whatsapp, system, push] = entries.map((entry) =>
+      entry.status === "fulfilled" ? entry.value : { error: entry.reason instanceof Error ? entry.reason.message : "Não disponível" },
+    );
+    return { site, smtp, firebase, mobile, whatsapp, system, push };
+  },
 };

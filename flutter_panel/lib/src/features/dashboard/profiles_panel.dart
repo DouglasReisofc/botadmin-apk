@@ -1819,7 +1819,10 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
       if (!mounted) return;
       _bundle = bundle;
       _enabled = bundle.proxy.enabled;
-      _protocol = bundle.proxy.protocol == 'http' ? 'http' : 'socks5';
+      _protocol = const {'http', 'https', 'socks4', 'socks4a', 'socks5', 'socks5h'}
+              .contains(bundle.proxy.protocol)
+          ? bundle.proxy.protocol
+          : 'socks5';
       _host.text = bundle.proxy.host ?? '';
       _port.text = bundle.proxy.port?.toString() ?? '';
     } catch (error) {
@@ -1864,7 +1867,7 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
       if (!mounted) return;
       Navigator.of(context).pop();
       final text = bundle.connected
-          ? 'Proxy salvo. Desconecte e reconecte o perfil para aplicar.'
+          ? 'Proxy salvo e aplicado. A conexão foi reiniciada com segurança.'
           : 'Proxy salvo e pronto para a próxima conexão.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
     } catch (error) {
@@ -1922,7 +1925,11 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
                       decoration: const InputDecoration(labelText: 'Protocolo'),
                       items: const [
                         DropdownMenuItem(value: 'socks5', child: Text('SOCKS5')),
+                        DropdownMenuItem(value: 'socks5h', child: Text('SOCKS5H (DNS pelo proxy)')),
+                        DropdownMenuItem(value: 'socks4', child: Text('SOCKS4')),
+                        DropdownMenuItem(value: 'socks4a', child: Text('SOCKS4A')),
                         DropdownMenuItem(value: 'http', child: Text('HTTP / HTTPS')),
+                        DropdownMenuItem(value: 'https', child: Text('HTTPS (túnel seguro)')),
                       ],
                       onChanged: customerCanConfigure ? (value) => setState(() => _protocol = value ?? 'socks5') : null,
                     ),

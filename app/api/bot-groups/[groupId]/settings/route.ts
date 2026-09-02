@@ -4,6 +4,7 @@ import { getCurrentUser } from "lib/auth";
 import { getAdminSiteSettings } from "lib/admin-site";
 import { getBotMenuConfigForUser } from "lib/bot-config";
 import { getGroupAccessForUser } from "lib/bot-groups";
+import { publishBotGroupRealtimeUpdate } from "lib/bot-group-realtime";
 import {
   getGroupSettings,
   normalizeAutoResponseEntry,
@@ -874,7 +875,12 @@ const ensureAuthorizedGroup = async (groupId: number) => {
     return { error: NextResponse.json({ message: "Grupo não encontrado." }, { status: 404 }) };
   }
 
-  return { user, userRole: user.role, group: access.group };
+  return {
+    user,
+    userRole: user.role,
+    group: access.group,
+    ownerUserId: access.ownerUserId,
+  };
 };
 
 const buildMenuPreview = async (
@@ -1748,6 +1754,11 @@ export async function PATCH(
 
   try {
     const settings = await upsertGroupSettings(groupId, updates);
+    void publishBotGroupRealtimeUpdate(
+      [auth.user.id, auth.ownerUserId],
+      auth.group,
+      "bot.group.settings.updated",
+    );
     return NextResponse.json({
       message: "Configurações atualizadas com sucesso.",
       settings,

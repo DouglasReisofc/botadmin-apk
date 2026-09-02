@@ -6,7 +6,7 @@ import { SocksProxyAgent } from "socks-proxy-agent";
 import { ensureBotInstanceProxyTable, ensurePartnerProgramTables, getDb } from "lib/db";
 import { decryptWwPanelSecret, encryptWwPanelSecret } from "lib/wwpanel";
 
-export type InstanceProxyProtocol = "http" | "socks5";
+export type InstanceProxyProtocol = "http" | "https" | "socks4" | "socks4a" | "socks5" | "socks5h";
 
 export type InstanceProxyPublicConfig = {
   enabled: boolean;
@@ -82,7 +82,9 @@ const dateValue = (value: Date | string | null) => {
 
 const publicConfig = (row?: ProxyRow | null): InstanceProxyPublicConfig => ({
   enabled: row?.enabled === 1,
-  protocol: row?.protocol === "http" ? "http" : "socks5",
+  protocol: ["http", "https", "socks4", "socks4a", "socks5", "socks5h"].includes(row?.protocol || "")
+    ? row!.protocol as InstanceProxyProtocol
+    : "socks5",
   host: row?.host || null,
   port: row?.port || null,
   hasUsername: Boolean(row?.username_encrypted),
@@ -118,9 +120,10 @@ export const getInstanceProxyConfig = async (instanceId: number) =>
 
 const normalizeProtocol = (value: unknown): InstanceProxyProtocol => {
   const protocol = text(value, 16).toLowerCase().replace(/:$/, "");
-  if (protocol === "http" || protocol === "https") return "http";
-  if (protocol === "socks5" || protocol === "socks5h") return "socks5";
-  throw new Error("Protocolo inválido. Use HTTP ou SOCKS5.");
+  if (["http", "https", "socks4", "socks4a", "socks5", "socks5h"].includes(protocol)) {
+    return protocol as InstanceProxyProtocol;
+  }
+  throw new Error("Protocolo inválido. Use HTTP/HTTPS, SOCKS4 ou SOCKS5.");
 };
 
 const normalizeHost = (value: unknown) => {
@@ -159,8 +162,8 @@ const normalizeInput = async (
     } catch {
       throw new Error("URL de proxy inválida.");
     }
-    if (!["http:", "https:", "socks5:", "socks5h:"].includes(urlParts.protocol)) {
-      throw new Error("Protocolo inválido. Use HTTP ou SOCKS5.");
+    if (!["http:", "https:", "socks4:", "socks4a:", "socks5:", "socks5h:"].includes(urlParts.protocol)) {
+      throw new Error("Protocolo inválido. Use HTTP/HTTPS, SOCKS4 ou SOCKS5.");
     }
   }
   const protocol = enabled ? normalizeProtocol(urlParts?.protocol || input.protocol) : "socks5";
@@ -174,6 +177,9 @@ const normalizeInput = async (
   const password = input.preservePassword && !suppliedPassword
     ? decrypted(current?.password_encrypted)
     : suppliedPassword;
+  if ((protocol === "socks4" || protocol === "socks4a") && password) {
+    throw new Error("SOCKS4/4A aceita apenas usuário. Para autenticação com senha, use SOCKS5.");
+  }
   if (password && !username) {
     throw new Error("Informe também o usuário do proxy.");
   }
@@ -220,7 +226,7 @@ const optionalText = (value: unknown, max = 255) => {
 
 const testNormalizedProxy = async (proxy: NormalizedProxy): Promise<ProxyCheck> => {
   const url = proxyUrl(proxy);
-  const agent = proxy.protocol === "socks5"
+  const agent = proxy.protocol.startsWith("socks")
     ? new SocksProxyAgent(url)
     : new HttpsProxyAgent(url);
   const started = Date.now();
@@ -343,7 +349,9 @@ export const applyConfiguredProxyToRemote = async (options: {
   const enabled = row.enabled === 1;
   const normalized: NormalizedProxy = {
     enabled,
-    protocol: row.protocol === "http" ? "http" : "socks5",
+    protocol: ["http", "https", "socks4", "socks4a", "socks5", "socks5h"].includes(row.protocol)
+      ? row.protocol as InstanceProxyProtocol
+      : "socks5",
     host: row.host || "",
     port: row.port || 0,
     username: decrypted(row.username_encrypted),

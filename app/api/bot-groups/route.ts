@@ -8,6 +8,7 @@ import {
   listExternalLinkedGroupRemoteIdsForUser,
   listGroupsForUser,
 } from "lib/bot-groups";
+import { publishBotGroupRealtimeUpdate } from "lib/bot-group-realtime";
 import { SubscriptionPlanError } from "lib/plans";
 
 const collectRemoteIdsFromRequest = (request: Request) => {
@@ -80,6 +81,12 @@ export async function POST(request: Request) {
           instanceId: normalizedInstanceId,
           invite: typeof invite === "string" ? invite : "",
         });
+
+    void publishBotGroupRealtimeUpdate(
+      [user.id],
+      group,
+      "bot.group.linked",
+    );
 
     return NextResponse.json(
       {
