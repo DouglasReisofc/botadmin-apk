@@ -66,13 +66,13 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async rewrites() {
+  async redirects() {
     return [
-      // The isolated React web panel is emitted under public/dashboard/react.
-      // Keep both friendly forms working when Next handles the request instead
-      // of requiring users to type the generated index.html filename.
-      { source: "/dashboard/react", destination: "/dashboard/react/index.html" },
-      { source: "/dashboard/react/", destination: "/dashboard/react/index.html" },
+      // React is now served by the authenticated /dashboard/user route. Keep
+      // the generated asset directory private to the bundle while redirecting
+      // the old technical HTML entry so no user-facing URL contains /react.
+      { source: "/dashboard/react", destination: "/dashboard/user", permanent: false },
+      { source: "/dashboard/react/", destination: "/dashboard/user", permanent: false },
     ];
   },
   images: {
