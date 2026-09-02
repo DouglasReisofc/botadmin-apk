@@ -301,6 +301,31 @@ export const saveAndTestInstanceProxy = async (
       const message = error instanceof Error ? error.message : "Não foi possível conectar usando este proxy.";
       throw new Error(`Proxy recusado: ${message}`);
     }
+
+    // A proxy is a network identity, not merely a transport protocol. Reusing
+    // the same host/port between active WhatsApp sessions defeats the
+    // per-instance isolation policy (and can accidentally put several
+    // accounts behind one IP). Check this immediately before persisting so a
+    // concurrent profile edit cannot silently share the endpoint.
+    await ensureBotInstanceProxyTable();
+    const [assignedRows] = await getDb().query<RowDataPacket[]>(
+      `SELECT p.instance_id, i.name AS instance_name
+         FROM bot_instance_proxies p
+         LEFT JOIN bot_instances i ON i.id = p.instance_id
+        WHERE p.enabled = 1
+          AND p.instance_id <> ?
+          AND LOWER(p.host) = LOWER(?)
+          AND p.port = ?
+        LIMIT 1`,
+      [instanceId, proxy.host, proxy.port],
+    );
+    if (assignedRows.length > 0) {
+      const assigned = assignedRows[0];
+      const label = text(assigned.instance_name, `#${assigned.instance_id}`);
+      throw new Error(
+        `Este proxy já está atribuído à instância ${label}. Use outro IP/porta para manter uma rota exclusiva por perfil.`,
+      );
+    }
   }
   await ensureBotInstanceProxyTable();
   await getDb().query(
