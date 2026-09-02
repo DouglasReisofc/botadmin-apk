@@ -13862,21 +13862,28 @@ const handlePrivateMessageUpsert = async (
     }
 
     if (cmd === "kwai") {
-      if (!arg) { await sendPv("Use: /kwai <url>"); return; }
+      const link =
+        extractLinks(arg).find((entry) => isSupportedAutoDownloadLink(entry, "kwai")) ?? null;
+      if (!link) { await sendPv("Use: /kwai <url>"); return; }
       try {
-        const baseUrl = getAppBaseUrl();
         const apiKey = await getUserRestApiKey(context.instance.userId);
         if (!apiKey) {
           await sendPv("⚠️ Gere sua chave da API REST no painel para usar este comando.");
           return;
         }
-        const resp = await fetch(`${baseUrl}/api/rest/kwai?url=${encodeURIComponent(arg)}`, { headers: { accept: 'application/json', 'x-api-key': apiKey } });
-        const data: any = await resp.json().catch(() => ({}));
-        const r = data?.resultado || data?.result || data;
-        const src = r?.url || null;
-        if (!resp.ok || !src) throw new Error(data?.mensagem || 'Falha');
-        await sendMediaMessage(client, { to: chatId, media: src, mediaType: "video", filename: "kwai.mp4", mimeType: "video/mp4" });
-      } catch { await sendPv("Falha ao baixar do Kwai."); }
+        const ok = await processAutoDownloader({
+          client,
+          chatId,
+          link,
+          apiKey,
+          preferNativeButtons: nativeButtonsEnabledPv,
+          userId: context.instance.userId,
+        });
+        if (!ok) await sendPv("Não consegui baixar esse vídeo do Kwai.");
+      } catch (error) {
+        console.error("[bot-events] kwai error (pv)", { error, link });
+        await sendPv("Falha ao baixar do Kwai.");
+      }
       return;
     }
 
@@ -20360,15 +20367,34 @@ const convertStickerSourceToWebp = async (
           const quoted = message.id
             ? { stanzaId: message.id, participant: message.senderJid ?? undefined }
             : undefined;
-          const success = await processAutoDownloader({
-            client,
+          console.info("[bot-events] iniciando autodownloader", {
+            groupId: group.id,
+            instanceId: context.instance.id,
             chatId: message.chatId,
-            link,
-            quoted,
-            apiKey: restApiKey,
-            preferNativeButtons: nativeButtonsEnabled,
-            userId: context.instance.userId,
+            platform: isSupportedAutoDownloadLink(link, "kwai") ? "kwai" : "outro",
+            hasRestApiKey: Boolean(restApiKey),
           });
+          let success = false;
+          const attempts = isSupportedAutoDownloadLink(link, "kwai") ? 2 : 1;
+          for (let attempt = 1; attempt <= attempts && !success; attempt += 1) {
+            success = await processAutoDownloader({
+              client,
+              chatId: message.chatId,
+              link,
+              quoted,
+              apiKey: restApiKey,
+              preferNativeButtons: nativeButtonsEnabled,
+              userId: context.instance.userId,
+            });
+            if (!success && attempt < attempts) {
+              await new Promise((resolve) => setTimeout(resolve, 750));
+              console.info("[bot-events] repetindo autodownloader do Kwai", {
+                groupId: group.id,
+                instanceId: context.instance.id,
+                attempt: attempt + 1,
+              });
+            }
+          }
           if (!success) {
             console.warn("[bot-events] autodownloader não encontrou conteúdo para envio", {
               link,
@@ -31826,26 +31852,38 @@ const convertStickerSourceToWebp = async (
       }
 
       if (canonicalCommand === "kwai") {
-        const url = (commandArgs || "").trim();
+        const url = extractSupportedCommandLink(commandArgs || textContent || "", "kwai");
         if (!url) {
           await sendGroupText("Use: /kwai <url>");
           return;
         }
         try {
-          const baseUrl = getAppBaseUrl();
           const apiKey = await getUserRestApiKey(context.instance.userId);
           if (!apiKey) {
             await sendGroupText("⚠️ Gere a chave da API REST no painel para usar este comando.");
             return;
           }
-          const resp = await fetch(`${baseUrl}/api/rest/kwai?url=${encodeURIComponent(url)}`, { headers: { accept: 'application/json', 'x-api-key': apiKey } });
-          const data: any = await resp.json().catch(() => ({}));
-          const r = data?.resultado || data?.result || data;
-          const src = r?.url || null;
-          if (!resp.ok || !src) throw new Error(data?.mensagem || 'Falha');
-          await sendMediaMessage(client, { to: message.chatId, media: src, mediaType: "video", filename: `kwai.mp4`, mimeType: "video/mp4", quoted: message.id ? { stanzaId: message.id, participant: message.senderJid ?? undefined } : undefined });
+          if (message.id) {
+            await sendReactionMessage(client, {
+              chatId: message.chatId,
+              messageId: message.id,
+              emoji: "⬇️",
+            }).catch(() => {});
+          }
+          const ok = await processAutoDownloader({
+            client,
+            chatId: message.chatId,
+            link: url,
+            apiKey,
+            preferNativeButtons: nativeButtonsEnabled,
+            userId: context.instance.userId,
+            quoted: message.id
+              ? { stanzaId: message.id, participant: message.senderJid ?? undefined }
+              : undefined,
+          });
+          if (!ok) throw new Error("Kwai não retornou uma mídia válida");
         } catch (error) {
-          console.error("[bot-events] kwai error", { error });
+          console.error("[bot-events] kwai error (group)", { error, url });
           await sendGroupText("Falha ao baixar do Kwai.");
         }
         return;

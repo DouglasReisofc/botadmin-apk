@@ -81,6 +81,16 @@ type AutoDownloaderOptions = {
 const JSON_HEADERS = { accept: "application/json" };
 const GENERIC_BINARY_MIMES = new Set(["application/octet-stream", "binary/octet-stream"]);
 
+// URLs assinadas do CDN do Kwai podem ser acessíveis no navegador, mas o
+// fetch remoto do EasyZap nem sempre consegue recuperá-las. Estes cabeçalhos
+// permitem baixar a mídia no BotAdmin e encaminhá-la como arquivo binário.
+const KWAI_MEDIA_HEADERS: Record<string, string> = {
+  accept: "video/mp4,video/*;q=0.9,*/*;q=0.8",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+  referer: "https://www.kwai.com/",
+};
+
 const MB = 1024 * 1024;
 const DEFAULT_VIDEO_INLINE_LIMIT = 60 * MB;
 const DEFAULT_AUTODOWNLOADER_MAX = 2 * 1024 * MB; // 2 GB
@@ -1441,8 +1451,15 @@ const handleGenericVideoEndpoint = async (
   } = {},
 ): Promise<boolean> => {
   const data = await fetchJson(`${endpoint}?url=${encodeURIComponent(link)}`, apiKey);
-  const result = data?.resultado;
-  if (!result?.url) {
+  const result = data?.resultado ?? data?.result ?? data?.data ?? data;
+  const resolvedUrl =
+    (typeof result?.url === "string" && result.url.trim()) ||
+    (typeof result?.videoUrl === "string" && result.videoUrl.trim()) ||
+    (typeof result?.download === "string" && result.download.trim()) ||
+    (typeof result?.hdplay === "string" && result.hdplay.trim()) ||
+    (typeof result?.play === "string" && result.play.trim()) ||
+    "";
+  if (!resolvedUrl) {
     return false;
   }
 
@@ -1461,11 +1478,12 @@ const handleGenericVideoEndpoint = async (
     (affiliateUrl ? [messageBody, `🔗 ${affiliateUrl}`].filter(Boolean).join("\n\n") : messageBody) ||
     undefined;
   const filename = `${result.title ? result.title.replace(/\s+/g, "_") : "video"}_${Date.now()}.mp4`;
+  const isKwaiEndpoint = endpoint.replace(/\/+$/, "").endsWith("/kwai");
   const shouldUseVideoHeaderCta =
     Boolean(options.preferNativeButtons) &&
     Boolean(affiliateUrl) &&
     Boolean(result.useVideoHeaderCta);
-  const contentLength = await fetchContentLength(result.url);
+  const contentLength = await fetchContentLength(resolvedUrl);
   const sendAsDocument = contentLength !== null && contentLength > resolveVideoInlineLimit();
 
   if (shouldUseVideoHeaderCta) {
@@ -1479,7 +1497,7 @@ const handleGenericVideoEndpoint = async (
       body: messageBody,
       finalUrl: affiliateUrl || "",
       imageUrl: cleanText(result.affiliateImageUrl) || cleanText(result.thumbnail),
-      videoUrl: result.url,
+      videoUrl: resolvedUrl,
       videoFilename: filename,
       videoMimeType: "video/mp4",
       buttonText: cleanText(result.affiliateButtonText) || "Ver produto",
@@ -1491,16 +1509,62 @@ const handleGenericVideoEndpoint = async (
     }
   }
 
-  try {
-    await sendRemoteMedia(client, {
+  const mediaCaption =
+    options.preferNativeButtons && affiliateUrl
+      ? messageBody || fallbackCaption
+      : captionWithAffiliate || fallbackCaption;
+
+  const sendKwaiFromBuffer = async (): Promise<void> => {
+    const downloaded = await downloadWithHeaders(resolvedUrl, KWAI_MEDIA_HEADERS);
+    if (!downloaded.buffer.length) {
+      throw new Error("O resolvedor do Kwai retornou um arquivo vazio.");
+    }
+    await sendBufferMedia(client, {
       chatId,
-      url: result.url,
+      buffer: downloaded.buffer,
       mediaType: sendAsDocument ? "document" : "video",
+      // O CDN do Kwai pode responder como application/octet-stream, embora o
+      // conteúdo seja MP4. Forçamos o MIME de vídeo para o player do WhatsApp.
       mimeType: "video/mp4",
       filename,
-      caption: options.preferNativeButtons && affiliateUrl ? messageBody || fallbackCaption : captionWithAffiliate || fallbackCaption,
+      caption: mediaCaption,
       quoted,
     });
+  };
+
+  try {
+    // Prioriza o buffer para o Kwai porque a URL assinada do CDN pode ser
+    // rejeitada quando o EasyZap tenta buscá-la por conta própria. Se o
+    // download local falhar, ainda preservamos o fallback remoto.
+    if (isKwaiEndpoint) {
+      try {
+        await sendKwaiFromBuffer();
+      } catch (bufferError) {
+        console.warn("[autodownloader] Download local do Kwai falhou; tentando URL remota", {
+          error: bufferError,
+          link,
+        });
+        await sendRemoteMedia(client, {
+          chatId,
+          url: resolvedUrl,
+          mediaType: sendAsDocument ? "document" : "video",
+          mimeType: "video/mp4",
+          filename,
+          caption: mediaCaption,
+          quoted,
+        });
+      }
+    } else {
+      await sendRemoteMedia(client, {
+        chatId,
+        url: resolvedUrl,
+        mediaType: sendAsDocument ? "document" : "video",
+        mimeType: "video/mp4",
+        filename,
+        caption: mediaCaption,
+        quoted,
+      });
+    }
     if (affiliateUrl && options.preferNativeButtons && !shouldUseVideoHeaderCta) {
       await sendVideoCallToAction(client, {
         chatId,
