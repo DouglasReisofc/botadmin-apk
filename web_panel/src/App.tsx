@@ -7265,6 +7265,223 @@ function InstanceProxyModal({
   return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) onClose(); }}><section className="quick-modal instance-proxy-modal" role="dialog" aria-modal="true"><header><div><div className="modal-heading-line"><h2>Proxy da conexão</h2><InfoTip label="Proxy por perfil">O teste confirma a saída pública e o túnel do WhatsApp Web antes de salvar. Ao aplicar, o sistema reinicia somente a conexão e preserva o pareamento.</InfoTip></div><small>{instance.name} · {fullPhoneText(instance.phone)}</small></div><button onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button></header>{loading ? <div className="settings-loading"><RefreshCw className="spin" />Carregando proxy…</div> : <div className="quick-form proxy-form"><label className="proxy-toggle-row"><span><b>Usar proxy</b><small>Desative para voltar à rota direta.</small></span><button type="button" className={`toggle ${enabled ? "active" : ""}`} aria-pressed={enabled} onClick={() => setEnabled((value) => !value)} disabled={!canConfigure}><i /></button></label>{!canConfigure && <div className="form-error">{textOf(policy.instructions, "O responsável comercial não liberou proxy personalizado para esta conta.")}</div>}<div className="proxy-fields"><label>Protocolo<select value={protocol} onChange={(event) => setProtocol(event.target.value)} disabled={!enabled || !canConfigure}><option value="http">HTTP / CONNECT</option><option value="https">HTTPS / CONNECT seguro</option><option value="socks4">SOCKS4</option><option value="socks4a">SOCKS4A</option><option value="socks5">SOCKS5</option><option value="socks5h">SOCKS5H · DNS pelo proxy</option></select></label><label>Host, IPv4 ou IPv6<input value={host} onChange={(event) => setHost(event.target.value)} placeholder="2001:db8::10 ou proxy.exemplo.com" disabled={!enabled || !canConfigure} /></label><label>Porta<input value={port} onChange={(event) => setPort(event.target.value.replace(/[^0-9]/g, ""))} inputMode="numeric" placeholder="59100" disabled={!enabled || !canConfigure} /></label><label>Usuário opcional<input value={username} onChange={(event) => setUsername(event.target.value)} placeholder={hasUsername ? "Já configurado" : "Sem autenticação"} disabled={!enabled || !canConfigure} autoComplete="off" /></label><label>Senha opcional<input value={password} onChange={(event) => setPassword(event.target.value)} placeholder={hasPassword ? "Já configurada" : "Sem autenticação"} disabled={!enabled || !canConfigure} type="password" autoComplete="new-password" /></label></div>{notice && <div className="inline-notice success">{notice}</div>}{error && <div className="form-error">{error}</div>}<p className="settings-muted">É possível configurar um proxy diferente em cada perfil. São aceitos DNS, IPv4 e IPv6, com ou sem autenticação.</p><div className="modal-actions"><button className="secondary-button" type="button" onClick={() => void test()} disabled={testing || saving || !canConfigure}>{testing ? "Testando…" : "Testar em tempo real"}</button><button className="primary-button" type="button" onClick={() => void save()} disabled={saving || testing || !canConfigure}>{saving ? "Aplicando…" : "Salvar e aplicar"}</button></div></div>}</section></div>;
 }
 
+type PairingModalProps = {
+  instance: BotInstance;
+  onClose: () => void;
+  onUpdated?: () => void;
+};
+
+function PairingModal({ instance, onClose, onUpdated }: PairingModalProps) {
+  const [data, setData] = useState<JsonRecord | null>(null);
+  const [mode, setMode] = useState<"auto" | "code" | "qr">("auto");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const started = useRef(false);
+
+  const requestPairing = async (
+    requestedMode: "auto" | "code" | "qr",
+    allowQrFallback = true,
+  ): Promise<void> => {
+    if (loading) return;
+    setMode(requestedMode);
+    setLoading(true);
+    setError("");
+    setNotice("");
+    setData(null);
+    try {
+      const result = await api.pairInstance(instance.id, requestedMode);
+      const next = result.data && typeof result.data === "object"
+        ? result.data
+        : {};
+      const hasPairingValue = Boolean(
+        next.alreadyConnected ||
+          next.qrCode ||
+          next.qr ||
+          next.QRCode ||
+          next.linkingCode ||
+          next.pairingCode ||
+          next.code,
+      );
+      if (!hasPairingValue && requestedMode !== "qr" && allowQrFallback) {
+        setLoading(false);
+        await requestPairing("qr", false);
+        return;
+      }
+      setData(next);
+      if (next.alreadyConnected) {
+        setNotice("Esta conexão já está ativa. Para trocar o número, edite a instância e confirme a substituição.");
+      } else if (!hasPairingValue) {
+        setError("O servidor não retornou um código de pareamento. Tente gerar o QR Code novamente.");
+      } else {
+        setNotice(requestedMode === "qr" ? "QR Code pronto para leitura no WhatsApp." : "Código de pareamento pronto.");
+      }
+      onUpdated?.();
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Não foi possível iniciar o pareamento.";
+      const retryable = requestedMode !== "qr" && allowQrFallback &&
+        !/autentic|renove|plano|já está ativa|ja está ativa|permissão|permissao/i.test(message);
+      if (retryable) {
+        setLoading(false);
+        await requestPairing("qr", false);
+        return;
+      }
+      setError(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (started.current) return;
+    started.current = true;
+    void requestPairing("auto");
+    // The modal intentionally requests once on open; method buttons request
+    // again explicitly and are not coupled to parent profile refreshes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [instance.id]);
+
+  const qrValue = textOf(data?.qrCode || data?.qr || data?.QRCode);
+  const qrSrc = qrValue
+    ? qrValue.startsWith("data:") || /^https?:\/\//i.test(qrValue)
+      ? qrValue
+      : /^[A-Za-z0-9+/=]{120,}$/.test(qrValue)
+        ? `data:image/png;base64,${qrValue}`
+        : absoluteMediaUrl(qrValue)
+    : "";
+  const linkingCode = textOf(
+    data?.linkingCode || data?.pairingCode || data?.LinkingCode || data?.code,
+  );
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !loading) onClose();
+    }}>
+      <section className="quick-modal profile-pairing-modal" role="dialog" aria-modal="true" aria-labelledby="profile-pairing-title">
+        <header>
+          <div>
+            <h2 id="profile-pairing-title">Conectar WhatsApp</h2>
+            <small>{instance.name} · {fullPhoneText(instance.phone)}</small>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar" disabled={loading}><X /></button>
+        </header>
+        <div className="quick-form pairing-modal-content">
+          <div className="pairing-methods" role="group" aria-label="Método de pareamento">
+            <button type="button" className={mode === "auto" ? "active" : ""} onClick={() => void requestPairing("auto")} disabled={loading}>
+              <KeyRound /> Automático
+            </button>
+            <button type="button" className={mode === "code" ? "active" : ""} onClick={() => void requestPairing("code")} disabled={loading}>
+              <MessageCircle /> Código
+            </button>
+            <button type="button" className={mode === "qr" ? "active" : ""} onClick={() => void requestPairing("qr")} disabled={loading}>
+              <AppWindow /> QR Code
+            </button>
+          </div>
+          {loading && <div className="settings-loading"><RefreshCw className="spin" />Gerando dados de conexão…</div>}
+          {!loading && qrSrc && (
+            <div className="pairing-result">
+              <img src={qrSrc} alt="QR Code para conectar o WhatsApp" />
+              <b>Leia este QR Code no WhatsApp</b>
+              <small>WhatsApp → Dispositivos conectados → Conectar dispositivo.</small>
+            </div>
+          )}
+          {!loading && linkingCode && !qrSrc && (
+            <div className="pairing-result pairing-code-result">
+              <span>Código de pareamento</span>
+              <code>{linkingCode}</code>
+              <small>No WhatsApp, abra Dispositivos conectados e informe este código.</small>
+            </div>
+          )}
+          {!loading && Boolean(data?.alreadyConnected) && !qrSrc && !linkingCode && (
+            <div className="pairing-result pairing-connected-result"><CheckSquare /><b>WhatsApp já conectado</b><small>Não é necessário gerar outro código.</small></div>
+          )}
+          {notice && <div className="inline-notice success">{notice}</div>}
+          {error && <div className="form-error">{error}</div>}
+          <div className="pairing-modal-actions">
+            <button type="button" className="secondary-button" onClick={() => void requestPairing("qr")} disabled={loading}><AppWindow /> Gerar QR Code</button>
+            <button type="button" className="primary-button" onClick={() => void requestPairing("code")} disabled={loading}><KeyRound /> Gerar código</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  );
+}
+
+type InstanceIdentityModalProps = {
+  instance: BotInstance;
+  onClose: () => void;
+  onSaved: (result: { instance?: BotInstance; phoneChanged?: boolean; pairingRequired?: boolean }) => void;
+};
+
+function InstanceIdentityModal({ instance, onClose, onSaved }: InstanceIdentityModalProps) {
+  const [name, setName] = useState(instance.name);
+  const [phone, setPhone] = useState(textOf(instance.phone));
+  const [confirmNumber, setConfirmNumber] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const normalizedPhone = phone.replace(/\D/g, "");
+  const currentPhone = textOf(instance.phone).replace(/\D/g, "");
+  const numberChanged = normalizedPhone !== currentPhone;
+
+  const submit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (saving) return;
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("Informe um nome para a instância.");
+      return;
+    }
+    if (normalizedPhone.length < 10 || normalizedPhone.length > 16) {
+      setError("Informe um número de WhatsApp válido com DDI.");
+      return;
+    }
+    if (numberChanged && !confirmNumber) {
+      setConfirmNumber(true);
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const result = await api.updateInstanceProfile(instance.id, {
+        instanceName: trimmedName,
+        phone: normalizedPhone,
+      });
+      onSaved(result);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível salvar a instância.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="modal-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget && !saving) onClose();
+    }}>
+      <form className="quick-modal instance-identity-modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="instance-identity-title">
+        <header>
+          <div>
+            <h2 id="instance-identity-title">Editar instância</h2>
+            <small>Nome e número usados no próximo pareamento.</small>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button>
+        </header>
+        <div className="quick-form">
+          <label>Nome da instância<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} autoFocus /></label>
+          <label>Número do WhatsApp<input value={phone} maxLength={24} inputMode="tel" placeholder="5511999999999" onChange={(event) => { setPhone(event.target.value); setConfirmNumber(false); }} /></label>
+          {numberChanged && <div className="identity-warning"><b>O número será substituído</b><span>A sessão atual será desconectada e as credenciais antigas serão recicladas. Depois de salvar, um novo código ou QR Code será gerado para o número informado.</span></div>}
+          {confirmNumber && numberChanged && <label className="identity-confirm"><input type="checkbox" checked={confirmNumber} onChange={(event) => setConfirmNumber(event.target.checked)} /> <span>Confirmo a desconexão e a geração de um novo pareamento.</span></label>}
+          {error && <div className="form-error">{error}</div>}
+          <div className="pairing-modal-actions">
+            <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancelar</button>
+            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Salvando…" : numberChanged && !confirmNumber ? "Continuar" : "Salvar alterações"}</button>
+          </div>
+        </div>
+      </form>
+    </div>
+  );
+}
+
 function ProfilesWorkspace({
   instances,
   onProfilesChanged,
@@ -7288,7 +7505,8 @@ function ProfilesWorkspace({
   const [createOpen, setCreateOpen] = useState(false);
   const [renewOpen, setRenewOpen] = useState(false);
   const [proxyOpen, setProxyOpen] = useState(false);
-  const [pairData, setPairData] = useState<JsonRecord | null>(null);
+  const [pairOpen, setPairOpen] = useState(false);
+  const [identityOpen, setIdentityOpen] = useState(false);
   const [editingName, setEditingName] = useState("");
   const [editingPushName, setEditingPushName] = useState("");
   const [editingStatusText, setEditingStatusText] = useState("");
@@ -7374,16 +7592,15 @@ function ProfilesWorkspace({
   }, [selectedId, selected]);
   const action = async (name: "connect" | "logout" | "restart" | "resync") => {
     if (!selected || busy) return;
+    if (name === "connect") {
+      setPairOpen(true);
+      return;
+    }
     setBusy(true);
     setError("");
-    setPairData(null);
     try {
       if (name === "resync") await api.resyncHistory(selected.id);
-      else if (name === "connect") {
-        const result = await api.pairInstance(selected.id, "auto");
-        if (result.data && Object.keys(result.data).length)
-          setPairData(result.data);
-      } else await api.instanceAction(selected.id, name);
+      else await api.instanceAction(selected.id, name);
       setNotice(
         name === "resync"
           ? "Resincronização iniciada em segundo plano."
@@ -7407,8 +7624,7 @@ function ProfilesWorkspace({
   };
   const profileChanged = Boolean(
     selected &&
-      (editingName.trim() !== selected.name ||
-        editingPushName.trim() !== textOf(profile?.pushName).trim() ||
+      (editingPushName.trim() !== textOf(profile?.pushName).trim() ||
         editingStatusText.trim() !== profileAboutText(profile?.statusText).trim() ||
         profileImageDataUrl ||
         removeProfilePhoto),
@@ -7420,13 +7636,11 @@ function ProfilesWorkspace({
       ? (instanceToggleSource as JsonRecord)
       : {};
   const saveProfile = async () => {
-    if (!selected || busy || !editingName.trim() || !profileChanged) return;
+    if (!selected || busy || !profileChanged) return;
     setBusy(true);
     setError("");
     try {
-      const payload: JsonRecord = {
-        displayName: editingName.trim(),
-      };
+      const payload: JsonRecord = {};
       if (editingPushName.trim() !== textOf(profile?.pushName).trim())
         payload.pushName = editingPushName.trim();
       if (editingStatusText.trim() !== profileAboutText(profile?.statusText).trim())
@@ -7582,6 +7796,14 @@ function ProfilesWorkspace({
                     ? "Conectado"
                     : "Desconectado"}
                 </span>
+                <button
+                  type="button"
+                  className="secondary-button profile-identity-button"
+                  onClick={() => setIdentityOpen(true)}
+                  disabled={busy}
+                >
+                  <Settings /> Editar
+                </button>
               </header>
               {error && (
                 <div className="module-error">
@@ -7590,41 +7812,19 @@ function ProfilesWorkspace({
                 </div>
               )}
               {notice && <div className="inline-notice success">{notice}</div>}
-              {pairData && (
-                <div className="pairing-inline">
-                  <b>Dados de conexão</b>
-                  {Boolean(pairData.qrCode) && (
-                    <img
-                      src={
-                        String(pairData.qrCode).startsWith("data:")
-                          ? String(pairData.qrCode)
-                          : absoluteMediaUrl(String(pairData.qrCode))
-                      }
-                      alt="QR Code para conectar"
-                    />
-                  )}
-                  {Boolean(pairData.linkingCode) && (
-                    <code>{String(pairData.linkingCode)}</code>
-                  )}
-                  <small>
-                    Abra o WhatsApp e conclua a leitura ou informe o código
-                    exibido.
-                  </small>
-                </div>
-              )}
               <section className="settings-card profile-detail-card">
                 <div className="settings-card-heading">
                   <div>
                     <h3>Dados do perfil</h3>
                     <p className="settings-muted">
-                      Edite o apelido, a identidade do WhatsApp, o recado e a
-                      foto sem perder a conexão.
+                      Edite a identidade do WhatsApp, o recado e a foto sem
+                      perder a conexão.
                     </p>
                   </div>
                   <button
                     className="secondary-button"
                     onClick={() => void saveProfile()}
-                    disabled={busy || !editingName.trim() || !profileChanged}
+                    disabled={busy || !profileChanged}
                   >
                     <CheckSquare /> Salvar
                   </button>
@@ -7681,15 +7881,6 @@ function ProfilesWorkspace({
                     />
                   </div>
                   <div className="profile-editor-fields">
-                    <label className="profile-name-field">
-                      Nome no BotAdmin
-                      <input
-                        value={editingName}
-                        maxLength={120}
-                        onChange={(event) => setEditingName(event.target.value)}
-                      />
-                      <small>Identifica este perfil somente no painel.</small>
-                    </label>
                     <label className="profile-name-field">
                       Nome exibido no WhatsApp
                       <input
@@ -7759,13 +7950,9 @@ function ProfilesWorkspace({
                   <button
                     className="primary-button"
                     disabled={busy}
-                    onClick={() =>
-                      void action(
-                        connected(selected.sessionStatus)
-                          ? "restart"
-                          : "connect",
-                      )
-                    }
+                    onClick={() => connected(selected.sessionStatus)
+                      ? void action("restart")
+                      : setPairOpen(true)}
                   >
                     {connected(selected.sessionStatus) ? (
                       <RefreshCw />
@@ -7886,6 +8073,36 @@ function ProfilesWorkspace({
           onSaved={(nextProxy) => {
             setProxy(nextProxy);
             setNotice("Proxy salvo e aplicado com reinício seguro da conexão.");
+          }}
+        />
+      )}
+      {identityOpen && selected && (
+        <InstanceIdentityModal
+          instance={selected}
+          onClose={() => setIdentityOpen(false)}
+          onSaved={(result) => {
+            setIdentityOpen(false);
+            if (result.instance) {
+              setItems((current) => current.map((item) =>
+                item.id === selected.id ? { ...item, ...result.instance } : item,
+              ));
+            }
+            setNotice(result.phoneChanged || result.pairingRequired
+              ? "Número atualizado. A sessão antiga foi desconectada; gere o novo pareamento para conectar o WhatsApp."
+              : "Identidade da instância atualizada.");
+            void reload();
+            onProfilesChanged?.();
+            if (result.phoneChanged || result.pairingRequired) setPairOpen(true);
+          }}
+        />
+      )}
+      {pairOpen && selected && (
+        <PairingModal
+          instance={selected}
+          onClose={() => setPairOpen(false)}
+          onUpdated={() => {
+            void reload();
+            onProfilesChanged?.();
           }}
         />
       )}

@@ -66,6 +66,10 @@ export type BotInstanceProfile = {
 };
 
 export type BotInstanceProfileUpdatePayload = {
+  /** Nome interno exibido na lista de perfis do BotAdmin. */
+  instanceName?: string;
+  /** Número que será usado no próximo pareamento (somente dígitos). */
+  phone?: string;
   displayName?: string;
   pushName?: string;
   statusText?: string;

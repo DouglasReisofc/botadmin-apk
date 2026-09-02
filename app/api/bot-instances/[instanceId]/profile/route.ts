@@ -90,6 +90,8 @@ export async function PATCH(
 
     const contentType = request.headers.get("content-type") ?? "";
     const payload: {
+      instanceName?: string;
+      phone?: string;
       displayName?: string;
       pushName?: string;
       statusText?: string;
@@ -100,12 +102,16 @@ export async function PATCH(
     if (contentType.includes("multipart/form-data")) {
       const formData = await request.formData();
       const displayName = formData.get("displayName");
+      const instanceName = formData.get("instanceName");
+      const phone = formData.get("phone");
       const pushName = formData.get("pushName");
       const statusText = formData.get("statusText");
       const removePhoto = formData.get("removePhoto");
       const photo = formData.get("photo");
 
       if (typeof displayName === "string") payload.displayName = displayName;
+      if (typeof instanceName === "string") payload.instanceName = instanceName;
+      if (typeof phone === "string") payload.phone = phone;
       if (typeof pushName === "string") payload.pushName = pushName;
       if (typeof statusText === "string") payload.statusText = statusText;
       payload.removePhoto = parseBoolean(removePhoto);
@@ -124,6 +130,8 @@ export async function PATCH(
         return NextResponse.json({ message: "Payload inválido." }, { status: 400 });
       }
       const data = body as Record<string, unknown>;
+      if (typeof data.instanceName === "string") payload.instanceName = data.instanceName;
+      if (typeof data.phone === "string") payload.phone = data.phone;
       if (typeof data.displayName === "string") payload.displayName = data.displayName;
       if (typeof data.pushName === "string") payload.pushName = data.pushName;
       if (typeof data.statusText === "string") payload.statusText = data.statusText;
@@ -132,6 +140,8 @@ export async function PATCH(
     }
 
     const hasChanges =
+      payload.instanceName !== undefined ||
+      payload.phone !== undefined ||
       payload.displayName !== undefined ||
       payload.pushName !== undefined ||
       payload.statusText !== undefined ||
@@ -147,6 +157,8 @@ export async function PATCH(
       message: "Perfil da instância atualizado.",
       instance: result.instance,
       profile: result.profile,
+      phoneChanged: result.phoneChanged,
+      pairingRequired: result.pairingRequired,
     });
   } catch (error) {
     if (error instanceof BotInstanceError) {

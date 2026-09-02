@@ -365,6 +365,8 @@ export const api = {
       profile?: JsonRecord;
       instance?: BotInstance;
       message?: string;
+      phoneChanged?: boolean;
+      pairingRequired?: boolean;
     }>(`/api/bot-instances/${instanceId}/profile`, {
       method: "PATCH",
       body: JSON.stringify(payload),

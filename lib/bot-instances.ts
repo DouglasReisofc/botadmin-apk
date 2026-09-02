@@ -2836,11 +2836,22 @@ export const updateInstanceProfileForUser = async (
   userId: number,
   instanceId: number,
   payload: BotInstanceProfileUpdatePayload,
-): Promise<{ instance: BotInstance; profile: BotInstanceProfile }> => {
+): Promise<{
+  instance: BotInstance;
+  profile: BotInstanceProfile;
+  phoneChanged: boolean;
+  pairingRequired: boolean;
+}> => {
   const current = await assertInstanceOwnership(userId, instanceId);
 
-  if (typeof payload.displayName === "string") {
-    const nextName = normalizeName(payload.displayName, current.name);
+  // `instanceName` is the dashboard label. Keep `displayName` as a backwards
+  // compatible alias because older clients still send that field.
+  const requestedInstanceName =
+    typeof payload.instanceName === "string"
+      ? payload.instanceName
+      : payload.displayName;
+  if (typeof requestedInstanceName === "string") {
+    const nextName = normalizeName(requestedInstanceName, current.name);
     if (nextName !== current.name) {
       await renameInstance(userId, instanceId, { name: nextName });
     }
@@ -2850,6 +2861,57 @@ export const updateInstanceProfileForUser = async (
   const hasStatusText = typeof payload.statusText === "string";
   const hasImage = typeof payload.imageDataUrl === "string" && payload.imageDataUrl.trim().length > 0;
   const removePhoto = payload.removePhoto === true;
+  const requestedPhone =
+    typeof payload.phone === "string" ? normalizePhone(payload.phone) : null;
+  const phoneWillChange = Boolean(requestedPhone && requestedPhone !== current.phone);
+  if (phoneWillChange && (hasPushName || hasStatusText || hasImage || removePhoto)) {
+    throw new BotInstanceError(
+      "Salve o novo número primeiro. Depois de conectar o WhatsApp, altere o nome, recado ou foto em uma segunda etapa.",
+      409,
+    );
+  }
+
+  let phoneChanged = false;
+  if (requestedPhone) {
+    const nextPhone = requestedPhone;
+    const refreshed = await assertInstanceOwnership(userId, instanceId);
+    if (nextPhone !== refreshed.phone) {
+      // A WhatsApp session is bound to its phone number. Recycle the remote
+      // registration before persisting the new number so old credentials can
+      // never continue receiving events for the replacement number.
+      await resetInstanceRemoteSessionForPairing(refreshed);
+      const db = getDb();
+      await db.query(
+        `
+          UPDATE bot_instances
+          SET phone = ?, desired_session_state = 'connected',
+              session_status = 'desconectado', last_status_sync = NOW(),
+              updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND user_id = ?
+        `,
+        [nextPhone, instanceId, userId],
+      );
+      if (refreshed.profile_id) {
+        await db.query(
+          `
+            UPDATE bot_user_profiles
+            SET phone = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+          `,
+          [nextPhone, refreshed.profile_id, userId],
+        ).catch((error) => {
+          // Legacy installations may not have a linked profile row. The
+          // instance remains authoritative and can still be paired safely.
+          console.warn("Failed to mirror replacement phone to profile", {
+            instanceId,
+            profileId: refreshed.profile_id,
+            error,
+          });
+        });
+      }
+      phoneChanged = true;
+    }
+  }
 
   if (hasPushName || hasStatusText || hasImage || removePhoto) {
     const refreshed = await assertInstanceOwnership(userId, instanceId);
@@ -2925,6 +2987,8 @@ export const updateInstanceProfileForUser = async (
   return {
     instance: updatedInstance,
     profile,
+    phoneChanged,
+    pairingRequired: phoneChanged,
   };
 };
 
