@@ -2181,6 +2181,28 @@ export const ensureBotInstanceProxyTable = async () =>
         INDEX idx_bot_instance_proxy_enabled (enabled, checked_at)
       ) ENGINE=InnoDB;
     `);
+
+    // Prevent two enabled instances from sharing the same network endpoint.
+    // Including `enabled` keeps historical/disabled configurations harmless
+    // while making the active route unique on both MySQL and PostgreSQL.
+    const [existingIndex] = await db.query<RowDataPacket[]>(
+      "SHOW INDEX FROM bot_instance_proxies WHERE Key_name = ?",
+      ["uq_bot_instance_proxy_endpoint"],
+    );
+    if (!Array.isArray(existingIndex) || existingIndex.length === 0) {
+      try {
+        await db.query(
+          "ALTER TABLE bot_instance_proxies ADD UNIQUE KEY uq_bot_instance_proxy_endpoint (enabled, host, port)",
+        );
+      } catch (error) {
+        // Do not prevent the application from starting if an old database
+        // already contains duplicate routes. The application-level check in
+        // instance-proxy.ts still rejects new reuse; an administrator can
+        // clean the legacy duplicates and a migration can then create this
+        // stronger database constraint explicitly.
+        console.warn("[proxy] could not create endpoint uniqueness index", error);
+      }
+    }
   });
 
 export const ensureBotInstanceSettingsTable = async () =>
