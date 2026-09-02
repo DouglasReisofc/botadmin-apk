@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
-import { getInstanceForUser } from "lib/bot-instances";
+import { getInstanceForUser, performInstanceAction } from "lib/bot-instances";
 import {
   applyConfiguredProxyToRemote,
   getCustomerProxySalesPolicy,
@@ -99,7 +99,14 @@ export async function PUT(request: Request, context: Context) {
     const config = await saveAndTestInstanceProxy(instanceId, proxyInput(body as Record<string, unknown>));
     const connected = isConnected(instance.sessionStatus);
     let applied = false;
-    if (!connected) {
+    if (connected) {
+      // WuzAPI refuses to change a live proxy. Restart the transport only
+      // (disconnect/connect), which keeps the WhatsApp device session and
+      // avoids the destructive /session/logout operation that would require
+      // a new QR scan.
+      await performInstanceAction(user.id, instanceId, "restart");
+      applied = true;
+    } else {
       await applyConfiguredProxyToRemote({
         instanceId,
         serverBaseUrl: instance.serverBaseUrl,
@@ -109,13 +116,13 @@ export async function PUT(request: Request, context: Context) {
     }
     return NextResponse.json({
       message: connected
-        ? "Proxy salvo. Desconecte e reconecte o perfil para aplicar a nova rota."
+        ? "Proxy salvo e aplicado com reinício seguro da conexão."
         : "Proxy salvo e aplicado à próxima conexão.",
       proxy: await getInstanceProxyConfig(instanceId),
       policy,
       connected,
       applied,
-      requiresReconnect: connected,
+      requiresReconnect: false,
     });
   } catch (error) {
     return fail(error, "Não foi possível salvar o proxy.");

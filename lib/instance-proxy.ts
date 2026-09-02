@@ -237,6 +237,26 @@ const testNormalizedProxy = async (proxy: NormalizedProxy): Promise<ProxyCheck> 
   if (!ip || body.success === false) {
     throw new Error(optionalText(body.message, 300) || "O proxy não retornou um IP público válido.");
   }
+
+  // A generic IP lookup only proves that the proxy is online. Several proxy
+  // providers block WhatsApp specifically while still allowing normal web
+  // traffic. Validate the exact HTTPS tunnel required by the WhatsApp
+  // websocket before accepting and persisting the proxy for an instance.
+  try {
+    await axios.head("https://web.whatsapp.com/", {
+      httpAgent: agent,
+      httpsAgent: agent,
+      proxy: false,
+      timeout: 12_000,
+      maxRedirects: 2,
+      validateStatus: (status) => status >= 200 && status < 400,
+    });
+  } catch {
+    throw new Error(
+      "O proxy está online, mas não permite conexão com o WhatsApp Web (web.whatsapp.com:443).",
+    );
+  }
+
   const timezone = record(body.timezone);
   const connection = record(body.connection);
   return {
