@@ -29,12 +29,11 @@ const wantsReactWebClient = (request: Request, partnerMode: boolean) => {
     ?.split(";")
     .map((entry) => entry.trim().split("=", 2) as [string, string])
     .find(([name]) => name === WEB_CLIENT_COOKIE_NAME)?.[1];
-  if (clientCookie === "flutter") return false;
   if (clientCookie === "react") return true;
-  // Durante a homologação o React só é ligado por query, cookie ou variável
-  // de ambiente. Assim o painel Flutter em produção e os apps Android/Windows
-  // continuam intactos até a migração web ser aprovada.
-  return false;
+  // O React é o cliente web oficial a partir da troca de produção. Um cookie
+  // Flutter antigo não pode manter usuários presos na versão de homologação;
+  // o fallback continua disponível explicitamente com ?flutter=1.
+  return true;
 };
 
 const buildReactHeaders = (request: Request, html: string) => {
@@ -49,18 +48,11 @@ const buildReactHeaders = (request: Request, html: string) => {
     "CDN-Cache-Control": "no-store",
     "Surrogate-Control": "no-store",
   });
-  if (url.searchParams.get("react") === "1") {
-    const secure = url.protocol === "https:" ? "; Secure" : "";
-    headers.append(
-      "set-cookie",
-      `${WEB_CLIENT_COOKIE_NAME}=react; Path=/dashboard; Max-Age=31536000; SameSite=Lax${secure}`,
-    );
-  } else if (url.searchParams.get("flutter") === "1") {
-    headers.append(
-      "set-cookie",
-      `${WEB_CLIENT_COOKIE_NAME}=; Path=/dashboard; Max-Age=0; SameSite=Lax`,
-    );
-  }
+  const secure = url.protocol === "https:" ? "; Secure" : "";
+  headers.append(
+    "set-cookie",
+    `${WEB_CLIENT_COOKIE_NAME}=react; Path=/dashboard; Max-Age=31536000; SameSite=Lax${secure}`,
+  );
   return headers;
 };
 
@@ -90,6 +82,14 @@ const buildFlutterHeaders = (request: Request, html: string) => {
       `${COOKIE_NAME}=${encodeURIComponent(version)}; Path=/dashboard; Max-Age=31536000; SameSite=Lax; Secure`,
     );
   }
+
+  // The Flutter client is retained for Android/Windows and for the explicit
+  // rollback URL (?flutter=1), but it must not leave a stale web-client cookie
+  // that silently changes the default production web panel.
+  headers.append(
+    "set-cookie",
+    `${WEB_CLIENT_COOKIE_NAME}=; Path=/dashboard; Max-Age=0; SameSite=Lax`,
+  );
 
   return headers;
 };
