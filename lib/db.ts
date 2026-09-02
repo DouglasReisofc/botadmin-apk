@@ -2183,8 +2183,7 @@ export const ensureBotInstanceProxyTable = async () =>
     `);
 
     // Prevent two enabled instances from sharing the same network endpoint.
-    // Including `enabled` keeps historical/disabled configurations harmless
-    // while making the active route unique on both MySQL and PostgreSQL.
+    // Including `enabled` keeps historical/disabled configurations harmless.
     const [existingIndex] = await db.query<RowDataPacket[]>(
       "SHOW INDEX FROM bot_instance_proxies WHERE Key_name = ?",
       ["uq_bot_instance_proxy_endpoint"],
@@ -2201,6 +2200,26 @@ export const ensureBotInstanceProxyTable = async () =>
         // clean the legacy duplicates and a migration can then create this
         // stronger database constraint explicitly.
         console.warn("[proxy] could not create endpoint uniqueness index", error);
+      }
+    }
+
+    // Different proxy hostnames can still expose the same public egress IP.
+    // Keep that identity exclusive too; NULL is allowed for disabled or
+    // legacy rows and therefore does not prevent their migration.
+    const [existingEgressIndex] = await db.query<RowDataPacket[]>(
+      "SHOW INDEX FROM bot_instance_proxies WHERE Key_name = ?",
+      ["uq_bot_instance_proxy_egress_ip"],
+    );
+    if (!Array.isArray(existingEgressIndex) || existingEgressIndex.length === 0) {
+      try {
+        await db.query(
+          "ALTER TABLE bot_instance_proxies ADD UNIQUE KEY uq_bot_instance_proxy_egress_ip (enabled, resolved_ip)",
+        );
+      } catch (error) {
+        // Preserve availability when legacy data contains duplicate egress
+        // values. The application-level check still rejects new assignments;
+        // cleanup can be performed explicitly before retrying this index.
+        console.warn("[proxy] could not create egress-IP uniqueness index", error);
       }
     }
   });

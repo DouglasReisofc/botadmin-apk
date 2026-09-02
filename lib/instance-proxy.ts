@@ -303,10 +303,10 @@ export const saveAndTestInstanceProxy = async (
     }
 
     // A proxy is a network identity, not merely a transport protocol. Reusing
-    // the same host/port between active WhatsApp sessions defeats the
-    // per-instance isolation policy (and can accidentally put several
-    // accounts behind one IP). Check this immediately before persisting so a
-    // concurrent profile edit cannot silently share the endpoint.
+    // the same host/port or the same public egress IP between active WhatsApp
+    // sessions defeats the per-instance isolation policy. Check both values
+    // immediately before persisting so a different provider hostname cannot
+    // silently put several accounts behind one IP.
     await ensureBotInstanceProxyTable();
     const [assignedRows] = await getDb().query<RowDataPacket[]>(
       `SELECT p.instance_id, i.name AS instance_name
@@ -314,16 +314,18 @@ export const saveAndTestInstanceProxy = async (
          LEFT JOIN bot_instances i ON i.id = p.instance_id
         WHERE p.enabled = 1
           AND p.instance_id <> ?
-          AND LOWER(p.host) = LOWER(?)
-          AND p.port = ?
+          AND (
+            (LOWER(p.host) = LOWER(?) AND p.port = ?)
+            OR (p.resolved_ip IS NOT NULL AND p.resolved_ip = ?)
+          )
         LIMIT 1`,
-      [instanceId, proxy.host, proxy.port],
+      [instanceId, proxy.host, proxy.port, check.resolvedIp],
     );
     if (assignedRows.length > 0) {
       const assigned = assignedRows[0];
       const label = text(assigned.instance_name, `#${assigned.instance_id}`);
       throw new Error(
-        `Este proxy já está atribuído à instância ${label}. Use outro IP/porta para manter uma rota exclusiva por perfil.`,
+        `Este proxy ou IP de saída já está atribuído à instância ${label}. Use outra rota para manter uma identidade exclusiva por perfil.`,
       );
     }
   }
