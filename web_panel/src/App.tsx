@@ -8303,6 +8303,8 @@ function ProfilesWorkspace({
                   className="secondary-button profile-identity-button"
                   onClick={() => setIdentityOpen(true)}
                   disabled={busy}
+                  title="Editar perfil"
+                  aria-label="Editar perfil"
                 >
                   <Settings /> Editar
                 </button>
