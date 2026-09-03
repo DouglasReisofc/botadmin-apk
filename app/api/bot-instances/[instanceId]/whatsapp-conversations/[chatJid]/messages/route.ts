@@ -686,10 +686,22 @@ const applyCachedSenderIdentities = async (
     instanceId: number;
   },
 ) => {
-  const senderJids = messages
-    .filter((message) => message.direction === "inbound" && message.senderJid)
-    .map((message) => message.senderJid!)
-    .filter((senderJid) => getWhatsappChatType(senderJid) === "contact");
+  const senderJids = Array.from(
+    new Set(
+      messages
+        .flatMap((message) => [
+          ...(message.direction === "inbound" && message.senderJid
+            ? [message.senderJid]
+            : []),
+          ...(message.mentionedJids ?? []),
+        ])
+        .map((jid) => normalizeWhatsappChatJid(jid))
+        .filter(
+          (senderJid): senderJid is string =>
+            Boolean(senderJid) && getWhatsappChatType(senderJid!) === "contact",
+        ),
+    ),
+  );
   if (senderJids.length === 0) return messages;
 
   const identities = await listKnownWhatsappSenderIdentitiesForUser(
@@ -700,14 +712,26 @@ const applyCachedSenderIdentities = async (
   if (identities.size === 0) return messages;
 
   return messages.map((message) => {
-    if (message.direction !== "inbound" || !message.senderJid) {
-      return message;
-    }
-    const normalizedSenderJid = normalizeWhatsappChatJid(message.senderJid);
+    const normalizedSenderJid = message.senderJid
+      ? normalizeWhatsappChatJid(message.senderJid)
+      : null;
     const identity = normalizedSenderJid
       ? identities.get(normalizedSenderJid)
       : null;
-    if (!identity) return message;
+    const mentionTargets = (message.mentionedJids ?? []).map((jid) => {
+      const normalized = normalizeWhatsappChatJid(jid) || jid;
+      const mentionIdentity = identities.get(normalized);
+      const existing = message.mentionTargets?.find(
+        (target) => normalizeWhatsappChatJid(target.jid) === normalized,
+      );
+      return {
+        jid: normalized,
+        name: mentionIdentity?.senderName || existing?.name || null,
+      };
+    });
+    if (!identity) {
+      return mentionTargets.length ? { ...message, mentionTargets } : message;
+    }
 
     const shouldUseName = Boolean(
       identity.senderName &&
@@ -725,6 +749,9 @@ const applyCachedSenderIdentities = async (
       senderAvatarUrl: shouldUseAvatar
         ? identity.senderAvatarUrl
         : message.senderAvatarUrl,
+      mentionTargets: mentionTargets.length
+        ? mentionTargets
+        : message.mentionTargets,
     };
   });
 };

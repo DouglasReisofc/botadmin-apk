@@ -31,6 +31,7 @@ export type ConversationThread = {
   createdAt?: string | null;
   updatedAt?: string | null;
   lastMessageSenderName?: string | null;
+  lastMessageSenderJid?: string | null;
   lastMessageDirection?: string | null;
   unreadCount?: number;
   avatarUrl?: string | null;
@@ -98,6 +99,9 @@ export type ChatMessage = {
   editedAt?: string | null;
   viewOnce?: boolean;
   viewOnceOpened?: boolean;
+  mentionedJids?: string[];
+  mentionsAll?: boolean;
+  mentionTargets?: Array<{ jid: string; name?: string | null }>;
   receiptSummary?: JsonRecord;
 };
 
@@ -625,23 +629,24 @@ export const api = {
   conversationAction: (
     thread: ConversationThread,
     action: ConversationAction,
+    payload: JsonRecord = {},
   ) => {
     if (thread.chatType === "internal_group") {
       const groupId = String(thread.chatJid).replace("internal:", "");
       if (action === "read") {
         return request<JsonRecord>(`/api/internal-groups/${groupId}/read`, {
           method: "POST",
-          body: JSON.stringify({}),
+          body: JSON.stringify({ messageId: payload.messageId || 0 }),
         });
       }
       return request<JsonRecord>(`/api/internal-groups/${groupId}`, {
         method: "PATCH",
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({ action, ...payload }),
       });
     }
     return request<JsonRecord>(
       `/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${encodeURIComponent(thread.chatJid)}`,
-      { method: "POST", body: JSON.stringify({ action }) },
+      { method: "POST", body: JSON.stringify({ action, ...payload }) },
     );
   },
   resyncHistory: (instanceId: number) =>

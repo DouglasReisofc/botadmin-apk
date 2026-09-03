@@ -1596,6 +1596,18 @@ img {
   background: #fff;
   box-shadow: 0 9px 24px #0003;
 }
+.message-action-menu--above {
+  top: auto;
+  bottom: 27px;
+}
+.message-action-menu--incoming {
+  right: auto;
+  left: 0;
+}
+.message-action-menu--outgoing {
+  right: 0;
+  left: auto;
+}
 .message-action-menu > button {
   width: 100%;
   min-height: 32px;
@@ -1617,13 +1629,17 @@ img {
 }
 .reaction-choices {
   display: flex;
-  gap: 1px;
-  padding: 3px 2px 5px;
+  flex-wrap: wrap;
+  gap: 3px;
+  max-height: min(180px, 38dvh);
+  padding: 5px 3px 6px;
+  overflow-y: auto;
   border-bottom: 1px solid #edf0f1;
 }
 .reaction-choices button {
-  width: 24px;
-  height: 24px;
+  width: 27px;
+  height: 27px;
+  flex: 0 0 27px;
   border-radius: 5px;
   font-size: 16px;
   line-height: 1;
@@ -1666,6 +1682,27 @@ img {
 .bubble p a {
   color: #007b67;
   text-decoration: underline;
+}
+.message-mention {
+  display: inline;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  color: #008069;
+  background: transparent;
+  font: inherit;
+  font-weight: 600;
+  text-decoration: none;
+  cursor: pointer;
+}
+.message-mention:hover,
+.message-mention:focus-visible {
+  color: #006b5a;
+  text-decoration: underline;
+}
+.message-mention--all {
+  color: #008069;
+  font-weight: 600;
 }
 .bubble time {
   min-height: 13px;
@@ -2649,6 +2686,23 @@ img {
   text-overflow: ellipsis;
   color: #22323a;
   font-size: 13px;
+}
+.details-actions {
+  padding: 0 18px 18px;
+  display: flex;
+  justify-content: center;
+  gap: 9px;
+}
+.details-actions button {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.details-actions button svg {
+  width: 17px;
+  height: 17px;
 }
 .details-members {
   min-height: 0;
@@ -8695,7 +8749,31 @@ img {
     opacity: 0.72;
   }
   .message-action-menu {
-    right: -2px;
+    position: fixed;
+    z-index: 90;
+    top: 50%;
+    right: auto;
+    bottom: auto;
+    left: 50%;
+    width: min(310px, calc(100vw - 28px));
+    max-height: min(480px, calc(100dvh - 32px));
+    transform: translate(-50%, -50%);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+  .message-action-menu--above {
+    top: 50%;
+    bottom: auto;
+  }
+  .message-action-menu--incoming,
+  .message-action-menu--outgoing {
+    right: auto;
+    left: 50%;
+  }
+  .reaction-choices {
+    justify-content: center;
+    max-height: min(250px, 44dvh);
+    padding: 8px 5px;
   }
   .composer {
     min-height: 63px;

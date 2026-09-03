@@ -88,6 +88,12 @@ export type WhatsappConversationMessage = {
     readCount: number;
   };
   receipts?: WhatsappMessageReceipt[];
+  /** JIDs explicitly mentioned by the WhatsApp message (including groups). */
+  mentionedJids?: string[];
+  /** True when the original message used the @all/@todos broadcast marker. */
+  mentionsAll?: boolean;
+  /** Optional display names supplied by the transport for each mention. */
+  mentionTargets?: Array<{ jid: string; name: string | null }>;
 };
 
 export type WhatsappMessageReceipt = {
@@ -810,6 +816,7 @@ const mergeRecoveredMedia = (
 
 const mapMessageRow = (row: MessageRow): WhatsappConversationMessage => {
   const raw = parseJson(row.raw_json ?? null);
+  const mentionMetadata = extractStoredMentionMetadata(raw, row.text ?? null);
   const storedMedia = mergeRecoveredMedia(
     parseJson(row.media_json),
     recoverStoredMediaFromRaw(row, raw),
@@ -875,6 +882,9 @@ const mapMessageRow = (row: MessageRow): WhatsappConversationMessage => {
       deliveredCount: Number(row.receipt_delivered_count ?? 0),
       readCount: Number(row.receipt_read_count ?? 0),
     },
+    mentionedJids: mentionMetadata.jids,
+    mentionsAll: mentionMetadata.all,
+    mentionTargets: mentionMetadata.targets,
   };
 };
 
@@ -2514,6 +2524,130 @@ const firstStringFromRecord = (
   }
   return null;
 };
+
+type StoredMentionMetadata = {
+  jids: string[];
+  all: boolean;
+  targets: Array<{ jid: string; name: string | null }>;
+};
+
+/**
+ * WhatsApp transports have used `mentionedJid`, `mentionedJids`,
+ * `contextInfo.mentionedJid` and, in newer Wuzapi payloads, `Mentions`.
+ * Keep the raw payload as the source of truth and normalize all those shapes
+ * into a small, transport-independent representation for the panel.
+ */
+function extractStoredMentionMetadata(
+  raw: Record<string, unknown> | null,
+  text: string | null,
+): StoredMentionMetadata {
+  const jids = new Set<string>();
+  const names = new Map<string, string | null>();
+  let all = false;
+  const mentionKeys = new Set([
+    "mentionedjid",
+    "mentionedjids",
+    "mentioned",
+    "mentions",
+    "mention",
+    "mentiones",
+    "mentionedparticipants",
+    "mentionedusers",
+    "mentionlist",
+    "mentionslist",
+    "botadminmentionedjids",
+  ]);
+  const allKeys = new Set([
+    "mentionall",
+    "mentionsall",
+    "mentionedall",
+    "allmentioned",
+    "botadminmentionsall",
+  ]);
+  const records = collectRecords(
+    [
+      raw,
+      raw?.message,
+      raw?.Message,
+      raw?.eventMessage,
+      raw?.EventMessage,
+      raw?.data,
+      raw?.Data,
+      raw?.normalized,
+      raw?.Normalized,
+    ],
+    320,
+  );
+  const add = (value: unknown, name?: unknown) => {
+    if (typeof value === "string") {
+      const trimmed = value.trim();
+      if (/^(?:all|todos?)$/i.test(trimmed)) {
+        all = true;
+        return;
+      }
+      // Some webhook adapters serialize a mention list as one comma/space
+      // separated string instead of an array.
+      for (const entry of trimmed.split(/[\s,;]+/).filter(Boolean)) {
+        const jid = normalizeWhatsappChatJid(entry);
+        if (!jid || getWhatsappChatType(jid) !== "contact") continue;
+        jids.add(jid);
+        const displayName = typeof name === "string" ? name.trim() : "";
+        if (displayName) names.set(jid, displayName);
+      }
+      return;
+    }
+    if (!value || typeof value !== "object" || Array.isArray(value)) return;
+    const item = value as Record<string, unknown>;
+    const jid = firstStringFromRecord(
+      item,
+      "jid",
+      "Jid",
+      "id",
+      "Id",
+      "participant",
+      "Participant",
+      "userJid",
+      "user_jid",
+      "remoteJid",
+      "remote_jid",
+    );
+    const displayName = firstStringFromRecord(
+      item,
+      "name",
+      "Name",
+      "displayName",
+      "DisplayName",
+      "pushName",
+      "PushName",
+      "notifyName",
+      "NotifyName",
+    );
+    if (jid) add(jid, displayName);
+  };
+  for (const record of records) {
+    for (const [key, value] of Object.entries(record)) {
+      const normalizedKey = key.replace(/[^a-z]/gi, "").toLowerCase();
+      if (allKeys.has(normalizedKey)) {
+        if (
+          value === true ||
+          value === 1 ||
+          (typeof value === "string" && /^(?:1|true|yes|all|todos?)$/i.test(value))
+        )
+          all = true;
+        continue;
+      }
+      if (!mentionKeys.has(normalizedKey)) continue;
+      if (Array.isArray(value)) value.forEach((item) => add(item));
+      else add(value);
+    }
+  }
+  if (/(?:^|\s)@(?:all|todos?)\b/i.test(text || "")) all = true;
+  return {
+    jids: [...jids],
+    all,
+    targets: [...jids].map((jid) => ({ jid, name: names.get(jid) ?? null })),
+  };
+}
 
 const normalizeMediaByteString = (value: unknown): string | null => {
   if (typeof value === "string" && value.trim()) return value.trim();
@@ -4709,6 +4843,14 @@ export const recordWhatsappMessageFromNormalized = async (options: {
     media,
     text,
   });
+  const raw = {
+    ...(message.raw ?? {}),
+    // The normalized event already resolved all transport-specific mention
+    // fields. Persist the result beside the original payload so a later DB
+    // read does not depend on the webhook adapter still being available.
+    __botadminMentionedJids: message.mentionedJids ?? [],
+    __botadminMentionsAll: /(?:^|\s)@(?:all|todos?)\b/i.test(text || ""),
+  };
 
   return recordWhatsappConversationMessage({
     userId: instance.userId,
@@ -4726,7 +4868,7 @@ export const recordWhatsappMessageFromNormalized = async (options: {
     messageType,
     text,
     media,
-    raw: message.raw,
+    raw,
     timestamp: message.timestamp,
     title: identity.title,
     avatarUrl: identity.avatarUrl,

@@ -2106,6 +2106,98 @@ function linkify(text: string) {
   });
 }
 
+type MessageMention = {
+  jid: string;
+  name?: string | null;
+  all?: boolean;
+};
+
+const normalizeMentionJidForPanel = (value: unknown): string | null => {
+  if (typeof value !== "string" && typeof value !== "number") return null;
+  const raw = String(value).trim().toLowerCase();
+  if (!raw || /^(?:all|todos?)$/.test(raw)) return null;
+  if (raw.endsWith("@g.us") || raw.endsWith("@newsletter")) return null;
+  const digits = raw.replace(/\D/g, "");
+  return digits ? `${digits}@s.whatsapp.net` : null;
+};
+
+const mentionLabelKey = (value: string) =>
+  value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .replace(/[^a-z0-9]+/g, "")
+    .trim();
+
+const mentionDigits = (value: string) => value.replace(/\D/g, "");
+
+const renderMessageBody = (
+  body: string,
+  message: ChatMessage,
+  onMention: (mention: MessageMention) => void,
+) => {
+  // Keep the match as a split segment so the rendered @mention is not lost
+  // when the surrounding text is linkified.
+  const mentionPattern = /((?<![\w.+-])@(?:todos?|all|[^\s@()[\]{}<>,.!?;:]+))/giu;
+  const rawJids = Array.isArray(message.mentionedJids)
+    ? message.mentionedJids
+        .map(normalizeMentionJidForPanel)
+        .filter((jid): jid is string => Boolean(jid))
+    : [];
+  const targetEntries = Array.isArray(message.mentionTargets)
+    ? message.mentionTargets
+        .map((entry) => ({
+          jid: normalizeMentionJidForPanel(entry?.jid),
+          name: entry?.name?.trim() || null,
+        }))
+        .filter((entry): entry is { jid: string; name: string | null } => Boolean(entry.jid))
+    : [];
+  const targets = targetEntries.length
+    ? targetEntries
+    : rawJids.map((jid) => ({ jid, name: null }));
+  const tokenParts = body.split(mentionPattern);
+  let mentionIndex = 0;
+  return tokenParts.map((part, index) => {
+    if (!/^@/u.test(part)) return <React.Fragment key={index}>{linkify(part)}</React.Fragment>;
+    const lower = part.toLocaleLowerCase("pt-BR");
+    if (/^@(?:all|todos?)$/u.test(lower)) {
+      return (
+        <span
+          className="message-mention message-mention--all"
+          key={index}
+          title="Menção para todos os membros"
+        >
+          {part}
+        </span>
+      );
+    }
+    const tokenKey = mentionLabelKey(part.slice(1));
+    const tokenNumber = mentionDigits(part);
+    const target =
+      targets.find((entry) => {
+        const entryNumber = mentionDigits(entry.jid);
+        const entryName = mentionLabelKey(entry.name || "");
+        return (
+          (tokenNumber && entryNumber.endsWith(tokenNumber)) ||
+          (tokenKey && entryName && entryName.includes(tokenKey))
+        );
+      }) || targets[mentionIndex] || null;
+    mentionIndex += 1;
+    if (!target) return <React.Fragment key={index}>{part}</React.Fragment>;
+    return (
+      <button
+        type="button"
+        className="message-mention"
+        key={index}
+        title={`Abrir conversa com ${target.name || part.slice(1)}`}
+        onClick={() => onMention({ jid: target.jid, name: target.name })}
+      >
+        {part}
+      </button>
+    );
+  });
+};
+
 const mediaString = (...values: unknown[]): string => {
   for (const value of values) {
     if (typeof value === "number" && Number.isFinite(value))
@@ -2652,6 +2744,17 @@ const emojiCategoryItems: Array<{
 ];
 const recentComposerEmojis = ["👍", "❤️", "😂", "😮", "😢", "🙏", "👏", "🔥", "🎉", "💯"];
 
+// Reactions use the same complete catalog as the composer instead of the old
+// six-item shortcut.  The menu is scrollable on small screens, so every
+// category (people, animals, food, objects, symbols and flags) remains
+// available without pushing actions outside the viewport.
+const REACTION_EMOJIS = Array.from(
+  new Set([
+    ...composerEmojis,
+    ...emojiCategoryItems.flatMap((category) => category.emojis),
+  ]),
+);
+
 type MediaSendOptions = {
   mediaKind?: "sticker" | "gif";
   mediaSource?: string;
@@ -3017,6 +3120,7 @@ function Chat({
   onSendMedia,
   onAction,
   onMessageAction,
+  onMention,
 }: {
   thread: ConversationThread | null;
   messages: ChatMessage[];
@@ -3033,6 +3137,7 @@ function Chat({
     action: MessageUiAction,
     payload?: JsonRecord,
   ) => void | Promise<void>;
+  onMention: (mention: MessageMention) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
@@ -3055,6 +3160,9 @@ function Chat({
   const [giphyError, setGiphyError] = useState("");
   const [messageMenuId, setMessageMenuId] = useState<string | null>(null);
   const [reactionMenuId, setReactionMenuId] = useState<string | null>(null);
+  const [messageMenuPlacement, setMessageMenuPlacement] = useState<
+    "above" | "below"
+  >("below");
   const [sweepstakes, setSweepstakes] =
     useState<SweepstakeGroupSnapshot | null>(null);
   const [sweepstakeBusy, setSweepstakeBusy] = useState(false);
@@ -3803,6 +3911,14 @@ function Chat({
                     aria-expanded={messageMenuId === renderedMessageKey}
                     onClick={(event) => {
                       event.stopPropagation();
+                      const triggerBounds = (
+                        event.currentTarget as HTMLButtonElement
+                      ).getBoundingClientRect();
+                      setMessageMenuPlacement(
+                        triggerBounds.bottom + 260 > window.innerHeight
+                          ? "above"
+                          : "below",
+                      );
                       setMessageMenuId((current) =>
                         current === renderedMessageKey
                           ? null
@@ -3815,7 +3931,7 @@ function Chat({
                   </button>
                   {messageMenuId === renderedMessageKey && (
                     <div
-                      className="message-action-menu"
+                      className={`message-action-menu message-action-menu--${messageMenuPlacement} message-action-menu--${mine ? "outgoing" : "incoming"}`}
                       role="menu"
                       onClick={(event) => event.stopPropagation()}
                     >
@@ -3832,7 +3948,7 @@ function Chat({
                       </button>
                       {reactionMenuId === renderedMessageKey && (
                         <div className="reaction-choices">
-                          {["👍", "❤️", "😂", "😮", "😢", "🙏"].map((emoji) => (
+                          {REACTION_EMOJIS.map((emoji) => (
                             <button
                               key={emoji}
                               aria-label={`Reagir com ${emoji}`}
@@ -3928,7 +4044,7 @@ function Chat({
                 <h4 className="message-title">{title}</h4>
               )}
               <MessageMedia message={message} />
-              {body && <p>{linkify(body)}</p>}
+              {body && <p>{renderMessageBody(body, message, onMention)}</p>}
               {!body &&
                 !mediaString(
                   message.mediaUrl,
@@ -4430,9 +4546,11 @@ function Chat({
 function ConversationDetailsModal({
   value,
   onClose,
+  onStartConversation,
 }: {
   value: { thread: ConversationThread; data?: JsonRecord };
   onClose: () => void;
+  onStartConversation?: (thread: ConversationThread) => void;
 }) {
   const group =
     value.data?.group && typeof value.data.group === "object"
@@ -4442,6 +4560,9 @@ function ConversationDetailsModal({
     ? (value.data.members as JsonRecord[])
     : [];
   const description = String(group?.description || "").trim();
+  const isGroup =
+    value.thread.chatType === "internal_group" ||
+    String(value.thread.chatType).includes("group");
   return (
     <div
       className="modal-backdrop"
@@ -4459,10 +4580,7 @@ function ConversationDetailsModal({
         <header>
           <div className="modal-heading-line">
             <h2>
-              {value.thread.chatType === "internal_group" ||
-              String(value.thread.chatType).includes("group")
-                ? "Dados do grupo"
-                : "Dados do contato"}
+              {isGroup ? "Dados do grupo" : "Dados do contato"}
             </h2>
             <InfoTip label="Dados da conversa">
               Consulte informações, participantes e o estado atual desta conversa.
@@ -4481,7 +4599,7 @@ function ConversationDetailsModal({
           {value.thread.phone && <p>{value.thread.phone}</p>}
           {description && <p className="details-description">{description}</p>}
         </div>
-        <div className="details-stats">
+        {isGroup && <div className="details-stats">
           <span>
             <b>
               {Number(
@@ -4499,7 +4617,7 @@ function ConversationDetailsModal({
           <span>
             <b>{value.thread.muted ? "Sim" : "Não"}</b> silenciada
           </span>
-        </div>
+        </div>}
         {members.length > 0 && (
           <div className="details-members">
             <h4>Participantes</h4>
@@ -4516,6 +4634,26 @@ function ConversationDetailsModal({
                 </span>
               </div>
             ))}
+          </div>
+        )}
+        {value.thread.chatType === "contact" && onStartConversation && (
+          <div className="details-actions">
+            <button
+              type="button"
+              className="primary-button"
+              onClick={() => onStartConversation(value.thread)}
+            >
+              <MessageCircle /> Iniciar conversa
+            </button>
+            {value.thread.phone && (
+              <button
+                type="button"
+                className="secondary-button"
+                onClick={() => void copyText(value.thread.phone || "")}
+              >
+                <Copy /> Copiar número
+              </button>
+            )}
           </div>
         )}
       </section>
@@ -10338,6 +10476,28 @@ export function DashboardApp() {
     threadsRef.current = threads;
   }, [threads]);
 
+  // A directory hydration request can finish after the read request and bring
+  // back the stale badge it received before the conversation was opened. Keep
+  // the active conversation authoritative until it is closed, while allowing
+  // other threads to retain their unread counters.
+  useEffect(() => {
+    if (!selected) return;
+    const selectedKey = `${selected.instanceId}:${selected.chatJid}`;
+    const hasStaleBadge = threads.some(
+      (thread) =>
+        `${thread.instanceId}:${thread.chatJid}` === selectedKey &&
+        (Number(thread.unreadCount || 0) > 0 || thread.hasUnreadMention === true),
+    );
+    if (!hasStaleBadge) return;
+    setThreads((current) =>
+      current.map((thread) =>
+        `${thread.instanceId}:${thread.chatJid}` === selectedKey
+          ? { ...thread, unreadCount: 0, hasUnreadMention: false }
+          : thread,
+      ),
+    );
+  }, [selected, threads]);
+
   // Keep the dashboard in the browser history as a real directory view. A
   // mobile browser/WebView otherwise has no internal entry to return to and
   // its Back button leaves the panel while a chat is open.
@@ -10426,6 +10586,51 @@ export function DashboardApp() {
       }
     }
   }, []);
+
+  const openMentionConversation = useCallback(
+    (mention: MessageMention) => {
+      if (!selected) return;
+      const jid = normalizeMentionJidForPanel(mention.jid);
+      if (!jid) {
+        setToastSuccess(false);
+        setToast("Não foi possível identificar este membro mencionado.");
+        return;
+      }
+      const existing = threadsRef.current.find(
+        (item) =>
+          item.instanceId === selected.instanceId &&
+          normalizeMentionJidForPanel(item.chatJid) === jid,
+      );
+      const phone = jid.split("@")[0] || "";
+      const target =
+        existing ||
+        normalizeThreads([
+          {
+            id: `mention:${selected.instanceId}:${jid}`,
+            instanceId: selected.instanceId,
+            chatJid: jid,
+            chatType: "contact",
+            title: mention.name?.trim() || (phone ? `+${phone}` : "Contato"),
+            phone: phone || null,
+            lastMessagePreview: "",
+            lastMessageAt: null,
+            lastMessageDirection: null,
+            lastMessageSenderName: null,
+            lastMessageSenderJid: jid,
+            unreadCount: 0,
+            archived: false,
+            pinned: false,
+            muted: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          },
+        ])[0];
+      if (!target) return;
+      if (!existing) setThreads((current) => normalizeThreads([...current, target]));
+      setConversationDetails({ thread: target });
+    },
+    [selected],
+  );
 
   const updateSessionProfile = useCallback((next: SessionUser) => {
     setSession((current) => {
@@ -10890,6 +11095,25 @@ export function DashboardApp() {
         );
         setMessages(cached);
         setLoadingMessages(!cached.length);
+        // Clear the directory badge optimistically as soon as the chat opens.
+        // The request is idempotent and runs in parallel with message loading;
+        // this prevents a slow media/history response from leaving a stale
+        // unread counter on the conversation list.
+        setThreads((current) =>
+          current.map((item) =>
+            item.instanceId === thread.instanceId &&
+            item.chatJid === thread.chatJid
+              ? { ...item, unreadCount: 0, hasUnreadMention: false }
+              : item,
+          ),
+        );
+        setSelected((current) =>
+          current?.instanceId === thread.instanceId &&
+          current.chatJid === thread.chatJid
+            ? { ...current, unreadCount: 0, hasUnreadMention: false }
+            : current,
+        );
+        void api.conversationAction(thread, "read").catch(() => undefined);
       }
       try {
         const result = await api.messages(thread, {
@@ -10901,19 +11125,31 @@ export function DashboardApp() {
           messageRequestIdRef.current !== requestId
         )
           return;
+        const serverMessages = (result.messages || []).map((message) => ({
+          ...message,
+          // The API intentionally omits conversation context from each row;
+          // attach it here so encrypted WhatsApp media can use the recovery
+          // endpoint without exposing the raw mmg.whatsapp.net URL.
+          instanceId: message.instanceId ?? thread.instanceId,
+          chatJid: message.chatJid ?? thread.chatJid,
+        }));
         setMessages((current) => {
-          const serverMessages = (result.messages || []).map((message) => ({
-            ...message,
-            // The API intentionally omits conversation context from each row;
-            // attach it here so encrypted WhatsApp media can use the recovery
-            // endpoint without exposing the raw mmg.whatsapp.net URL.
-            instanceId: message.instanceId ?? thread.instanceId,
-            chatJid: message.chatJid ?? thread.chatJid,
-          }));
           const next = mergeConversationMessages(current, serverMessages);
           localStorage.setItem(key, JSON.stringify(next.slice(-100)));
           return next;
         });
+        // Internal groups need the last message id to advance the member's
+        // read cursor. WhatsApp threads were already marked optimistically
+        // above, while this precise idempotent update completes internal
+        // group read receipts after the recent window is available.
+        if (!quiet && thread.chatType === "internal_group") {
+          const latest = sortMessages(serverMessages).at(-1);
+          const latestId = latest ? Number(latest.id) : 0;
+          if (latestId > 0)
+            void api
+              .conversationAction(thread, "read", { messageId: latestId })
+              .catch(() => undefined);
+        }
         // A realtime refresh only reconciles the newest window. It must never
         // move the upward-pagination cursor back to a newer page.
         if (!quiet || messageCursorRef.current === null) {
@@ -11111,6 +11347,11 @@ export function DashboardApp() {
             payload.chatJid &&
             payload.instanceId
           ) {
+            const isOpenThread = Boolean(
+              selectedThread &&
+                payload.chatJid === selectedThread.chatJid &&
+                payload.instanceId === selectedThread.instanceId,
+            );
             const threadPatch: ConversationThread = {
               ...(eventThread as ConversationThread),
               instanceId:
@@ -11126,6 +11367,9 @@ export function DashboardApp() {
                   selectedThread?.title ||
                   "Conversa",
               ),
+              ...(isOpenThread
+                ? { unreadCount: 0, hasUnreadMention: false }
+                : {}),
             };
             const threadKey = `${threadPatch.instanceId}:${threadPatch.chatJid}`;
             if (directoryInitialLoadingRef.current) {
@@ -11194,6 +11438,19 @@ export function DashboardApp() {
               );
               return next;
             });
+            if (eventType === "conversation.message.upserted" && selectedThread) {
+              const eventMessageId = Number(
+                (eventMessage as ChatMessage).id || payload.messageId || 0,
+              );
+              void api
+                .conversationAction(selectedThread, "read", {
+                  ...(selectedThread.chatType === "internal_group" &&
+                  eventMessageId > 0
+                    ? { messageId: eventMessageId }
+                    : {}),
+                })
+                .catch(() => undefined);
+            }
           } else if (
             sameSelectedChat &&
             eventType === "conversation.message.deleted" &&
@@ -11317,12 +11574,35 @@ export function DashboardApp() {
       { withCredentials: true },
     );
     let refreshTimer: number | null = null;
-    const refreshMessages = () => {
+    const refreshMessages = (event?: Event) => {
       if (refreshTimer) window.clearTimeout(refreshTimer);
       refreshTimer = window.setTimeout(
         () => void loadMessages(selected, true),
         80,
       );
+      if (event instanceof MessageEvent) {
+        try {
+          const payload = JSON.parse(String(event.data || "{}")) as {
+            messageId?: number | string | null;
+          };
+          const messageId = Number(payload.messageId || 0);
+          if (messageId > 0) {
+            setThreads((current) =>
+              current.map((item) =>
+                item.chatJid === selected.chatJid
+                  ? { ...item, unreadCount: 0, hasUnreadMention: false }
+                  : item,
+              ),
+            );
+            void api
+              .conversationAction(selected, "read", { messageId })
+              .catch(() => undefined);
+          }
+        } catch {
+          // The message refresh still runs when a legacy SSE payload has no
+          // JSON metadata; the next list response will reconcile receipts.
+        }
+      }
     };
     source.addEventListener("message.created", refreshMessages);
     source.addEventListener("message.deleted", refreshMessages);
@@ -12345,6 +12625,7 @@ export function DashboardApp() {
                   ? runMessageAction(selected, message, action, payload)
                   : undefined
               }
+              onMention={openMentionConversation}
             />
           </div>
         </>
@@ -12405,6 +12686,10 @@ export function DashboardApp() {
         <ConversationDetailsModal
           value={conversationDetails}
           onClose={() => setConversationDetails(null)}
+          onStartConversation={(thread) => {
+            setConversationDetails(null);
+            openConversation(thread, { section: "conversations" });
+          }}
         />
       )}
       {botSettingsThread && botSettingsThread.linkedGroupId && (
