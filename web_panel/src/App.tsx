@@ -1117,20 +1117,329 @@ const isChatMessage = (value: unknown): value is ChatMessage =>
 
 type NormalizedChatButton = NonNullable<ChatMessage["buttons"]>[number];
 
+const asJsonRecord = (value: unknown): JsonRecord | null =>
+  value && typeof value === "object" && !Array.isArray(value)
+    ? (value as JsonRecord)
+    : null;
+
+const parseJsonRecord = (value: unknown): JsonRecord | null => {
+  const direct = asJsonRecord(value);
+  if (direct) return direct;
+  const raw = safeTrim(value);
+  if (!raw.startsWith("{")) return null;
+  try {
+    return asJsonRecord(JSON.parse(raw));
+  } catch {
+    return null;
+  }
+};
+
+const interactiveRecordList = (value: unknown): JsonRecord[] =>
+  Array.isArray(value)
+    ? value.map(asJsonRecord).filter((item): item is JsonRecord => Boolean(item))
+    : [];
+
+const interactiveParams = (record: JsonRecord) =>
+  (() => {
+    const encoded = parseJsonRecord(
+      record.buttonParamsJson ??
+        record.buttonParamsJSON ??
+        record.paramsJson ??
+        record.paramsJSON ??
+        record.params_json,
+    );
+    const direct = parseJsonRecord(record.params ?? record.Params);
+    if (!encoded && !direct) return null;
+    return { ...(encoded || {}), ...(direct || {}) } as JsonRecord;
+  })();
+
+const interactiveCardRecords = (record: JsonRecord): JsonRecord[] => {
+  const carousel = asJsonRecord(record.carousel ?? record.Carousel);
+  const carouselMessage = asJsonRecord(
+    record.carouselMessage ?? record.CarouselMessage,
+  );
+  const interactive = asJsonRecord(
+    record.interactive ?? record.Interactive ?? record.interactiveMessage,
+  );
+  const interactiveCarousel = interactive
+    ? asJsonRecord(
+        interactive.carouselMessage ?? interactive.CarouselMessage,
+      )
+    : null;
+  return [
+    ...interactiveRecordList(record.cards ?? record.Cards),
+    ...interactiveRecordList(carousel?.cards ?? carousel?.Cards),
+    ...interactiveRecordList(
+      carouselMessage?.cards ?? carouselMessage?.Cards,
+    ),
+    ...interactiveRecordList(
+      interactiveCarousel?.cards ?? interactiveCarousel?.Cards,
+    ),
+  ];
+};
+
+const interactiveButtonRecords = (record: JsonRecord): JsonRecord[] => {
+  const interactive =
+    asJsonRecord(record.interactive) ||
+    asJsonRecord(record.Interactive) ||
+    asJsonRecord(record.interactiveMessage);
+  const nativeFlow =
+    asJsonRecord(record.nativeFlow) || asJsonRecord(record.NativeFlow);
+  const nativeFlowMessage =
+    asJsonRecord(record.nativeFlowMessage) ||
+    asJsonRecord(record.NativeFlowMessage);
+  const interactiveNativeFlow = interactive
+    ? asJsonRecord(interactive.nativeFlowMessage) ||
+      asJsonRecord(interactive.NativeFlowMessage)
+    : null;
+  const params = interactiveParams(record);
+  const cardButtons = interactiveCardRecords(record).flatMap((card) =>
+    interactiveButtonRecords(card),
+  );
+  return [
+    ...interactiveRecordList(record.buttons ?? record.Buttons),
+    ...interactiveRecordList(params?.buttons ?? params?.Buttons),
+    ...interactiveRecordList(record.hydratedButtons ?? record.HydratedButtons),
+    ...interactiveRecordList(record.templateButtons ?? record.TemplateButtons),
+    ...interactiveRecordList(nativeFlow?.buttons ?? nativeFlow?.Buttons),
+    ...interactiveRecordList(
+      nativeFlowMessage?.buttons ?? nativeFlowMessage?.Buttons,
+    ),
+    ...interactiveRecordList(
+      interactiveNativeFlow?.buttons ?? interactiveNativeFlow?.Buttons,
+    ),
+    ...cardButtons,
+  ];
+};
+
+const interactiveSectionRecords = (record: JsonRecord): JsonRecord[] => {
+  const params = interactiveParams(record);
+  const list = asJsonRecord(record.list) || asJsonRecord(record.List);
+  const interactive =
+    asJsonRecord(record.interactive) ||
+    asJsonRecord(record.Interactive) ||
+    asJsonRecord(record.interactiveMessage);
+  const interactiveList = interactive
+    ? asJsonRecord(interactive.list ?? interactive.List)
+    : null;
+  const interactiveNativeFlow = interactive
+    ? asJsonRecord(
+        interactive.nativeFlowMessage ?? interactive.NativeFlowMessage,
+      )
+    : null;
+  const nativeFlow =
+    asJsonRecord(record.nativeFlow) || asJsonRecord(record.NativeFlow);
+  const nativeFlowMessage =
+    asJsonRecord(record.nativeFlowMessage) ||
+    asJsonRecord(record.NativeFlowMessage);
+  const nestedLists = Array.isArray(record.lists)
+    ? record.lists.flatMap((item) => {
+        const list = asJsonRecord(item);
+        return list ? interactiveRecordList(list.sections ?? list.Sections) : [];
+      })
+    : [];
+  const cards = interactiveCardRecords(record).flatMap((card) =>
+    interactiveSectionRecords(card),
+  );
+  return [
+    ...interactiveRecordList(record.sections ?? record.Sections),
+    ...interactiveRecordList(params?.sections ?? params?.Sections),
+    ...interactiveRecordList(list?.sections ?? list?.Sections),
+    ...interactiveRecordList(
+      interactive?.sections ?? interactive?.Sections,
+    ),
+    ...interactiveRecordList(
+      interactiveList?.sections ?? interactiveList?.Sections,
+    ),
+    ...interactiveRecordList(nativeFlow?.sections ?? nativeFlow?.Sections),
+    ...interactiveRecordList(
+      nativeFlowMessage?.sections ?? nativeFlowMessage?.Sections,
+    ),
+    ...interactiveRecordList(
+      interactiveNativeFlow?.sections ?? interactiveNativeFlow?.Sections,
+    ),
+    ...nestedLists,
+    ...cards,
+  ];
+};
+
+const normalizeInteractiveButton = (
+  value: JsonRecord,
+  responseType: "button" | "list" = "button",
+): NormalizedChatButton | null => {
+  const params = interactiveParams(value);
+  const rawType = safeTrim(
+    value.type ??
+      value.Type ??
+      value.name ??
+      value.Name ??
+      value.buttonType ??
+      value.button_type ??
+      params?.type,
+  );
+  const normalizedType = rawType.toLowerCase().replace(/[- ]/g, "_");
+  const copyCode = safeNullableString(
+    value.copyCode ??
+      value.copy_code ??
+      value.clipboardText ??
+      value.clipboard_text ??
+      params?.copyCode ??
+      params?.copy_code ??
+      params?.clipboardText,
+  );
+  const flowId = safeNullableString(
+    value.flowId ?? value.flow_id ?? params?.flowId ?? params?.flow_id,
+  );
+  const directUrl = safeNullableString(
+    value.url ??
+      value.URL ??
+      value.href ??
+      params?.url ??
+      params?.URL ??
+      params?.href,
+  );
+  const looseUrl = safeNullableString(
+    value.link ??
+      value.merchantUrl ??
+      value.merchant_url ??
+      params?.link ??
+      params?.merchantUrl ??
+      params?.merchant_url,
+  );
+  const phoneNumber = safeNullableString(
+    value.phoneNumber ??
+      value.phone_number ??
+      value.phone ??
+      params?.phoneNumber ??
+      params?.phone_number ??
+      params?.phone,
+  );
+  const isCta = Boolean(directUrl || phoneNumber || copyCode) || [
+    "cta_url",
+    "url",
+    "link",
+    "cta_copy",
+    "copy",
+    "copy_code",
+    "phone",
+    "call",
+  ].includes(normalizedType);
+  const type =
+    flowId || normalizedType === "galaxy_message"
+      ? "flow"
+      : isCta
+        ? rawType || (copyCode ? "cta_copy" : phoneNumber ? "cta_call" : "cta_url")
+        : responseType === "list"
+          ? "list"
+          : "reply";
+  const title = safeTrim(
+    value.title ??
+      value.Title ??
+      value.text ??
+      value.Text ??
+      value.displayText ??
+      value.display_text ??
+      value.buttonText ??
+      value.button_text ??
+      value.name ??
+      params?.title ??
+      params?.display_text ??
+      params?.flow_cta ??
+      (copyCode ? "Copiar código" : ""),
+  );
+  const id = safeTrim(
+    value.id ??
+      value.Id ??
+      value.buttonId ??
+      value.button_id ??
+      value.payload ??
+      value.rowId ??
+      value.row_id ??
+      params?.id ??
+      params?.row_id ??
+      title,
+  );
+  if (!title && !id && !copyCode) return null;
+  return {
+    id: id || title || undefined,
+    title: title || (copyCode ? "Copiar código" : "Selecionar"),
+    label: safeNullableString(value.label ?? value.Label) || undefined,
+    description:
+      safeNullableString(
+        value.description ?? value.Description ?? value.subtitle ?? value.Subtitle,
+      ) || undefined,
+    type: type || responseType,
+    url: isCta ? directUrl || (looseUrl && /^https?:\/\//i.test(looseUrl) ? looseUrl : null) || undefined : undefined,
+    copyCode: copyCode || undefined,
+    phoneNumber: phoneNumber || undefined,
+  };
+};
+
 const normalizeButtons = (value: unknown): NormalizedChatButton[] => {
-  if (!Array.isArray(value)) return [];
-  return value
-    .filter((item): item is JsonRecord => Boolean(item && typeof item === "object" && !Array.isArray(item)))
-    .map((item): NormalizedChatButton => ({
-      id: safeNullableString(item.id) || undefined,
-      title: safeNullableString(item.title) || undefined,
-      label: safeNullableString(item.label) || undefined,
-      type: safeNullableString(item.type) || undefined,
-      url: safeNullableString(item.url) || undefined,
-      copyCode: safeNullableString(item.copyCode) || undefined,
-      phoneNumber: safeNullableString(item.phoneNumber) || undefined,
-    }))
-    .filter((item) => Boolean(item.title || item.label || item.url || item.id));
+  const records = interactiveRecordList(value);
+  const result: NormalizedChatButton[] = [];
+  const seen = new Set<string>();
+  for (const record of records) {
+    if (
+      interactiveSectionRecords(record).length > 0 ||
+      interactiveRecordList(record.rows ?? record.Rows).length > 0
+    )
+      continue;
+    const button = normalizeInteractiveButton(record);
+    if (!button) continue;
+    const key = `${button.id || ""}:${button.title || ""}:${button.type || ""}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(button);
+    }
+  }
+  return result;
+};
+
+type NormalizedInteractiveSection = {
+  title: string;
+  rows: NormalizedChatButton[];
+};
+
+const normalizeInteractiveSections = (
+  record: JsonRecord,
+): NormalizedInteractiveSection[] => {
+  const result: NormalizedInteractiveSection[] = [];
+  const seen = new Set<string>();
+  for (const section of interactiveSectionRecords(record)) {
+    const rows = interactiveRecordList(section.rows ?? section.Rows)
+      .map((row) => normalizeInteractiveButton(row, "list"))
+      .filter((row): row is NormalizedChatButton => Boolean(row));
+    if (!rows.length) continue;
+    const uniqueRows = rows.filter((row) => {
+      const key = `${row.id || ""}:${row.title || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    if (uniqueRows.length)
+      result.push({
+        title: safeTrim(section.title ?? section.Title ?? section.name ?? section.label),
+        rows: uniqueRows,
+      });
+  }
+  const directRows = interactiveRecordList(record.rows ?? record.Rows)
+    .map((row) => normalizeInteractiveButton(row, "list"))
+    .filter((row): row is NormalizedChatButton => Boolean(row))
+    .filter((row) => {
+      const key = `${row.id || ""}:${row.title || ""}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  if (directRows.length)
+    result.push({
+      title: safeTrim(
+        record.title ?? record.Title ?? record.name ?? record.Name,
+      ),
+      rows: directRows,
+    });
+  return result;
 };
 
 const normalizeMessageRecord = (
@@ -1149,8 +1458,41 @@ const normalizeMessageRecord = (
   const mediaSource = source.media;
   let media: Record<string, unknown> | null = null;
   if (mediaSource && typeof mediaSource === "object" && !Array.isArray(mediaSource)) {
-    media = { ...(mediaSource as JsonRecord) };
-    if ("buttons" in media) media.buttons = normalizeButtons(media.buttons);
+    media = {
+      ...(mediaSource as JsonRecord),
+      ...(Array.isArray(source.buttons) ? { buttons: source.buttons } : {}),
+      ...(Array.isArray(source.sections) ? { sections: source.sections } : {}),
+      ...(asJsonRecord(source.nativeFlow) ? { nativeFlow: source.nativeFlow } : {}),
+      ...(asJsonRecord(source.nativeFlowMessage)
+        ? { nativeFlowMessage: source.nativeFlowMessage }
+        : {}),
+    };
+    const mediaButtonRecords = interactiveButtonRecords(media);
+    const rootButtonRecords = interactiveRecordList(source.buttons);
+    const normalizedButtons = normalizeButtons([
+      ...rootButtonRecords,
+      ...mediaButtonRecords,
+    ]);
+    if (normalizedButtons.length) media.buttons = normalizedButtons;
+    const normalizedSections = normalizeInteractiveSections(media);
+    if (normalizedSections.length) media.sections = normalizedSections;
+  }
+  if (!media) {
+    const hasInteractiveEnvelope =
+      Array.isArray(source.buttons) ||
+      Array.isArray(source.sections) ||
+      asJsonRecord(source.nativeFlow) ||
+      asJsonRecord(source.nativeFlowMessage) ||
+      safeTrim(source.messageType ?? source.type).toLowerCase().includes("interactive");
+    if (hasInteractiveEnvelope) {
+      media = {
+        mediaType: safeNullableString(source.messageType ?? source.type) || "interactive",
+        kind: "interactive",
+        body: safeNullableString(source.body ?? source.text),
+        buttons: normalizeButtons(source.buttons),
+        sections: normalizeInteractiveSections(source),
+      };
+    }
   }
   const replyTo =
     depth < 2 && source.replyTo
@@ -1191,7 +1533,10 @@ const normalizeMessageRecord = (
     reactions: Array.isArray(source.reactions) ? source.reactions : [],
     replyTo,
     media,
-    buttons: normalizeButtons(source.buttons),
+    buttons: normalizeButtons([
+      ...interactiveRecordList(source.buttons),
+      ...(media ? interactiveButtonRecords(media) : []),
+    ]),
     optimistic: Boolean(source.optimistic),
     pinned: Boolean(source.pinned),
     deleted: Boolean(source.deleted),
@@ -2435,6 +2780,13 @@ const mediaString = (...values: unknown[]): string => {
         record.localUrl,
         record.mediaUrl,
         record.url,
+        record.sourceUrl,
+        record.SourceUrl,
+        record.href,
+        record.directPath,
+        record.direct_path,
+        record.thumbnailUrl,
+        record.thumbnail,
         record.path,
         record.filePath,
         record.dataUrl,
@@ -2532,6 +2884,47 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     message.messageType,
     message.type,
   ).toLowerCase();
+  const headerRecord =
+    asJsonRecord(media.headerMedia) ||
+    asJsonRecord(media.HeaderMedia) ||
+    asJsonRecord(media.header) ||
+    asJsonRecord(media.Header);
+  const headerKind = mediaString(
+    headerRecord?.mediaType,
+    headerRecord?.kind,
+    headerRecord?.type,
+    headerRecord?.mimeType,
+  ).toLowerCase();
+  const headerSource = mediaString(
+    media.headerMedia,
+    media.HeaderMedia,
+    headerRecord?.mediaUrl,
+    headerRecord?.url,
+    headerRecord?.image,
+    headerRecord?.video,
+    headerRecord?.document,
+    headerRecord?.thumbnailUrl,
+  );
+  // Interactive replies often carry only text/list metadata. They must not
+  // be rendered as a fake document just because a legacy record contains a
+  // proxy field. A real interactive header is rendered when it has media
+  // metadata; a text-only reply stays a normal bubble with its actions.
+  const hasInteractiveHeader =
+    (kind.includes("interactive") || kind.includes("button")) &&
+    Boolean(
+      headerSource ||
+        ["image", "video", "document", "audio", "sticker"].some((type) =>
+          headerKind.includes(type),
+        ),
+    );
+  if (
+    (kind.includes("interactive") || kind.includes("button") || kind.includes("list")) &&
+    !hasInteractiveHeader &&
+    !mime &&
+    !mediaString(message.mediaUrl, media.publicUrl, media.localUrl, media.mediaUrl, media.url)
+  ) {
+    return null;
+  }
   const messageKey = mediaString(message.messageId, message.id);
   const localPreview = /^(blob:|data:)/i.test(direct);
   const recoverable = Boolean(
@@ -2563,13 +2956,14 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     ),
   );
   const directSource = absoluteMediaUrl(direct);
-  const hasInteractiveHeader =
-    (kind.includes("interactive") || kind.includes("button")) &&
-    Boolean(media.headerMedia);
+  const renderKind = headerKind || kind;
   const visualKind =
-    kind.includes("image") ||
-    kind === "sticker" ||
-    hasInteractiveHeader ||
+    renderKind.includes("image") ||
+    renderKind === "sticker" ||
+    (hasInteractiveHeader &&
+      !["video", "document", "audio"].some((type) =>
+        renderKind.includes(type),
+      )) ||
     mime.startsWith("image") ||
     /\.(jpe?g|png|webp|gif)(\?|$)/i.test(direct);
   // Keep the direct CDN/R2 URL first for a fast paint, but always retain the
@@ -2621,7 +3015,7 @@ function MessageMedia({ message }: { message: ChatMessage }) {
     return (
       <img
         className={
-          kind === "sticker" ? "message-image sticker" : "message-image"
+          renderKind === "sticker" ? "message-image sticker" : "message-image"
         }
         src={source}
         alt="Mídia da conversa"
@@ -2648,7 +3042,7 @@ function MessageMedia({ message }: { message: ChatMessage }) {
   // native player requests the bytes only when the member presses play,
   // keeping the first paint fluid and avoiding a burst of expired-media 502s.
   if (
-    kind.includes("video") ||
+    renderKind.includes("video") ||
     mime.startsWith("video") ||
     /\.(mp4|webm|mov)(\?|$)/i.test(direct)
   )
@@ -2663,7 +3057,7 @@ function MessageMedia({ message }: { message: ChatMessage }) {
       />
     );
   if (
-    kind.includes("audio") ||
+    renderKind.includes("audio") ||
     mime.startsWith("audio") ||
     /\.(mp3|ogg|opus|m4a|wav)(\?|$)/i.test(direct)
   )
@@ -2687,17 +3081,111 @@ function MessageMedia({ message }: { message: ChatMessage }) {
   );
 }
 
+function InteractiveListModal({
+  sections,
+  onSelect,
+  onClose,
+}: {
+  sections: NormalizedInteractiveSection[];
+  onSelect: (button: NormalizedChatButton) => void;
+  onClose: () => void;
+}) {
+  return (
+    <div
+      className="modal-backdrop interactive-list-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="quick-modal interactive-list-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="interactive-list-title"
+      >
+        <header>
+          <h2 id="interactive-list-title">Opções</h2>
+          <button type="button" onClick={onClose} aria-label="Fechar opções">
+            <X />
+          </button>
+        </header>
+        <div className="interactive-list-content">
+          {sections.map((section, sectionIndex) => (
+            <section className="interactive-list-section" key={`${section.title}-${sectionIndex}`}>
+              {section.title && <h3>{section.title}</h3>}
+              <div className="interactive-list-rows">
+                {section.rows.map((button, rowIndex) => (
+                  <button
+                    type="button"
+                    className="interactive-list-row"
+                    key={`${button.id || button.title}-${rowIndex}`}
+                    onClick={() => onSelect(button)}
+                  >
+                    <span>
+                      <b>{button.title || button.label || "Selecionar"}</b>
+                      {button.description && <small>{button.description}</small>}
+                    </span>
+                    <ChevronRight aria-hidden="true" />
+                  </button>
+                ))}
+              </div>
+            </section>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 const fallbackMessageLabel = (message: ChatMessage) => {
   const type = String(message.messageType || message.type || "").toLowerCase();
+  const media = message.media || {};
+  const mime = mediaString(
+    message.mediaMimeType,
+    message.mimeType,
+    media.mimeType,
+    media.mimetype,
+  ).toLowerCase();
+  const combined = `${type} ${mime}`;
+  if (combined.includes("sticker")) return "Figurinha";
+  if (combined.includes("image")) return "📷 Imagem";
+  if (combined.includes("video")) return "🎥 Vídeo";
+  if (combined.includes("audio") || combined.includes("ptt")) return "🎵 Áudio";
+  if (combined.includes("document") || combined.includes("application/"))
+    return "📎 Documento";
   if (type.includes("location")) return "📍 Localização";
   if (type.includes("contact")) return "👤 Contato";
   if (type.includes("poll")) return "📊 Enquete";
   if (type.includes("event")) return "📅 Evento";
   if (type.includes("call")) return "📞 Chamada";
+  if (
+    type.includes("interactive") ||
+    type.includes("button") ||
+    type.includes("list")
+  )
+    return "Mensagem interativa";
+  if (type.includes("reaction")) return "Reação";
+  if (type.includes("protocol") || type.includes("system"))
+    return "Mensagem de sistema";
   if (type.includes("revoked") || type.includes("deleted"))
     return "🚫 Esta mensagem foi apagada";
-  if (type === "unknown") return "Mensagem ainda não suportada pelo WhatsApp";
-  return type && type !== "text" ? "Mensagem do WhatsApp" : "";
+  return type && type !== "text" ? "Mensagem recebida" : "";
+};
+
+const InteractiveButtonIcon = ({
+  button,
+}: {
+  button: NormalizedChatButton;
+}) => {
+  const type = safeTrim(button.type).toLowerCase().replace(/[- ]/g, "_");
+  if (button.copyCode || type.includes("copy")) return <Copy size={17} />;
+  if (button.phoneNumber || type.includes("call") || type === "phone")
+    return <Phone size={17} />;
+  if (button.url || type.includes("url") || type === "link")
+    return <ExternalLink size={17} />;
+  if (type.includes("flow")) return <List size={17} />;
+  return <MessageCircle size={17} />;
 };
 
 const composerEmojis = [
@@ -3392,6 +3880,10 @@ function Chat({
   const [interactivePending, setInteractivePending] = useState<string | null>(
     null,
   );
+  const [interactiveList, setInteractiveList] = useState<{
+    message: ChatMessage;
+    sections: NormalizedInteractiveSection[];
+  } | null>(null);
   const mediaInput = useRef<HTMLInputElement>(null);
   const recorderRef = useRef<MediaRecorder | null>(null);
   const recorderStreamRef = useRef<MediaStream | null>(null);
@@ -3607,9 +4099,67 @@ function Chat({
     setSweepstakeCreateOpen(false);
     setSweepstakeDetailsOpen(false);
     setSweepstakeMembers([]);
+    setInteractiveList(null);
     void loadSweepstakes();
   }, [loadSweepstakes]);
   const activeSweepstake = sweepstakes?.active?.[0] || null;
+  const dispatchInteractiveButton = useCallback(
+    async (message: ChatMessage, button: NormalizedChatButton, index = 0) => {
+      const renderedKey = String(message.messageId || message.id);
+      const label = button.title || button.label || "Selecionar";
+      const type = safeTrim(button.type).toLowerCase().replace(/[- ]/g, "_");
+      if (button.url && /^https?:\/\//i.test(button.url)) {
+        const popup = window.open(button.url, "_blank", "noopener,noreferrer");
+        if (!popup) window.location.assign(button.url);
+        return;
+      }
+      if (button.copyCode || type === "cta_copy" || type === "copy" || type === "copy_code") {
+        const value = button.copyCode || label;
+        try {
+          await navigator.clipboard.writeText(value);
+        } catch {
+          const textarea = document.createElement("textarea");
+          textarea.value = value;
+          textarea.setAttribute("readonly", "true");
+          textarea.style.position = "fixed";
+          textarea.style.opacity = "0";
+          document.body.appendChild(textarea);
+          textarea.select();
+          document.execCommand("copy");
+          textarea.remove();
+        }
+        return;
+      }
+      if (button.phoneNumber || type === "cta_call" || type === "call" || type === "phone") {
+        const phone = button.phoneNumber || label;
+        window.location.assign(`tel:${phone.replace(/[^\d+]/g, "")}`);
+        return;
+      }
+      const pendingKey = `${renderedKey}:${button.id || index}`;
+      if (interactivePending === pendingKey) return;
+      setInteractivePending(pendingKey);
+      try {
+        const interactiveAction: MessageUiAction =
+          thread?.chatType === "internal_group" && button.id === "join"
+            ? "poll_vote"
+            : "interactive_reply";
+        await onMessageAction(message, interactiveAction, {
+          selectedId: button.id || String(index),
+          optionId: button.id || String(index),
+          selectedText: label,
+          title: label,
+        });
+        if (interactiveAction === "poll_vote") await loadSweepstakes();
+      } finally {
+        window.setTimeout(() => {
+          setInteractivePending((current) =>
+            current === pendingKey ? null : current,
+          );
+        }, 450);
+      }
+    },
+    [interactivePending, loadSweepstakes, onMessageAction, thread],
+  );
   const createSweepstake = async (draft: SweepstakeDraft) => {
     if (!sweepstakeGroupId || sweepstakeBusy) return;
     setSweepstakeBusy(true);
@@ -4081,6 +4631,15 @@ function Chat({
           const buttons = message.buttons?.length
             ? message.buttons
             : nestedButtons;
+          const interactiveSections = normalizeInteractiveSections(media);
+          const interactiveButtonText =
+            textString(
+              media.buttonText,
+              media.button_text,
+              media.displayText,
+              media.display_text,
+              media.list && asJsonRecord(media.list)?.buttonText,
+            ) || "Ver opções";
           const reactionEntries = Array.isArray(message.reactions)
             ? message.reactions
             : [];
@@ -4122,7 +4681,7 @@ function Chat({
             <article
               key={messageKey(message)}
               data-message-key={messageKey(message)}
-              className={`bubble ${mine ? "outgoing" : "incoming"} ${message.optimistic ? "optimistic" : ""}`}
+              className={`bubble ${mine ? "outgoing" : "incoming"} ${buttons.length || interactiveSections.length ? "interactive-message" : ""} ${message.optimistic ? "optimistic" : ""}`}
               onMouseLeave={() => {
                 setMessageMenuId((current) =>
                   current === renderedMessageKey ? null : current,
@@ -4305,64 +4864,58 @@ function Chat({
                 <div className="message-buttons">
                   {buttons.map((button, index) => (
                     <button
+                      type="button"
                       key={button.id || index}
                       disabled={
                         interactivePending ===
                         `${renderedMessageKey}:${button.id || index}`
                       }
                       onClick={() => {
-                        const label =
-                          button.title || button.label || "Selecionar";
-                        if (button.url) {
-                          window.open(
-                            button.url,
-                            "_blank",
-                            "noopener,noreferrer",
-                          );
-                          return;
-                        }
-                        if (
-                          button.type === "cta_copy" ||
-                          button.type === "copy"
-                        ) {
-                          void navigator.clipboard.writeText(
-                            String(button.copyCode || label),
-                          );
-                          return;
-                        }
-                        if (
-                          button.type === "cta_call" ||
-                          button.type === "call"
-                        ) {
-                          window.location.href = `tel:${button.phoneNumber || label}`;
-                          return;
-                        }
-                        const pendingKey = `${renderedMessageKey}:${button.id || index}`;
-                        setInteractivePending(pendingKey);
-                        const interactiveAction: MessageUiAction =
-                          thread.chatType === "internal_group" &&
-                          button.id === "join"
-                            ? "poll_vote"
-                            : "interactive_reply";
-                        void Promise.resolve(
-                          onMessageAction(message, interactiveAction, {
-                            selectedId: button.id || String(index),
-                            optionId: button.id || String(index),
-                            selectedText: label,
-                            title: label,
-                          }),
-                        ).then(() => {
-                          if (interactiveAction === "poll_vote")
-                            void loadSweepstakes();
-                        });
+                        void dispatchInteractiveButton(message, button, index);
                       }}
                     >
-                      {interactivePending ===
-                      `${renderedMessageKey}:${button.id || index}`
-                        ? "Enviado ✓"
-                        : button.title || button.label || "Selecionar"}
+                      <InteractiveButtonIcon button={button} />
+                      <span>
+                        {interactivePending ===
+                        `${renderedMessageKey}:${button.id || index}`
+                          ? "Enviado ✓"
+                          : button.title || button.label || "Selecionar"}
+                      </span>
                     </button>
                   ))}
+                  {interactiveSections.length > 0 && (
+                    <button
+                      type="button"
+                      className="interactive-list-trigger"
+                      onClick={() =>
+                        setInteractiveList({
+                          message,
+                          sections: interactiveSections,
+                        })
+                      }
+                    >
+                      <List size={17} />
+                      <span>{interactiveButtonText}</span>
+                      <ChevronRight size={16} />
+                    </button>
+                  )}
+                </div>
+              ) : interactiveSections.length > 0 ? (
+                <div className="message-buttons">
+                  <button
+                    type="button"
+                    className="interactive-list-trigger"
+                    onClick={() =>
+                      setInteractiveList({
+                        message,
+                        sections: interactiveSections,
+                      })
+                    }
+                  >
+                    <List size={17} />
+                    <span>{interactiveButtonText}</span>
+                    <ChevronRight size={16} />
+                  </button>
                 </div>
               ) : null}
               {reactions.length > 0 && (
@@ -4428,6 +4981,16 @@ function Chat({
           onDraw={() => void finalizeSweepstake()}
           onCancel={() => void cancelSweepstake()}
           onAddMember={(userId) => void addSweepstakeMember(userId)}
+        />
+      )}
+      {interactiveList && (
+        <InteractiveListModal
+          sections={interactiveList.sections}
+          onClose={() => setInteractiveList(null)}
+          onSelect={(button) => {
+            setInteractiveList(null);
+            void dispatchInteractiveButton(interactiveList.message, button);
+          }}
         />
       )}
       <footer className="composer">

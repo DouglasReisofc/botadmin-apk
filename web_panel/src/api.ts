@@ -89,6 +89,7 @@ export type ChatMessage = {
     id?: string;
     title?: string;
     label?: string;
+    description?: string;
     type?: string;
     url?: string;
     copyCode?: string;
