@@ -901,6 +901,22 @@ function safeJsonRead<T>(key: string, fallback: T): T {
   }
 }
 
+const clearLocalConversationCache = () => {
+  try {
+    for (const key of Object.keys(localStorage)) {
+      if (
+        /^botadmin\.react\.\d+\.(?:threads|internal-groups|messages\.)/u.test(
+          key,
+        )
+      )
+        localStorage.removeItem(key);
+    }
+  } catch {
+    // Browsers in strict privacy mode may block storage. Reloading still
+    // gives the server response a chance to rebuild the current screen.
+  }
+};
+
 function normalizeThreads(threads: unknown) {
   const deduped = new Map<string, ConversationThread>();
   if (!Array.isArray(threads)) return [];
@@ -10784,9 +10800,9 @@ function ModuleCreateModal({
 
 export class DashboardErrorBoundary extends React.Component<
   React.PropsWithChildren,
-  { hasError: boolean }
+  { hasError: boolean; recovering: boolean }
 > {
-  state = { hasError: false };
+  state = { hasError: false, recovering: false };
   static getDerivedStateFromError() {
     return { hasError: true };
   }
@@ -10795,9 +10811,25 @@ export class DashboardErrorBoundary extends React.Component<
     // preserving a useful diagnostic in DevTools for malformed upstream
     // payloads that would otherwise be impossible to identify remotely.
     console.error("[botadmin] dashboard render error", error, info.componentStack);
+    try {
+      const section = new URLSearchParams(location.search).get("section");
+      const isConversationScreen =
+        !section || section === "conversations" || section === "internalGroups";
+      const recoveryKey = "botadmin.react.conversation-cache-recovery";
+      const lastRecovery = Number(sessionStorage.getItem(recoveryKey) || 0);
+      if (isConversationScreen && Date.now() - lastRecovery > 120_000) {
+        sessionStorage.setItem(recoveryKey, String(Date.now()));
+        clearLocalConversationCache();
+        this.setState({ recovering: true });
+        window.setTimeout(() => location.reload(), 40);
+      }
+    } catch {
+      // The visible fallback below remains available when storage is blocked.
+    }
   }
   render() {
     if (!this.state.hasError) return this.props.children;
+    if (this.state.recovering) return <Loader />;
     return (
       <main className="module-error boundary-error">
         <RefreshCw />
@@ -10808,7 +10840,17 @@ export class DashboardErrorBoundary extends React.Component<
         </p>
         <button
           className="primary-button"
-          onClick={() => window.location.reload()}
+          onClick={() => {
+            clearLocalConversationCache();
+            try {
+              sessionStorage.removeItem(
+                "botadmin.react.conversation-cache-recovery",
+              );
+            } catch {
+              // Reload is still safe when session storage is unavailable.
+            }
+            window.location.reload();
+          }}
         >
           Tentar novamente
         </button>
@@ -10824,17 +10866,36 @@ export class DashboardErrorBoundary extends React.Component<
  */
 class ConversationErrorBoundary extends React.Component<
   React.PropsWithChildren<{ onBack: () => void }>,
-  { hasError: boolean }
+  { hasError: boolean; recovering: boolean }
 > {
-  state = { hasError: false };
+  state = { hasError: false, recovering: false };
   static getDerivedStateFromError() {
     return { hasError: true };
   }
   componentDidCatch(error: unknown, info: React.ErrorInfo) {
     console.error("[botadmin] conversation render error", error, info.componentStack);
+    // A legacy browser can have a conversation-only cache that is incompatible
+    // with the current renderer. Recover once automatically, without touching
+    // server history or forcing the user to leave the dashboard.
+    try {
+      const section = new URLSearchParams(location.search).get("section");
+      const isConversationScreen =
+        !section || section === "conversations" || section === "internalGroups";
+      const recoveryKey = "botadmin.react.conversation-cache-recovery";
+      const lastRecovery = Number(sessionStorage.getItem(recoveryKey) || 0);
+      if (isConversationScreen && Date.now() - lastRecovery > 120_000) {
+        sessionStorage.setItem(recoveryKey, String(Date.now()));
+        clearLocalConversationCache();
+        this.setState({ recovering: true });
+        window.setTimeout(() => location.reload(), 40);
+      }
+    } catch {
+      // The scoped fallback below remains available when storage is blocked.
+    }
   }
   render() {
     if (!this.state.hasError) return this.props.children;
+    if (this.state.recovering) return <Loader />;
     return (
       <section className="chat chat-error" role="alert">
         <div className="module-error">
@@ -10844,7 +10905,10 @@ class ConversationErrorBoundary extends React.Component<
           <div className="module-error-actions">
             <button
               className="primary-button"
-              onClick={() => this.setState({ hasError: false })}
+              onClick={() => {
+                clearLocalConversationCache();
+                window.location.reload();
+              }}
             >
               Tentar novamente
             </button>
@@ -13157,7 +13221,10 @@ export function DashboardApp() {
           />
           <div className="splitter" onPointerDown={startResize} />
           <div className={`chat-host ${mobileChatOpen ? "mobile-open" : ""}`}>
-            <ConversationErrorBoundary onBack={() => closeConversation()}>
+            <ConversationErrorBoundary
+              key={selectedMessageThreadKey || "conversation-empty"}
+              onBack={() => closeConversation()}
+            >
               <Chat
                 thread={selected}
                 messages={messages}
