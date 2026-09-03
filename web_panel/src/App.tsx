@@ -500,8 +500,6 @@ const makeClientId = () =>
     ? crypto.randomUUID()
     : `web-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 
-const failedAvatarUrls = new Set<string>();
-
 function Avatar({
   name,
   src,
@@ -512,23 +510,39 @@ function Avatar({
   small?: boolean;
 }) {
   const url = absoluteMediaUrl(src);
-  const [failed, setFailed] = useState(() =>
-    Boolean(url && failedAvatarUrls.has(url)),
-  );
+  const [failed, setFailed] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
   useEffect(() => {
-    setFailed(Boolean(url && failedAvatarUrls.has(url)));
+    setFailed(false);
+    setRetryAttempt(0);
   }, [url]);
+  useEffect(() => {
+    if (!failed || retryAttempt >= 2 || !url) return;
+    const timer = window.setTimeout(
+      () => {
+        setFailed(false);
+        setRetryAttempt((current) => current + 1);
+      },
+      1200 * 2 ** retryAttempt,
+    );
+    return () => window.clearTimeout(timer);
+  }, [failed, retryAttempt, url]);
+  const imageUrl =
+    retryAttempt > 0
+      ? `${url}${url.includes("?") ? "&" : "?"}avatarRetry=${retryAttempt}`
+      : url;
   return (
     <div className={`avatar ${small ? "avatar--small" : ""}`}>
       <span>{initials(name)}</span>
       {url && !failed && (
         <img
-          src={url}
+          key={imageUrl}
+          src={imageUrl}
           alt=""
           loading="lazy"
           decoding="async"
+          referrerPolicy="no-referrer"
           onError={() => {
-            failedAvatarUrls.add(url);
             setFailed(true);
           }}
         />
