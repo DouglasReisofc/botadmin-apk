@@ -510,6 +510,9 @@ function Avatar({
   small?: boolean;
 }) {
   const url = absoluteMediaUrl(src);
+  // Signed WhatsApp CDN URLs cannot be cache-busted without invalidating
+  // their signature. Only our authenticated same-origin proxy is retryable.
+  const retryable = url.startsWith("/");
   const [failed, setFailed] = useState(false);
   const [retryAttempt, setRetryAttempt] = useState(0);
   useEffect(() => {
@@ -517,7 +520,7 @@ function Avatar({
     setRetryAttempt(0);
   }, [url]);
   useEffect(() => {
-    if (!failed || retryAttempt >= 2 || !url) return;
+    if (!failed || !retryable || retryAttempt >= 2 || !url) return;
     const timer = window.setTimeout(
       () => {
         setFailed(false);
@@ -526,9 +529,9 @@ function Avatar({
       1200 * 2 ** retryAttempt,
     );
     return () => window.clearTimeout(timer);
-  }, [failed, retryAttempt, url]);
+  }, [failed, retryAttempt, retryable, url]);
   const imageUrl =
-    retryAttempt > 0
+    retryable && retryAttempt > 0
       ? `${url}${url.includes("?") ? "&" : "?"}avatarRetry=${retryAttempt}`
       : url;
   return (
