@@ -50,6 +50,7 @@ import {
   Smile,
   Tag,
   Ticket,
+  Trash2,
   Trophy,
   UserPlus,
   AppWindow,
@@ -66,6 +67,7 @@ import {
   api,
   type BotInstance,
   type ChatMessage,
+  type ConversationParticipant,
   type ConversationAction,
   type ConversationThread,
   type GiphyMediaItem,
@@ -81,6 +83,7 @@ import {
   PaymentsWorkspace,
   RafflesWorkspace,
 } from "./CommerceWorkspaces";
+import { getContactActions, type ContactActionKey } from "./contact-actions";
 
 const textOf = (value: unknown, fallback = "") =>
   value === null || value === undefined ? fallback : String(value);
@@ -2110,6 +2113,9 @@ type MessageMention = {
   jid: string;
   name?: string | null;
   all?: boolean;
+  userId?: number | null;
+  avatarUrl?: string | null;
+  isBot?: boolean;
 };
 
 const normalizeMentionJidForPanel = (value: unknown): string | null => {
@@ -3121,6 +3127,7 @@ function Chat({
   onAction,
   onMessageAction,
   onMention,
+  onParticipant,
 }: {
   thread: ConversationThread | null;
   messages: ChatMessage[];
@@ -3138,6 +3145,7 @@ function Chat({
     payload?: JsonRecord,
   ) => void | Promise<void>;
   onMention: (mention: MessageMention) => void;
+  onParticipant: (participant: ConversationParticipant) => void;
 }) {
   const [draft, setDraft] = useState("");
   const [attachmentOpen, setAttachmentOpen] = useState(false);
@@ -3889,6 +3897,13 @@ function Chat({
             !message.optimistic;
           const canDelete =
             !message.optimistic && (mine || Boolean(thread.canManage));
+          const senderParticipant: ConversationParticipant = {
+            jid: message.senderJid || null,
+            userId: Number(message.senderId || 0) || null,
+            name: message.senderName || null,
+            avatarUrl: message.senderAvatarUrl || null,
+            isBot: Boolean(message.isBot),
+          };
           return (
             <article
               key={messageKey(message)}
@@ -4029,10 +4044,27 @@ function Chat({
                 </div>
               )}
               {!mine && message.senderName && (
-                <strong>
-                  {message.isBot ? "🤖 " : ""}
-                  {message.senderName}
-                </strong>
+                isGroupChat ? (
+                  <button
+                    type="button"
+                    className="message-sender-name"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onParticipant(senderParticipant);
+                    }}
+                    title="Abrir ações do participante"
+                  >
+                    <strong>
+                      {message.isBot ? "🤖 " : ""}
+                      {message.senderName}
+                    </strong>
+                  </button>
+                ) : (
+                  <strong>
+                    {message.isBot ? "🤖 " : ""}
+                    {message.senderName}
+                  </strong>
+                )
               )}
               {message.replyTo && (
                 <div className="reply">
@@ -4547,10 +4579,12 @@ function ConversationDetailsModal({
   value,
   onClose,
   onStartConversation,
+  onParticipant,
 }: {
   value: { thread: ConversationThread; data?: JsonRecord };
   onClose: () => void;
   onStartConversation?: (thread: ConversationThread) => void;
+  onParticipant?: (participant: ConversationParticipant) => void;
 }) {
   const group =
     value.data?.group && typeof value.data.group === "object"
@@ -4621,8 +4655,16 @@ function ConversationDetailsModal({
         {members.length > 0 && (
           <div className="details-members">
             <h4>Participantes</h4>
-            {members.slice(0, 100).map((member, index) => (
-              <div key={String(member.id || member.userId || index)}>
+            {members.slice(0, 100).map((member, index) => {
+              const participant: ConversationParticipant = {
+                jid: String(member.jid || member.phone || member.id || "") || null,
+                userId: Number(member.userId || 0) || null,
+                name: String(member.name || member.userName || "Membro"),
+                avatarUrl: String(member.avatarUrl || "") || null,
+                isBot: Boolean(member.isBot || member.role === "bot"),
+              };
+              const content = (
+                <>
                 <Avatar
                   small
                   name={String(member.name || member.userName || "Membro")}
@@ -4632,8 +4674,21 @@ function ConversationDetailsModal({
                   <b>{String(member.name || member.userName || "Membro")}</b>
                   <small>{String(member.role || "membro")}</small>
                 </span>
-              </div>
-            ))}
+                </>
+              );
+              return onParticipant ? (
+                <button
+                  type="button"
+                  className="details-member-button"
+                  key={String(member.id || member.userId || index)}
+                  onClick={() => onParticipant(participant)}
+                >
+                  {content}
+                </button>
+              ) : (
+                <div key={String(member.id || member.userId || index)}>{content}</div>
+              );
+            })}
           </div>
         )}
         {value.thread.chatType === "contact" && onStartConversation && (
@@ -4655,6 +4710,152 @@ function ConversationDetailsModal({
               </button>
             )}
           </div>
+        )}
+      </section>
+    </div>
+  );
+}
+
+function ConversationMemberModal({
+  value,
+  selfPhone,
+  onClose,
+  onStartConversation,
+  onAction,
+}: {
+  value: { thread: ConversationThread; participant: ConversationParticipant };
+  selfPhone?: string | null;
+  onClose: () => void;
+  onStartConversation: (participant: ConversationParticipant) => void;
+  onAction: (
+    action: Exclude<ContactActionKey, "start">,
+    participant: ConversationParticipant,
+  ) => Promise<void>;
+}) {
+  const { thread, participant } = value;
+  const isGroup = isGroupThread(thread);
+  const isSelf = Boolean(
+    participant.jid &&
+      selfPhone &&
+      mentionDigits(participant.jid) &&
+      mentionDigits(selfPhone).endsWith(mentionDigits(participant.jid)),
+  );
+  const isInternal = thread.chatType === "internal_group";
+  const actions = getContactActions({
+    isGroup,
+    canManage: canManageGroupThread(thread),
+    isSelf,
+    isBot: Boolean(participant.isBot),
+    // The bot-group endpoint owns warnings and blacklist persistence. Plain
+    // WhatsApp groups still expose the native moderation actions, but do not
+    // advertise controls that have no backing storage.
+    canWarn: Boolean(thread.linkedGroupId),
+    canResetInfractions: Boolean(thread.linkedGroupId),
+    canBlacklist: Boolean(thread.linkedGroupId),
+  });
+  const [busyAction, setBusyAction] = useState<ContactActionKey | null>(null);
+  const [error, setError] = useState("");
+  const displayName = participant.name?.trim() || "Participante";
+  const actionConfirmations: Partial<Record<ContactActionKey, string>> = {
+    remove: `Remover ${displayName} do grupo? O histórico será preservado.`,
+    remove_clean: `Remover ${displayName} e apagar as mensagens recentes para todos?`,
+    ban: `Banir ${displayName} do grupo? Essa pessoa não poderá continuar participando.`,
+    delete_recent: `Apagar as mensagens recentes de ${displayName} para todos?`,
+    blacklist: `Adicionar ${displayName} à blacklist e remover do grupo?`,
+  };
+  const handleAction = async (action: ContactActionKey) => {
+    if (busyAction) return;
+    if (action === "start") {
+      onStartConversation(participant);
+      return;
+    }
+    const confirmation = actionConfirmations[action];
+    if (confirmation && !window.confirm(confirmation)) return;
+    setBusyAction(action);
+    setError("");
+    try {
+      await onAction(action, participant);
+      onClose();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível executar a ação.",
+      );
+    } finally {
+      setBusyAction(null);
+    }
+  };
+  return (
+    <div
+      className="modal-backdrop member-modal-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget && !busyAction) onClose();
+      }}
+    >
+      <section
+        className="conversation-member-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Ações para ${displayName}`}
+      >
+        <header>
+          <div className="member-modal-heading">
+            <Avatar name={displayName} src={participant.avatarUrl} />
+            <div>
+              <h2>{displayName}</h2>
+              <p>
+                {participant.isBot
+                  ? "Robô do grupo"
+                  : participant.jid
+                    ? `+${mentionDigits(participant.jid)}`
+                    : isInternal
+                      ? "Membro do grupo BotAdmin"
+                      : "Participante do grupo"}
+              </p>
+            </div>
+          </div>
+          <button type="button" onClick={onClose} disabled={Boolean(busyAction)} aria-label="Fechar">
+            <X />
+          </button>
+        </header>
+        {canManageGroupThread(thread) && isGroup && !isSelf && !participant.isBot && (
+          <div className="member-modal-note">
+            <ShieldCheck size={16} />
+            <span>Você é administrador deste grupo e pode moderar este participante.</span>
+          </div>
+        )}
+        {error && <p className="member-modal-error" role="alert">{error}</p>}
+        <div className="member-action-list">
+          {actions.map((action) => (
+            <button
+              type="button"
+              key={action.key}
+              className={action.destructive ? "member-action member-action--danger" : "member-action"}
+              disabled={Boolean(busyAction)}
+              onClick={() => void handleAction(action.key)}
+            >
+              <span className="member-action-icon" aria-hidden="true">
+                {action.key === "start" ? <MessageCircle /> : action.key === "warn" ? <Flag /> : action.key === "reset_infractions" ? <Trash2 /> : action.key === "promote" ? <ShieldCheck /> : action.key === "demote" ? <ShieldCheck /> : action.key === "remove" ? <X /> : action.key === "remove_clean" ? <Trash2 /> : action.key === "ban" ? <X /> : action.key === "delete_recent" ? <Trash2 /> : <ShieldCheck />}
+              </span>
+              <span>
+                <strong>{busyAction === action.key ? "Processando…" : action.label}</strong>
+                <small>{action.description}</small>
+              </span>
+            </button>
+          ))}
+        </div>
+        {participant.jid && (
+          <footer>
+            <button
+              type="button"
+              className="secondary-button member-copy-button"
+              onClick={() => void copyText(`+${mentionDigits(participant.jid || "")}`)}
+            >
+              <Copy /> Copiar número
+            </button>
+          </footer>
         )}
       </section>
     </div>
@@ -10435,6 +10636,10 @@ export function DashboardApp() {
     thread: ConversationThread;
     data?: JsonRecord;
   } | null>(null);
+  const [participantModal, setParticipantModal] = useState<{
+    thread: ConversationThread;
+    participant: ConversationParticipant;
+  } | null>(null);
   const [internalSettingsThread, setInternalSettingsThread] =
     useState<ConversationThread | null>(null);
   const [botSettingsThread, setBotSettingsThread] =
@@ -10587,18 +10792,56 @@ export function DashboardApp() {
     }
   }, []);
 
+  const openParticipantModal = useCallback(
+    (participant: ConversationParticipant) => {
+      if (!selected) return;
+      const jid = participant.jid
+        ? normalizeMentionJidForPanel(participant.jid)
+        : null;
+      if (!jid && !participant.userId) {
+        setToastSuccess(false);
+        setToast("Não foi possível identificar este membro.");
+        return;
+      }
+      setParticipantModal({
+        thread: selected,
+        participant: {
+          ...participant,
+          jid,
+        },
+      });
+    },
+    [selected],
+  );
+
   const openMentionConversation = useCallback(
     (mention: MessageMention) => {
-      if (!selected) return;
-      const jid = normalizeMentionJidForPanel(mention.jid);
+      openParticipantModal({
+        jid: mention.jid,
+        name: mention.name,
+        userId: mention.userId,
+        avatarUrl: mention.avatarUrl,
+        isBot: mention.isBot,
+      });
+    },
+    [openParticipantModal],
+  );
+
+  const startParticipantConversation = useCallback(
+    (participant: ConversationParticipant) => {
+      const thread = participantModal?.thread || selected;
+      if (!thread) return;
+      const jid = participant.jid
+        ? normalizeMentionJidForPanel(participant.jid)
+        : null;
       if (!jid) {
         setToastSuccess(false);
-        setToast("Não foi possível identificar este membro mencionado.");
+        setToast("Este membro não possui um contato privado disponível.");
         return;
       }
       const existing = threadsRef.current.find(
         (item) =>
-          item.instanceId === selected.instanceId &&
+          item.instanceId === thread.instanceId &&
           normalizeMentionJidForPanel(item.chatJid) === jid,
       );
       const phone = jid.split("@")[0] || "";
@@ -10606,11 +10849,11 @@ export function DashboardApp() {
         existing ||
         normalizeThreads([
           {
-            id: `mention:${selected.instanceId}:${jid}`,
-            instanceId: selected.instanceId,
+            id: `mention:${thread.instanceId}:${jid}`,
+            instanceId: thread.instanceId,
             chatJid: jid,
             chatType: "contact",
-            title: mention.name?.trim() || (phone ? `+${phone}` : "Contato"),
+            title: participant.name?.trim() || (phone ? `+${phone}` : "Contato"),
             phone: phone || null,
             lastMessagePreview: "",
             lastMessageAt: null,
@@ -10627,9 +10870,10 @@ export function DashboardApp() {
         ])[0];
       if (!target) return;
       if (!existing) setThreads((current) => normalizeThreads([...current, target]));
-      setConversationDetails({ thread: target });
+      setParticipantModal(null);
+      openConversation(target, { section: "conversations" });
     },
-    [selected],
+    [openConversation, participantModal, selected],
   );
 
   const updateSessionProfile = useCallback((next: SessionUser) => {
@@ -11244,6 +11488,42 @@ export function DashboardApp() {
         setLoadingOlderMessages(false);
     }
   }, [hasOlderMessages, loadingOlderMessages, selected, session]);
+
+  const runParticipantAction = useCallback(
+    async (
+      action: Exclude<ContactActionKey, "start">,
+      participant: ConversationParticipant,
+    ) => {
+      const thread = participantModal?.thread || selected;
+      if (!thread) throw new Error("Conversa não selecionada.");
+      await api.participantAction(thread, {
+        action,
+        participantJid: participant.jid,
+        memberId: participant.userId,
+      });
+      if (
+        selected &&
+        `${selected.instanceId}:${selected.chatJid}` ===
+          `${thread.instanceId}:${thread.chatJid}`
+      ) {
+        await loadMessages(thread, true);
+      }
+      const labels: Record<Exclude<ContactActionKey, "start">, string> = {
+        warn: "Advertência aplicada.",
+        reset_infractions: "Advertências resetadas.",
+        promote: "Participante promovido a administrador.",
+        demote: "Participante rebaixado de administrador.",
+        remove: "Participante removido do grupo.",
+        remove_clean: "Participante removido e mensagens recentes apagadas.",
+        ban: "Participante banido do grupo.",
+        delete_recent: "Mensagens recentes apagadas.",
+        blacklist: "Participante adicionado à blacklist.",
+      };
+      setToastSuccess(true);
+      setToast(labels[action]);
+    },
+    [loadMessages, participantModal, selected],
+  );
 
   const selectedMessageThreadKey = selected
     ? `${selected.instanceId}:${selected.chatJid}`
@@ -12626,6 +12906,7 @@ export function DashboardApp() {
                   : undefined
               }
               onMention={openMentionConversation}
+              onParticipant={openParticipantModal}
             />
           </div>
         </>
@@ -12686,10 +12967,23 @@ export function DashboardApp() {
         <ConversationDetailsModal
           value={conversationDetails}
           onClose={() => setConversationDetails(null)}
+          onParticipant={openParticipantModal}
           onStartConversation={(thread) => {
             setConversationDetails(null);
             openConversation(thread, { section: "conversations" });
           }}
+        />
+      )}
+      {participantModal && (
+        <ConversationMemberModal
+          value={participantModal}
+          selfPhone={
+            instances.find((instance) => instance.id === participantModal.thread.instanceId)
+              ?.phone
+          }
+          onClose={() => setParticipantModal(null)}
+          onStartConversation={startParticipantConversation}
+          onAction={runParticipantAction}
         />
       )}
       {botSettingsThread && botSettingsThread.linkedGroupId && (

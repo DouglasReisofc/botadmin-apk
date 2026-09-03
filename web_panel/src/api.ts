@@ -59,6 +59,7 @@ export type ChatMessage = {
   clientMessageId?: string | null;
   direction?: string;
   senderId?: number | null;
+  senderJid?: string | null;
   senderName?: string | null;
   senderAvatarUrl?: string | null;
   messageType?: string | null;
@@ -103,6 +104,14 @@ export type ChatMessage = {
   mentionsAll?: boolean;
   mentionTargets?: Array<{ jid: string; name?: string | null }>;
   receiptSummary?: JsonRecord;
+};
+
+export type ConversationParticipant = {
+  jid?: string | null;
+  userId?: number | null;
+  name?: string | null;
+  avatarUrl?: string | null;
+  isBot?: boolean;
 };
 
 export type ConversationAction =
@@ -647,6 +656,109 @@ export const api = {
     return request<JsonRecord>(
       `/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${encodeURIComponent(thread.chatJid)}`,
       { method: "POST", body: JSON.stringify({ action, ...payload }) },
+    );
+  },
+  participantAction: (
+    thread: ConversationThread,
+    payload: {
+      action:
+        | "warn"
+        | "reset_infractions"
+        | "promote"
+        | "demote"
+        | "remove"
+        | "remove_clean"
+        | "ban"
+        | "delete_recent"
+        | "blacklist";
+      participantJid?: string | null;
+      memberId?: number | null;
+    },
+  ) => {
+    const action = payload.action;
+    if (thread.chatType === "internal_group") {
+      const groupId = String(thread.chatJid).replace("internal:", "");
+      const memberId = Number(payload.memberId || 0);
+      if (!Number.isInteger(memberId) || memberId <= 0) {
+        return Promise.reject(new Error("Membro inválido."));
+      }
+      // Internal groups have their own membership store.  Blacklist is
+      // represented by the permanent ban action there; cleanup is a separate
+      // action so it never removes a member by accident.
+      const internalAction = action === "blacklist" ? "ban" : action;
+      return request<JsonRecord>(
+        `/api/internal-groups/${encodeURIComponent(groupId)}/members/${encodeURIComponent(String(memberId))}`,
+        {
+          method: "PATCH",
+          body: JSON.stringify({ action: internalAction }),
+        },
+      );
+    }
+
+    const participantJid = String(payload.participantJid || "").trim();
+    if (!participantJid) {
+      return Promise.reject(new Error("Participante inválido."));
+    }
+    if (thread.linkedGroupId && (action === "warn" || action === "reset_infractions")) {
+      return request<JsonRecord>(
+        `/api/bot-groups/${encodeURIComponent(String(thread.linkedGroupId))}/participants/actions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: action === "reset_infractions" ? "resetInfractions" : action,
+            participantJid,
+          }),
+        },
+      );
+    }
+    if (thread.linkedGroupId && action === "blacklist") {
+      return request<JsonRecord>(
+        `/api/bot-groups/${encodeURIComponent(String(thread.linkedGroupId))}/participants/actions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action,
+            participantJid,
+            removeAfterBlacklist: true,
+            deleteRecentMessages: true,
+          }),
+        },
+      );
+    }
+    if (thread.linkedGroupId && (action === "ban" || action === "remove" || action === "remove_clean")) {
+      return request<JsonRecord>(
+        `/api/bot-groups/${encodeURIComponent(String(thread.linkedGroupId))}/participants/actions`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            action: "remove",
+            participantJid,
+            addToBlacklist: action === "ban",
+            deleteRecentMessages: action === "ban" || action === "remove_clean",
+          }),
+        },
+      );
+    }
+    if (thread.linkedGroupId && action === "delete_recent") {
+      return request<JsonRecord>(
+        `/api/bot-groups/${encodeURIComponent(String(thread.linkedGroupId))}/participants/actions`,
+        {
+          method: "POST",
+          body: JSON.stringify({ action, participantJid }),
+        },
+      );
+    }
+    return request<JsonRecord>(
+      `/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${encodeURIComponent(thread.chatJid)}/participants/actions`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          action: action === "ban" || action === "remove_clean" ? "remove" : action,
+          participantJid,
+          deleteRecentMessages:
+            action === "ban" || action === "remove_clean" || action === "delete_recent",
+        }),
+      },
     );
   },
   resyncHistory: (instanceId: number) =>

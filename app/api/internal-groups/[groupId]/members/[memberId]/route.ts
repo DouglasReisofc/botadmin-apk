@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
-import { InternalGroupError, updateInternalGroupMember } from "lib/internal-groups";
+import {
+  deleteRecentInternalGroupParticipantMessages,
+  InternalGroupError,
+  updateInternalGroupMember,
+} from "lib/internal-groups";
 import { emitInternalGroupEvent } from "lib/internal-group-realtime";
 import { SubscriptionPlanError } from "lib/plans";
 
@@ -15,9 +19,44 @@ export async function PATCH(request: Request, context: Context) {
     const groupId = Number(params.groupId);
     const memberId = Number(params.memberId);
     const body = await request.json().catch(() => ({}));
-    const action = body?.action as "promote" | "demote" | "remove" | "ban" | "leave";
-    if (!["promote", "demote", "remove", "ban", "leave"].includes(action)) {
+    const action = body?.action as "promote" | "demote" | "remove" | "remove_clean" | "ban" | "leave" | "delete_recent";
+    if (!["promote", "demote", "remove", "remove_clean", "ban", "leave", "delete_recent"].includes(action)) {
       return NextResponse.json({ message: "Ação inválida." }, { status: 400 });
+    }
+    if (action === "delete_recent" || action === "remove_clean") {
+      const result = await deleteRecentInternalGroupParticipantMessages(
+        groupId,
+        user.id,
+        memberId,
+      );
+      for (const messageId of result.messageIds) {
+        emitInternalGroupEvent({
+          groupId,
+          actorUserId: user.id,
+          type: "message.deleted",
+          messageId,
+        });
+      }
+      if (action === "remove_clean") {
+        const memberResult = await updateInternalGroupMember(
+          groupId,
+          user.id,
+          memberId,
+          "remove",
+        );
+        for (const messageId of [
+          ...memberResult.systemMessageIds,
+          ...memberResult.automationMessageIds,
+        ]) {
+          emitInternalGroupEvent({
+            groupId,
+            actorUserId: user.id,
+            type: "message.created",
+            messageId,
+          });
+        }
+      }
+      return NextResponse.json({ ok: true, action, ...result });
     }
     const result = await updateInternalGroupMember(groupId, user.id, memberId, action);
     emitInternalGroupEvent({

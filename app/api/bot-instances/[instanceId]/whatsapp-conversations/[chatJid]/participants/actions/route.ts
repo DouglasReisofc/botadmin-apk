@@ -20,7 +20,7 @@ type Context = {
   params: Promise<{ instanceId: string; chatJid: string }>;
 };
 
-type ParticipantAction = "promote" | "demote" | "remove";
+type ParticipantAction = "promote" | "demote" | "remove" | "delete_recent";
 
 const parseInstanceId = (value: string): number | null => {
   const parsed = Number.parseInt(value, 10);
@@ -45,6 +45,9 @@ const normalizeAction = (value: unknown): ParticipantAction | null => {
   if (normalized === "demote" || normalized === "rebaixar") return "demote";
   if (normalized === "remove" || normalized === "ban" || normalized === "banir" || normalized === "kick") {
     return "remove";
+  }
+  if (normalized === "deleterecent" || normalized === "apagarrecentes" || normalized === "apagarmensagensrecentes" || normalized === "limparmensagens") {
+    return "delete_recent";
   }
   return null;
 };
@@ -162,6 +165,14 @@ export async function POST(request: Request, context: Context) {
       await promoteGroupParticipant(client, { groupJid: chatJid, participant: participantJid });
     } else if (action === "demote") {
       await demoteGroupParticipant(client, { groupJid: chatJid, participant: participantJid });
+    } else if (action === "delete_recent") {
+      messageCleanup = await deleteRecentParticipantMessages({
+        userId: storageUserId,
+        instanceId: instance.id,
+        chatJid,
+        participantJid,
+        client,
+      });
     } else {
       if (deleteRecentMessages) {
         messageCleanup = await deleteRecentParticipantMessages({
@@ -183,6 +194,8 @@ export async function POST(request: Request, context: Context) {
     const message =
       action === "remove"
         ? `Participante removido.${cleanupMessage}`
+        : action === "delete_recent"
+          ? `Mensagens recentes apagadas.${cleanupMessage}`
         : action === "promote"
           ? "Participante promovido a admin."
           : "Participante rebaixado.";

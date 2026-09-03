@@ -23,7 +23,7 @@ import {
 } from "lib/whatsapp-conversations";
 import type { BotGroup, BotGroupParticipant } from "types/bot-groups";
 
-type ParticipantAction = "add" | "promote" | "demote" | "remove" | "resetInfractions" | "warn" | "blacklist";
+type ParticipantAction = "add" | "promote" | "demote" | "remove" | "resetInfractions" | "warn" | "blacklist" | "delete_recent";
 
 const normalizeAction = (value: unknown): ParticipantAction | null => {
   if (typeof value !== "string") return null;
@@ -39,6 +39,9 @@ const normalizeAction = (value: unknown): ParticipantAction | null => {
   }
   if (normalized === "blacklist" || normalized === "addblacklist" || normalized === "adicionarblacklist" || normalized === "listanegra") {
     return "blacklist";
+  }
+  if (normalized === "deleterecent" || normalized === "apagarrecentes" || normalized === "apagarmensagensrecentes" || normalized === "limparmensagens") {
+    return "delete_recent";
   }
   if (normalized === "resetinfractions" || normalized === "resetarinfrações" || normalized === "resetarinfracoes") {
     return "resetInfractions";
@@ -297,6 +300,14 @@ export async function POST(
         await resetGroupInfractions(group.id, participantDigits).catch(() => {});
         warningResult.removed = true;
       }
+    } else if (action === "delete_recent") {
+      messageCleanup = await deleteRecentParticipantMessages({
+        userId: ownerUserId,
+        instanceId: instance.id,
+        chatJid: group.remoteId,
+        participantJid,
+        client,
+      });
     } else if (action === "blacklist") {
       const added = await addParticipantToBlacklist(group.id, participantJid);
       if (deleteRecentMessages) {
@@ -343,6 +354,8 @@ export async function POST(
     let actionMessage = "Ação aplicada.";
     if (action === "remove") {
       actionMessage = `Participante removido.${cleanupMessage}`;
+    } else if (action === "delete_recent") {
+      actionMessage = `Mensagens recentes apagadas.${cleanupMessage}`;
     } else if (action === "blacklist") {
       actionMessage = `Participante adicionado à blacklist e removido.${cleanupMessage}`;
     } else if (action === "warn" && warningResult) {

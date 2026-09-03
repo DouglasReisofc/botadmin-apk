@@ -653,6 +653,47 @@ export const setInternalGroupMessagePinned = async (
   return { pinned };
 };
 
+/**
+ * Removes only the most recent messages authored by a participant.  This is
+ * intentionally separate from updateInternalGroupMember so the moderation
+ * dialog can offer cleanup without accidentally banning/removing the member.
+ */
+export const deleteRecentInternalGroupParticipantMessages = async (
+  groupId: number,
+  actorUserId: number,
+  participantUserId: number,
+  limit = 10,
+) => {
+  await assertManager(groupId, actorUserId);
+  if (!Number.isInteger(participantUserId) || participantUserId <= 0) {
+    throw new InternalGroupError("Membro inválido.", 400);
+  }
+  const safeLimit = Math.max(1, Math.min(100, Math.floor(limit)));
+  const [rows] = await getDb().query<(RowDataPacket & { id: number })[]>(
+    `SELECT id FROM internal_group_messages
+      WHERE group_id = ? AND sender_user_id = ? AND sender_kind = 'user'
+        AND deleted_at IS NULL
+      ORDER BY id DESC LIMIT ${safeLimit}`,
+    [groupId, participantUserId],
+  );
+  const messageIds = (rows ?? [])
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!messageIds.length) return { messageIds: [] as number[] };
+  const placeholders = messageIds.map(() => "?").join(", ");
+  await getDb().query(
+    `UPDATE internal_group_messages
+      SET deleted_at = NOW(), deleted_by_user_id = ?
+      WHERE group_id = ? AND id IN (${placeholders}) AND deleted_at IS NULL`,
+    [actorUserId, groupId, ...messageIds],
+  );
+  await getDb().query(
+    "UPDATE internal_groups SET updated_at = NOW() WHERE id = ?",
+    [groupId],
+  );
+  return { messageIds };
+};
+
 const internalGroupAvatarUrl = (row: GroupRow) => {
   if (!row.avatar_path) return null;
   const fileVersion = row.avatar_path.split(/[\\/]/).filter(Boolean).pop() ?? "avatar";
