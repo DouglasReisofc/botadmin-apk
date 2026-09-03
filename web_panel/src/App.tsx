@@ -7850,19 +7850,42 @@ function PairingModal({ instance, onClose, onUpdated }: PairingModalProps) {
 
 type InstanceIdentityModalProps = {
   instance: BotInstance;
+  profile?: JsonRecord | null;
+  profileAvatar?: string;
+  isConnected: boolean;
   onClose: () => void;
-  onSaved: (result: { instance?: BotInstance; phoneChanged?: boolean; pairingRequired?: boolean }) => void;
+  onSaved: (result: { instance?: BotInstance; profile?: JsonRecord; phoneChanged?: boolean; pairingRequired?: boolean }) => void;
 };
 
-function InstanceIdentityModal({ instance, onClose, onSaved }: InstanceIdentityModalProps) {
+function InstanceIdentityModal({
+  instance,
+  profile,
+  profileAvatar = "",
+  isConnected,
+  onClose,
+  onSaved,
+}: InstanceIdentityModalProps) {
   const [name, setName] = useState(instance.name);
   const [phone, setPhone] = useState(textOf(instance.phone));
+  const [pushName, setPushName] = useState(textOf(profile?.pushName));
+  const [statusText, setStatusText] = useState(
+    profileAboutText(profile?.statusText),
+  );
+  const [imageDataUrl, setImageDataUrl] = useState("");
+  const [removePhoto, setRemovePhoto] = useState(false);
   const [confirmNumber, setConfirmNumber] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const photoInput = useRef<HTMLInputElement>(null);
   const normalizedPhone = phone.replace(/\D/g, "");
   const currentPhone = textOf(instance.phone).replace(/\D/g, "");
   const numberChanged = normalizedPhone !== currentPhone;
+  const nameChanged = name.trim() !== instance.name.trim();
+  const pushNameChanged = pushName.trim() !== textOf(profile?.pushName).trim();
+  const statusChanged =
+    statusText.trim() !== profileAboutText(profile?.statusText).trim();
+  const identityChanged =
+    isConnected && (pushNameChanged || statusChanged || imageDataUrl || removePhoto);
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -7880,13 +7903,21 @@ function InstanceIdentityModal({ instance, onClose, onSaved }: InstanceIdentityM
       setConfirmNumber(true);
       return;
     }
+    if (!nameChanged && !numberChanged && !identityChanged) {
+      setError("Faça uma alteração antes de salvar.");
+      return;
+    }
     setSaving(true);
     setError("");
     try {
-      const result = await api.updateInstanceProfile(instance.id, {
-        instanceName: trimmedName,
-        phone: normalizedPhone,
-      });
+      const payload: JsonRecord = {};
+      if (nameChanged) payload.instanceName = trimmedName;
+      if (numberChanged) payload.phone = normalizedPhone;
+      if (isConnected && pushNameChanged) payload.pushName = pushName.trim();
+      if (isConnected && statusChanged) payload.statusText = statusText.trim();
+      if (isConnected && imageDataUrl) payload.imageDataUrl = imageDataUrl;
+      if (isConnected && removePhoto) payload.removePhoto = true;
+      const result = await api.updateInstanceProfile(instance.id, payload);
       onSaved(result);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível salvar a instância.");
@@ -7902,20 +7933,123 @@ function InstanceIdentityModal({ instance, onClose, onSaved }: InstanceIdentityM
       <form className="quick-modal instance-identity-modal" onSubmit={submit} role="dialog" aria-modal="true" aria-labelledby="instance-identity-title">
         <header>
           <div>
-            <h2 id="instance-identity-title">Editar instância</h2>
-            <small>Nome e número usados no próximo pareamento.</small>
+            <h2 id="instance-identity-title">Editar perfil</h2>
+            <small>Identidade do WhatsApp e dados usados no próximo pareamento.</small>
           </div>
           <button type="button" onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button>
         </header>
-        <div className="quick-form">
-          <label>Nome da instância<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} autoFocus /></label>
-          <label>Número do WhatsApp<input value={phone} maxLength={24} inputMode="tel" placeholder="5511999999999" onChange={(event) => { setPhone(event.target.value); setConfirmNumber(false); }} /></label>
+        <div className="quick-form profile-identity-form">
+          <div className="profile-identity-scroll">
+            <section className="profile-identity-section">
+              <div className="profile-identity-section-heading">
+                <div>
+                  <b>Identidade no WhatsApp</b>
+                  <small>Esses dados aparecem para seus contatos.</small>
+                </div>
+                {!isConnected && <span className="state-pill inactive">Conecte para editar</span>}
+              </div>
+              <div className="profile-identity-edit-grid">
+                <div className="profile-photo-editor">
+                  <Avatar
+                    name={pushName || instance.name}
+                    src={removePhoto ? "" : imageDataUrl || profileAvatar}
+                  />
+                  <div>
+                    <b>Foto do WhatsApp</b>
+                    <small>JPG, PNG ou WebP de até 5 MB.</small>
+                    <span>
+                      <button
+                        className="secondary-button"
+                        type="button"
+                        disabled={saving || !isConnected}
+                        onClick={() => photoInput.current?.click()}
+                      >
+                        <Image /> Alterar foto
+                      </button>
+                      {(profileAvatar || imageDataUrl) && (
+                        <button
+                          className="secondary-button danger-text"
+                          type="button"
+                          disabled={saving || !isConnected}
+                          onClick={() => {
+                            setImageDataUrl("");
+                            setRemovePhoto(true);
+                          }}
+                        >
+                          <X /> Remover
+                        </button>
+                      )}
+                    </span>
+                    <input
+                      ref={photoInput}
+                      hidden
+                      type="file"
+                      accept="image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0];
+                        event.currentTarget.value = "";
+                        if (!file) return;
+                        if (!file.type.startsWith("image/")) {
+                          setError("Selecione uma imagem válida para a foto do perfil.");
+                          return;
+                        }
+                        if (file.size > 5 * 1024 * 1024) {
+                          setError("A foto do perfil deve ter no máximo 5 MB.");
+                          return;
+                        }
+                        const reader = new FileReader();
+                        reader.onload = () => {
+                          setImageDataUrl(String(reader.result || ""));
+                          setRemovePhoto(false);
+                        };
+                        reader.onerror = () => setError("Não foi possível ler a imagem escolhida.");
+                        reader.readAsDataURL(file);
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="profile-identity-fields">
+                  <label>
+                    Nome exibido no WhatsApp
+                    <input
+                      value={pushName}
+                      maxLength={80}
+                      disabled={saving || !isConnected}
+                      onChange={(event) => setPushName(event.target.value)}
+                    />
+                    <small>Nome público associado ao número conectado.</small>
+                  </label>
+                  <label>
+                    Recado do WhatsApp
+                    <textarea
+                      rows={3}
+                      value={statusText}
+                      maxLength={160}
+                      disabled={saving || !isConnected}
+                      onChange={(event) => setStatusText(event.target.value)}
+                    />
+                    <small>{statusText.length}/160 caracteres</small>
+                  </label>
+                </div>
+              </div>
+            </section>
+            <section className="profile-identity-section">
+              <div className="profile-identity-section-heading">
+                <div>
+                  <b>Dados da instância</b>
+                  <small>O número será usado no próximo pareamento.</small>
+                </div>
+              </div>
+              <label>Nome da instância<input value={name} maxLength={120} onChange={(event) => setName(event.target.value)} /></label>
+              <label>Número do WhatsApp<input value={phone} maxLength={24} inputMode="tel" placeholder="5511999999999" onChange={(event) => { setPhone(event.target.value); setConfirmNumber(false); }} /></label>
+            </section>
           {numberChanged && <div className="identity-warning"><b>O número será substituído</b><span>A sessão atual será desconectada e as credenciais antigas serão recicladas. Depois de salvar, um novo código ou QR Code será gerado para o número informado.</span></div>}
           {confirmNumber && numberChanged && <label className="identity-confirm"><input type="checkbox" checked={confirmNumber} onChange={(event) => setConfirmNumber(event.target.checked)} /> <span>Confirmo a desconexão e a geração de um novo pareamento.</span></label>}
+          </div>
           {error && <div className="form-error">{error}</div>}
           <div className="pairing-modal-actions">
             <button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancelar</button>
-            <button type="submit" className="primary-button" disabled={saving}>{saving ? "Salvando…" : numberChanged && !confirmNumber ? "Continuar" : "Salvar alterações"}</button>
+            <button type="submit" className="primary-button" disabled={saving || !name.trim()}>{saving ? "Salvando…" : numberChanged && !confirmNumber ? "Continuar" : "Salvar alterações"}</button>
           </div>
         </div>
       </form>
@@ -7948,12 +8082,6 @@ function ProfilesWorkspace({
   const [proxyOpen, setProxyOpen] = useState(false);
   const [pairOpen, setPairOpen] = useState(false);
   const [identityOpen, setIdentityOpen] = useState(false);
-  const [editingName, setEditingName] = useState("");
-  const [editingPushName, setEditingPushName] = useState("");
-  const [editingStatusText, setEditingStatusText] = useState("");
-  const [profileImageDataUrl, setProfileImageDataUrl] = useState("");
-  const [removeProfilePhoto, setRemoveProfilePhoto] = useState(false);
-  const profilePhotoInput = useRef<HTMLInputElement>(null);
   const selected = items.find((item) => item.id === selectedId) || null;
   const profileAvatar = textOf(
     profile?.avatarUrl || profile?.profilePictureUrl || selected?.avatarUrl,
@@ -7994,18 +8122,8 @@ function ProfilesWorkspace({
       setProxy(null);
       setInstanceSettings(null);
       setInstanceStorage(null);
-      setEditingName("");
-      setEditingPushName("");
-      setEditingStatusText("");
-      setProfileImageDataUrl("");
-      setRemoveProfilePhoto(false);
       return;
     }
-    setEditingName(selected.name);
-    setEditingPushName("");
-    setEditingStatusText("");
-    setProfileImageDataUrl("");
-    setRemoveProfilePhoto(false);
     setLoading(true);
     void Promise.all([
       api.instanceProfile(selected.id),
@@ -8015,9 +8133,6 @@ function ProfilesWorkspace({
       .then(([profileResult, proxyResult, settingsResult]) => {
         const nextProfile = profileResult.profile || null;
         setProfile(nextProfile);
-        setEditingName(textOf(nextProfile?.displayName, selected.name));
-        setEditingPushName(textOf(nextProfile?.pushName));
-        setEditingStatusText(profileAboutText(nextProfile?.statusText));
         setProxy(proxyResult.proxy || null);
         setInstanceSettings(settingsResult.settings || {});
         setInstanceStorage(settingsResult.storage || null);
@@ -8063,48 +8178,12 @@ function ProfilesWorkspace({
       setBusy(false);
     }
   };
-  const profileChanged = Boolean(
-    selected &&
-      (editingPushName.trim() !== textOf(profile?.pushName).trim() ||
-        editingStatusText.trim() !== profileAboutText(profile?.statusText).trim() ||
-        profileImageDataUrl ||
-        removeProfilePhoto),
-  );
   const instanceToggleSource =
     instanceSettings?.commandToggles || instanceSettings?.command_toggles;
   const instanceToggles =
     instanceToggleSource && typeof instanceToggleSource === "object"
       ? (instanceToggleSource as JsonRecord)
       : {};
-  const saveProfile = async () => {
-    if (!selected || busy || !profileChanged) return;
-    setBusy(true);
-    setError("");
-    try {
-      const payload: JsonRecord = {};
-      if (editingPushName.trim() !== textOf(profile?.pushName).trim())
-        payload.pushName = editingPushName.trim();
-      if (editingStatusText.trim() !== profileAboutText(profile?.statusText).trim())
-        payload.statusText = editingStatusText.trim();
-      if (profileImageDataUrl) payload.imageDataUrl = profileImageDataUrl;
-      if (removeProfilePhoto) payload.removePhoto = true;
-      const result = await api.updateInstanceProfile(selected.id, payload);
-      if (result.profile) setProfile(result.profile);
-      setProfileImageDataUrl("");
-      setRemoveProfilePhoto(false);
-      setNotice("Dados do perfil atualizados.");
-      await reload();
-      onProfilesChanged?.();
-    } catch (cause) {
-      setError(
-        cause instanceof Error
-          ? cause.message
-          : "Não foi possível atualizar o perfil.",
-      );
-    } finally {
-      setBusy(false);
-    }
-  };
   const toggleInstanceSetting = async (key: string, value: boolean) => {
     if (!selected || settingsSaving) return;
     const previous = instanceSettings;
@@ -8132,24 +8211,6 @@ function ProfilesWorkspace({
     } finally {
       setSettingsSaving(null);
     }
-  };
-  const selectProfilePhoto = (file?: File | null) => {
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      setError("Selecione uma imagem válida para a foto do perfil.");
-      return;
-    }
-    if (file.size > 5 * 1024 * 1024) {
-      setError("A foto do perfil deve ter no máximo 5 MB.");
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = () => {
-      setProfileImageDataUrl(String(reader.result || ""));
-      setRemoveProfilePhoto(false);
-    };
-    reader.onerror = () => setError("Não foi possível ler a imagem escolhida.");
-    reader.readAsDataURL(file);
   };
   const profilePhone = textOf(profile?.jid).trim();
   const selectedPhone = fullPhoneText(
@@ -8253,138 +8314,6 @@ function ProfilesWorkspace({
                 </div>
               )}
               {notice && <div className="inline-notice success">{notice}</div>}
-              <section className="settings-card profile-detail-card">
-                <div className="settings-card-heading">
-                  <div>
-                    <h3>Dados do perfil</h3>
-                    <p className="settings-muted">
-                      Edite a identidade do WhatsApp, o recado e a foto sem
-                      perder a conexão.
-                    </p>
-                  </div>
-                  <button
-                    className="secondary-button"
-                    onClick={() => void saveProfile()}
-                    disabled={busy || !profileChanged}
-                  >
-                    <CheckSquare /> Salvar
-                  </button>
-                </div>
-                <div className="profile-editor">
-                  <div className="profile-photo-editor">
-                    <Avatar
-                      name={editingName || selected.name}
-                      src={
-                        removeProfilePhoto
-                          ? ""
-                          : profileImageDataUrl || profileAvatar
-                      }
-                    />
-                    <div>
-                      <b>Foto do WhatsApp</b>
-                      <small>JPG, PNG ou WebP de até 5 MB.</small>
-                      <span>
-                        <button
-                          className="secondary-button"
-                          type="button"
-                          disabled={busy || !connected(selected.sessionStatus)}
-                          onClick={() => profilePhotoInput.current?.click()}
-                        >
-                          <Image /> Alterar foto
-                        </button>
-                        {(profileAvatar || profileImageDataUrl) && (
-                          <button
-                            className="secondary-button danger-text"
-                            type="button"
-                            disabled={busy || !connected(selected.sessionStatus)}
-                            onClick={() => {
-                              setProfileImageDataUrl("");
-                              setRemoveProfilePhoto(true);
-                            }}
-                          >
-                            <X /> Remover
-                          </button>
-                        )}
-                      </span>
-                      {!connected(selected.sessionStatus) && (
-                        <small>Conecte o perfil para editar foto e recado.</small>
-                      )}
-                    </div>
-                    <input
-                      ref={profilePhotoInput}
-                      hidden
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={(event) => {
-                        selectProfilePhoto(event.target.files?.[0]);
-                        event.currentTarget.value = "";
-                      }}
-                    />
-                  </div>
-                  <div className="profile-editor-fields">
-                    <label className="profile-name-field">
-                      Nome exibido no WhatsApp
-                      <input
-                        value={editingPushName}
-                        maxLength={80}
-                        disabled={!connected(selected.sessionStatus)}
-                        onChange={(event) =>
-                          setEditingPushName(event.target.value)
-                        }
-                      />
-                      <small>Nome público associado ao número conectado.</small>
-                    </label>
-                    <label className="profile-name-field wide">
-                      Recado do WhatsApp
-                      <textarea
-                        rows={3}
-                        value={editingStatusText}
-                        maxLength={160}
-                        disabled={!connected(selected.sessionStatus)}
-                        onChange={(event) =>
-                          setEditingStatusText(event.target.value)
-                        }
-                      />
-                      <small>{editingStatusText.length}/160 caracteres</small>
-                    </label>
-                  </div>
-                </div>
-                <div className="profile-detail-grid">
-                  <span>
-                    <small>Número conectado</small>
-                    <b className="profile-phone-value">{selectedPhone}</b>
-                  </span>
-                  <span>
-                    <small>Status</small>
-                    <b>{String(selected.sessionStatus || "desconectado")}</b>
-                  </span>
-                  <span>
-                    <small>Validade</small>
-                    <b>
-                      {selected.expiresAt
-                        ? dateText(selected.expiresAt)
-                        : "Sem validade informada"}
-                    </b>
-                  </span>
-                  <span>
-                    <small>Servidor</small>
-                    <b>
-                      {textOf(
-                        (selected as BotInstance & JsonRecord).serverName,
-                        "Servidor padrão",
-                      )}
-                    </b>
-                  </span>
-                  <span>
-                    <small>Proxy</small>
-                    <b>
-                      {proxy?.enabled
-                        ? `${textOf(proxy?.host, "Proxy ativo")} · ${textOf(proxy?.regionName, "rota protegida")}`
-                        : "Não configurado"}
-                    </b>
-                  </span>
-                </div>
-              </section>
               <section className="settings-card profile-actions-card">
                 <h3>Ações rápidas</h3>
                 <div className="profile-action-grid">
@@ -8432,6 +8361,79 @@ function ProfilesWorkspace({
                   >
                     <ShieldCheck /> {proxy?.enabled ? "Editar proxy" : "Adicionar proxy"}
                   </button>
+                </div>
+              </section>
+              <section className="settings-card profile-detail-card">
+                <div className="settings-card-heading">
+                  <div>
+                    <h3>Identidade do WhatsApp</h3>
+                    <p className="settings-muted">
+                      Foto, nome e recado ficam organizados no editor do perfil.
+                    </p>
+                  </div>
+                  <button
+                    className="secondary-button"
+                    onClick={() => setIdentityOpen(true)}
+                    disabled={busy}
+                  >
+                    <Settings /> Editar identidade
+                  </button>
+                </div>
+                <div className="profile-identity-summary">
+                  <div className="profile-identity-summary-main">
+                    <Avatar
+                      name={textOf(profile?.pushName, selected.name)}
+                      src={profileAvatar}
+                    />
+                    <div>
+                      <b>{textOf(profile?.pushName, "Nome não informado")}</b>
+                      <small>Nome público do WhatsApp</small>
+                      <p>
+                        {profileAboutText(profile?.statusText) ||
+                          "Nenhum recado informado."}
+                      </p>
+                    </div>
+                  </div>
+                  <span className="profile-identity-summary-state">
+                    {connected(selected.sessionStatus)
+                      ? "Pronto para editar"
+                      : "Conecte o perfil para editar"}
+                  </span>
+                </div>
+                <div className="profile-detail-grid">
+                  <span>
+                    <small>Número conectado</small>
+                    <b className="profile-phone-value">{selectedPhone}</b>
+                  </span>
+                  <span>
+                    <small>Status</small>
+                    <b>{String(selected.sessionStatus || "desconectado")}</b>
+                  </span>
+                  <span>
+                    <small>Validade</small>
+                    <b>
+                      {selected.expiresAt
+                        ? dateText(selected.expiresAt)
+                        : "Sem validade informada"}
+                    </b>
+                  </span>
+                  <span>
+                    <small>Servidor</small>
+                    <b>
+                      {textOf(
+                        (selected as BotInstance & JsonRecord).serverName,
+                        "Servidor padrão",
+                      )}
+                    </b>
+                  </span>
+                  <span>
+                    <small>Proxy</small>
+                    <b>
+                      {proxy?.enabled
+                        ? `${textOf(proxy?.host, "Proxy ativo")} · ${textOf(proxy?.regionName, "rota protegida")}`
+                        : "Não configurado"}
+                    </b>
+                  </span>
                 </div>
               </section>
               <section className="settings-card profile-instance-settings-card">
@@ -8520,9 +8522,13 @@ function ProfilesWorkspace({
       {identityOpen && selected && (
         <InstanceIdentityModal
           instance={selected}
+          profile={profile}
+          profileAvatar={profileAvatar}
+          isConnected={connected(selected.sessionStatus)}
           onClose={() => setIdentityOpen(false)}
           onSaved={(result) => {
             setIdentityOpen(false);
+            if (result.profile) setProfile(result.profile);
             if (result.instance) {
               setItems((current) => current.map((item) =>
                 item.id === selected.id ? { ...item, ...result.instance } : item,
@@ -10649,6 +10655,8 @@ export function DashboardApp() {
   const [quickModal, setQuickModal] = useState<
     "profiles" | "new-conversation" | "new-internal" | "join-internal" | null
   >(null);
+  const [renewingProfile, setRenewingProfile] =
+    useState<BotInstance | null>(null);
   const [darkTheme, setDarkTheme] = useState(() => {
     const shared = localStorage.getItem("botadmin-theme");
     return shared
@@ -12622,9 +12630,24 @@ export function DashboardApp() {
         setQuickModal("join-internal");
         return;
       }
-      if (action === "renew-profile" || action === "new-profile") {
+      if (action === "new-profile") {
         setSection("profiles");
         persistSectionInUrl("profiles");
+        return;
+      }
+      if (action === "renew-profile") {
+        const renewalInstance =
+          instances.find((item) => item.id === selectedInstance) ||
+          instances[0] ||
+          null;
+        if (!renewalInstance) {
+          setSection("profiles");
+          persistSectionInUrl("profiles");
+          setToastSuccess(false);
+          setToast("Crie um perfil antes de solicitar a renovação.");
+          return;
+        }
+        setRenewingProfile(renewalInstance);
         return;
       }
       if (action === "support") {
@@ -12737,7 +12760,7 @@ export function DashboardApp() {
         setSession(null);
       }
     },
-    [openConversation, selectedInstance, threads],
+    [instances, openConversation, selectedInstance, threads],
   );
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -13091,6 +13114,19 @@ export function DashboardApp() {
             // close as soon as their operation completes.
             if (!result?.inviteUrl) setQuickModal(null);
             if (session) void loadDashboard(session);
+          }}
+        />
+      )}
+      {renewingProfile && (
+        <ProfileRenewModal
+          instance={renewingProfile}
+          onClose={() => setRenewingProfile(null)}
+          onDone={() => {
+            setToastSuccess(true);
+            setToast(
+              "Pagamento gerado. A validade será atualizada após a aprovação.",
+            );
+            if (session) void loadDashboard(session, true);
           }}
         />
       )}

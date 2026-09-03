@@ -3305,7 +3305,8 @@ img {
   font-variant-numeric: tabular-nums;
 }
 .profile-actions-card {
-  margin-top: 0;
+  margin-top: 16px;
+  margin-bottom: 0;
 }
 .profile-action-grid {
   margin-top: 12px;
@@ -3320,9 +3321,70 @@ img {
   justify-content: center;
   gap: 6px;
 }
+.profile-action-grid > .primary-button {
+  flex: 1 1 100%;
+}
 .profile-action-grid button svg,
 .profile-detail-card button svg {
   width: 16px;
+}
+.profile-identity-summary {
+  min-width: 0;
+  padding: 13px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: #f8fafa;
+}
+.profile-identity-summary-main {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.profile-identity-summary-main > .avatar {
+  width: 58px;
+  height: 58px;
+  flex: 0 0 auto;
+}
+.profile-identity-summary-main > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.profile-identity-summary-main b,
+.profile-identity-summary-main small,
+.profile-identity-summary-main p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.profile-identity-summary-main b {
+  color: #26353d;
+  font-size: 13px;
+}
+.profile-identity-summary-main small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.profile-identity-summary-main p {
+  max-width: 430px;
+  margin: 2px 0 0;
+  color: #52636c;
+  font-size: 11px;
+}
+.profile-identity-summary-state {
+  flex: 0 0 auto;
+  padding: 6px 9px;
+  border-radius: 999px;
+  color: #008069;
+  background: #d9fdd3;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
 }
 .profile-safety-note {
   margin: 0 18px 20px;
@@ -3379,6 +3441,101 @@ img {
 .profile-pairing-modal,
 .instance-identity-modal {
   width: min(560px, calc(100vw - 24px));
+}
+.quick-modal.instance-identity-modal {
+  width: min(700px, calc(100vw - 24px));
+  max-height: min(760px, calc(100dvh - 24px));
+}
+.profile-identity-form {
+  min-height: 0;
+  overflow: hidden;
+  gap: 10px;
+}
+.profile-identity-scroll {
+  min-height: 0;
+  overflow-y: auto;
+  display: grid;
+  gap: 12px;
+  padding: 1px 3px 2px 1px;
+  overscroll-behavior: contain;
+}
+.profile-identity-section {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  background: #f8fafa;
+}
+.profile-identity-section-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.profile-identity-section-heading > div {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+.profile-identity-section-heading b {
+  color: #26353d;
+  font-size: 13px;
+}
+.profile-identity-section-heading small {
+  color: var(--muted);
+  font-size: 10px;
+}
+.profile-identity-edit-grid {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(200px, .9fr) minmax(0, 1.1fr);
+  gap: 10px;
+}
+.profile-identity-fields {
+  min-width: 0;
+  display: grid;
+  align-content: start;
+  gap: 10px;
+}
+.profile-identity-fields > label,
+.profile-identity-section > label {
+  display: grid;
+  gap: 5px;
+  color: #52636c;
+  font-size: 11px;
+  font-weight: 700;
+}
+.profile-identity-fields > label > small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 500;
+}
+.profile-identity-fields input,
+.profile-identity-fields textarea,
+.profile-identity-section input {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: #22323a;
+  background: #fff;
+  outline: 0;
+  font: inherit;
+  font-weight: 500;
+}
+.profile-identity-fields input {
+  height: 40px;
+}
+.profile-identity-fields textarea {
+  min-height: 76px;
+  resize: vertical;
+}
+.profile-identity-fields input:focus,
+.profile-identity-fields textarea:focus,
+.profile-identity-section input:focus {
+  border-color: var(--accent);
 }
 .profile-pairing-modal > header small,
 .instance-identity-modal > header small {
@@ -7582,6 +7739,19 @@ img {
   .profile-detail-grid {
     grid-template-columns: 1fr;
   }
+  .profile-identity-summary {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .profile-identity-summary-state {
+    align-self: flex-start;
+  }
+  .profile-identity-edit-grid {
+    grid-template-columns: 1fr;
+  }
+  .profile-identity-form .profile-photo-editor {
+    align-items: center;
+  }
   .profile-editor-fields {
     grid-template-columns: 1fr;
   }
@@ -7594,6 +7764,10 @@ img {
   .profile-detail-card,
   .profile-actions-card {
     margin-inline: 10px;
+  }
+  .profile-action-grid {
+    display: grid;
+    grid-template-columns: 1fr;
   }
   .profile-safety-note {
     margin-inline: 12px;
@@ -11625,6 +11799,12 @@ img {
 .theme-dark .profile-action-grid button,
 .theme-dark .profile-detail-grid span,
 .theme-dark .profile-detail-grid b,
+.theme-dark .profile-identity-summary,
+.theme-dark .profile-identity-section,
+.theme-dark .profile-identity-summary-main b,
+.theme-dark .profile-identity-fields > label,
+.theme-dark .profile-identity-section > label,
+.theme-dark .profile-identity-section-heading b,
 .theme-dark .account-summary b,
 .theme-dark .account-settings-hero h2,
 .theme-dark .account-settings-form .commerce-form-grid label,
@@ -11638,6 +11818,27 @@ img {
 .theme-dark .affiliate-subsection-heading,
 .theme-dark .payment-table-head {
   color: var(--text);
+}
+
+.theme-dark .profile-identity-summary,
+.theme-dark .profile-identity-section {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.theme-dark .profile-identity-summary-main p,
+.theme-dark .profile-identity-fields > label > small,
+.theme-dark .profile-identity-section-heading small,
+.theme-dark .profile-identity-section-heading > div small {
+  color: var(--muted);
+}
+
+.theme-dark .profile-identity-fields input,
+.theme-dark .profile-identity-fields textarea,
+.theme-dark .profile-identity-section input {
+  color: var(--text);
+  border-color: #40515a;
+  background: var(--input);
 }
 
 .theme-dark .production-broadcast-empty,
@@ -11689,6 +11890,20 @@ img {
 
 .theme-dark .ghost-button:hover {
   background: var(--surface-hover);
+}
+
+@media (max-width: 560px) {
+  /* The compact header action keeps the profile title usable on narrow
+     screens; the full label remains available inside the identity modal. */
+  .profile-detail-header .profile-identity-button {
+    width: 38px !important;
+    min-width: 38px;
+    padding: 0 !important;
+    justify-content: center;
+    gap: 0;
+    overflow: hidden;
+    font-size: 0 !important;
+  }
 }
 
 .theme-dark .broadcast-conversation-composer,
