@@ -1495,10 +1495,15 @@ img {
   padding: 24px max(24px, 6%);
   scroll-behavior: auto;
   background-color: #efeae2;
+  /* Keep the default wallpaper self-contained. The old remote image was not
+     deployed on every slot and produced a noisy 404 while a conversation was
+     opening. A pair of subtle gradients gives the same texture without a
+     blocking network request. */
   background-image:
-    linear-gradient(#efeae2df, #efeae2df),
-    url("https://botadmin.shop/images/brand/chat-wallpaper.png");
-  background-size: auto, 420px;
+    radial-gradient(circle at 15% 20%, #ffffff2e 0 1px, transparent 1.5px),
+    radial-gradient(circle at 75% 70%, #d6cfc52e 0 1px, transparent 1.5px),
+    linear-gradient(#efeae2df, #efeae2df);
+  background-size: 88px 88px, 116px 116px, auto;
 }
 .message-loading {
   width: max-content;
@@ -12009,4 +12014,207 @@ img {
   .theme-dark .module {
     background: var(--panel);
   }
+}
+
+/* Conversation surfaces are outside `.module`, so keep them in the same
+   theme contract as the secondary pages. This block intentionally comes
+   last: the chat has a few legacy literal light backgrounds that otherwise
+   win over the shell theme and leave a white pane when dark mode is enabled. */
+.theme-dark.app-shell,
+.theme-dark .chat-host,
+.theme-dark .chat,
+.theme-dark .directory,
+.theme-dark .thread-list,
+.theme-dark .message-area,
+.theme-dark .empty-pane {
+  color: var(--text);
+  background-color: var(--panel);
+}
+
+.theme-dark .rail,
+.theme-dark .directory-header,
+.theme-dark .chat-header {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--header);
+}
+
+.theme-dark .splitter {
+  background: #2a3942;
+}
+
+.theme-dark .splitter:hover,
+.theme-dark .splitter:active {
+  background: var(--accent);
+}
+
+.theme-dark .rail button:not(.rail-brand),
+.theme-dark .directory-header button,
+.theme-dark .chat-actions button,
+.theme-dark .composer button {
+  color: var(--muted);
+}
+
+.theme-dark .rail button:not(.rail-brand):hover,
+.theme-dark .rail button.active,
+.theme-dark .directory-header button:hover,
+.theme-dark .chat-actions button:hover,
+.theme-dark .composer button:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.theme-dark .rail-profile:hover {
+  background: var(--surface-hover);
+}
+
+.theme-dark .rail-profile > i,
+.theme-dark .rail-dot,
+.theme-dark .rail-badge {
+  border-color: var(--header);
+}
+
+.theme-dark .search,
+.theme-dark .chat-search,
+.theme-dark .chat-search-row,
+.theme-dark .composer,
+.theme-dark .composer-recording-preview {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.theme-dark .search input,
+.theme-dark .chat-search,
+.theme-dark .chat-search-row input,
+.theme-dark .composer textarea,
+.theme-dark .composer-recording-preview audio {
+  color: var(--text);
+  background: var(--input);
+}
+
+.theme-dark .search input::placeholder,
+.theme-dark .chat-search::placeholder,
+.theme-dark .chat-search-row input::placeholder,
+.theme-dark .composer textarea::placeholder {
+  color: #8696a0;
+}
+
+.theme-dark .chat-search-row {
+  border-bottom-color: var(--border);
+}
+
+.theme-dark .chat-search-row svg,
+.theme-dark .chat-search-row button {
+  color: var(--muted);
+}
+
+/* A custom BotAdmin wallpaper is still available in light mode. In dark mode
+   the readable dark surface takes precedence so a bright uploaded image can
+   never turn the conversation white. */
+.theme-dark .message-area {
+  background-image: none !important;
+  background-color: #0b141a;
+}
+
+.theme-dark .message-loading,
+.theme-dark .message-history-loader > span,
+.theme-dark .chat-start {
+  color: var(--muted);
+  border-color: var(--border);
+  background: var(--surface-raised);
+  box-shadow: 0 1px 3px #00000052;
+}
+
+.theme-dark .bubble.incoming {
+  color: var(--text);
+  background: #202c33;
+  box-shadow: 0 1px 1px #00000052;
+}
+
+.theme-dark .bubble.outgoing {
+  color: var(--text);
+  background: #005c4b;
+}
+
+.theme-dark .bubble > strong,
+.theme-dark .bubble p,
+.theme-dark .message-title {
+  color: var(--text);
+}
+
+.theme-dark .bubble p a {
+  color: #53bdeb;
+}
+
+.theme-dark .message-mention,
+.theme-dark .message-mention--all,
+.theme-dark .message-sender-name {
+  color: #66d9bd;
+}
+
+.theme-dark .bubble time,
+.theme-dark .message-footer,
+.theme-dark .message-fallback,
+.theme-dark .reply,
+.theme-dark .reply span {
+  color: var(--muted) !important;
+}
+
+.theme-dark .reply {
+  border-left-color: var(--accent);
+  background: #ffffff12;
+}
+
+.theme-dark .reply b {
+  color: #8ee6d1;
+}
+
+.theme-dark .message-action-trigger {
+  color: var(--muted);
+  border: 1px solid #40515a;
+  background: #202c33e8;
+}
+
+.theme-dark .message-action-trigger:hover {
+  color: var(--text);
+  background: var(--surface-hover);
+}
+
+.theme-dark .message-image,
+.theme-dark .message-video,
+.theme-dark .message-audio {
+  background: #0b141a;
+}
+
+.theme-dark .document-card,
+.theme-dark .media-retry {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+.theme-dark .message-buttons {
+  border-top-color: var(--border);
+}
+
+.theme-dark .message-buttons button {
+  color: #8ee6d1;
+  border-bottom-color: var(--border);
+}
+
+.theme-dark .reaction-badge {
+  color: var(--text);
+  border-color: var(--border);
+  background: var(--surface-raised);
+}
+
+.theme-dark .message-pin,
+.theme-dark .message-edited,
+.theme-dark .ticks {
+  color: var(--muted);
+}
+
+.theme-dark .ticks.read {
+  color: #53bdeb;
 }

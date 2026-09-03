@@ -1016,6 +1016,19 @@ const messageKey = (message: ChatMessage) => {
   return `id:${String(message.id)}`;
 };
 
+/**
+ * WhatsApp workers can briefly return a null row while a message is being
+ * decrypted or a legacy connector can put a primitive in the `messages`
+ * array. Never allow one malformed row to throw during Chat render and take
+ * down the whole dashboard; valid rows remain visible and the next realtime
+ * refresh reconciles the missing item.
+ */
+const isChatMessage = (value: unknown): value is ChatMessage =>
+  Boolean(value && typeof value === "object" && !Array.isArray(value));
+
+const normalizeChatMessages = (values: unknown): ChatMessage[] =>
+  Array.isArray(values) ? values.filter(isChatMessage) : [];
+
 const messageTimeValue = (message: ChatMessage) => {
   const parsed = Date.parse(String(message.createdAt || message.timestamp || ""));
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1053,8 +1066,11 @@ const mergeConversationMessages = (
     }
     result[currentIndex] = { ...result[currentIndex], ...message };
   };
-  for (const message of existing) add(message);
+  for (const message of existing) {
+    if (isChatMessage(message)) add(message);
+  }
   for (const serverMessage of incoming) {
+    if (!isChatMessage(serverMessage)) continue;
     const clientId = String(serverMessage.clientMessageId || "").trim();
     const clientIndex = clientId
       ? result.findIndex(
@@ -3876,7 +3892,9 @@ function Chat({
             .map((entry) =>
               typeof entry === "string"
                 ? entry
-                : String((entry as JsonRecord).emoji || ""),
+                : entry && typeof entry === "object"
+                  ? String((entry as JsonRecord).emoji || "")
+                  : "",
             )
             .filter(Boolean);
           const reactions = [
@@ -11339,7 +11357,7 @@ export function DashboardApp() {
       if (!quiet) {
         const cached = mergeConversationMessages(
           [],
-          sortMessages(safeJsonRead<ChatMessage[]>(key, []))
+          sortMessages(normalizeChatMessages(safeJsonRead<unknown>(key, [])))
             .slice(-50)
             .map((message) => ({
               ...message,
@@ -11379,7 +11397,7 @@ export function DashboardApp() {
           messageRequestIdRef.current !== requestId
         )
           return;
-        const serverMessages = (result.messages || []).map((message) => ({
+        const serverMessages = normalizeChatMessages(result.messages).map((message) => ({
           ...message,
           // The API intentionally omits conversation context from each row;
           // attach it here so encrypted WhatsApp media can use the recovery
@@ -11465,7 +11483,7 @@ export function DashboardApp() {
         messageRequestIdRef.current !== requestId
       )
         return;
-      const olderMessages = (result.messages || []).map((message) => ({
+      const olderMessages = normalizeChatMessages(result.messages).map((message) => ({
         ...message,
         instanceId: message.instanceId ?? thread.instanceId,
         chatJid: message.chatJid ?? thread.chatJid,
