@@ -206,13 +206,47 @@ const initialSection = (): Section => {
   return sectionAliases[value] || "conversations";
 };
 
-const persistSectionInUrl = (section: Section) => {
+type DashboardHistoryState = {
+  __botadminDashboard?: true;
+  view?: "directory" | "chat";
+  section?: Section;
+  threadKey?: string;
+};
+
+const readDashboardHistoryState = (): DashboardHistoryState => {
+  const state = history.state;
+  return state && typeof state === "object"
+    ? (state as DashboardHistoryState)
+    : {};
+};
+
+const writeDashboardHistory = (
+  entry: Omit<DashboardHistoryState, "__botadminDashboard">,
+  mode: "push" | "replace",
+) => {
   const url = new URL(location.href);
-  url.searchParams.set("section", section);
-  history.replaceState(
-    history.state,
-    "",
-    `${url.pathname}${url.search}${url.hash}`,
+  if (entry.section) url.searchParams.set("section", entry.section);
+  const state: DashboardHistoryState = {
+    ...readDashboardHistoryState(),
+    __botadminDashboard: true,
+    ...entry,
+  };
+  const target = `${url.pathname}${url.search}${url.hash}`;
+  if (mode === "push") history.pushState(state, "", target);
+  else history.replaceState(state, "", target);
+};
+
+const persistSectionInUrl = (section: Section) => {
+  const current = readDashboardHistoryState();
+  writeDashboardHistory(
+    {
+      section,
+      view: current.view === "chat" ? "chat" : "directory",
+      ...(current.view === "chat" && current.threadKey
+        ? { threadKey: current.threadKey }
+        : {}),
+    },
+    "replace",
   );
 };
 
@@ -10287,6 +10321,7 @@ export function DashboardApp() {
   const pendingRealtimeThreadsRef = useRef<Map<string, ConversationThread>>(
     new Map(),
   );
+  const threadsRef = useRef<ConversationThread[]>([]);
   const realtimeSequenceRef = useRef(0);
   const messageThreadKeyRef = useRef("");
   const messageRequestIdRef = useRef(0);
@@ -10299,6 +10334,99 @@ export function DashboardApp() {
     moved: boolean;
   } | null>(null);
   const mobileNavIgnoreClickRef = useRef(false);
+  useLayoutEffect(() => {
+    threadsRef.current = threads;
+  }, [threads]);
+
+  // Keep the dashboard in the browser history as a real directory view. A
+  // mobile browser/WebView otherwise has no internal entry to return to and
+  // its Back button leaves the panel while a chat is open.
+  useEffect(() => {
+    const initial = readDashboardHistoryState();
+    if (!initial.__botadminDashboard) {
+      writeDashboardHistory(
+        { view: "directory", section: initialSection() },
+        "replace",
+      );
+    }
+    const onPopState = () => {
+      const next = readDashboardHistoryState();
+      if (next.__botadminDashboard && next.view === "chat" && next.threadKey) {
+        const thread = threadsRef.current.find(
+          (item) => `${item.instanceId}:${item.chatJid}` === next.threadKey,
+        );
+        if (thread) {
+          const targetSection =
+            next.section ||
+            (thread.chatType === "internal_group"
+              ? "internalGroups"
+              : "conversations");
+          setSection(targetSection);
+          setFilter(targetSection === "internalGroups" ? "internal" : "all");
+          setSelected(thread);
+          setMobileChatOpen(true);
+          return;
+        }
+      }
+      if (next.__botadminDashboard && next.section) {
+        setSection(next.section);
+        setFilter(next.section === "internalGroups" ? "internal" : "all");
+      }
+      setSelected(null);
+      setMobileChatOpen(false);
+    };
+    window.addEventListener("popstate", onPopState);
+    return () => window.removeEventListener("popstate", onPopState);
+  }, []);
+
+  const openConversation = useCallback(
+    (
+      thread: ConversationThread,
+      options: { section?: Section; replace?: boolean } = {},
+    ) => {
+      const targetSection =
+        options.section ||
+        (thread.chatType === "internal_group"
+          ? "internalGroups"
+          : "conversations");
+      const threadKey = `${thread.instanceId}:${thread.chatJid}`;
+      const current = readDashboardHistoryState();
+      const alreadyOpen =
+        current.__botadminDashboard &&
+        current.view === "chat" &&
+        current.threadKey === threadKey;
+      if (!alreadyOpen) {
+        writeDashboardHistory(
+          { view: "chat", section: targetSection, threadKey },
+          options.replace ? "replace" : "push",
+        );
+      }
+      setSection(targetSection);
+      setFilter(targetSection === "internalGroups" ? "internal" : "all");
+      setSelected(thread);
+      setMobileChatOpen(true);
+    },
+    [],
+  );
+
+  const closeConversation = useCallback((replace = false) => {
+    const current = readDashboardHistoryState();
+    setSelected(null);
+    setMobileChatOpen(false);
+    if (current.__botadminDashboard && current.view === "chat") {
+      if (replace) {
+        writeDashboardHistory(
+          { view: "directory", section: current.section || "conversations" },
+          "replace",
+        );
+      } else {
+        // Let popstate perform the state transition so Android Back, desktop
+        // browser Back and the in-app arrow all share exactly the same path.
+        history.back();
+      }
+    }
+  }, []);
+
   const updateSessionProfile = useCallback((next: SessionUser) => {
     setSession((current) => {
       const merged = current ? { ...current, ...next } : next;
@@ -10624,7 +10752,7 @@ export function DashboardApp() {
       setHasMoreThreads(false);
       setSelectedInstance(id);
       activeInstanceRef.current = id;
-      setSelected(null);
+      closeConversation(true);
       setLoadingThreads(true);
       localStorage.setItem(cacheKey("instance", session.id), String(id));
       try {
@@ -10724,7 +10852,7 @@ export function DashboardApp() {
         }
       }
     },
-    [session],
+    [closeConversation, session],
   );
 
   useEffect(() => {
@@ -10911,12 +11039,9 @@ export function DashboardApp() {
       (thread) => thread.chatJid === `internal:${requestedInternalId}`,
     );
     if (requested) {
-      setSelected(requested);
-      setSection("internalGroups");
-      setFilter("internal");
-      setMobileChatOpen(true);
+      openConversation(requested, { section: "internalGroups", replace: true });
     }
-  }, [selected, threads]);
+  }, [openConversation, selected, threads]);
 
   useEffect(() => {
     if (!session) return;
@@ -11841,8 +11966,7 @@ export function DashboardApp() {
             selected?.chatJid === thread.chatJid &&
             selected.instanceId === thread.instanceId
           ) {
-            setSelected(null);
-            setMobileChatOpen(false);
+            closeConversation(true);
           }
         } else {
           const patch: Partial<ConversationThread> =
@@ -11917,7 +12041,7 @@ export function DashboardApp() {
         );
       }
     },
-    [selected, loadMessages],
+    [closeConversation, selected, loadMessages],
   );
 
   const runDirectoryAction = useCallback(
@@ -11948,11 +12072,7 @@ export function DashboardApp() {
           (thread) => thread.isSupport || /suporte/i.test(thread.title),
         );
         if (support) {
-          setSection("conversations");
-          persistSectionInUrl("conversations");
-          setFilter("all");
-          setSelected(support);
-          setMobileChatOpen(true);
+          openConversation(support, { section: "conversations" });
         } else {
           setToastSuccess(false);
           setToast(
@@ -12057,7 +12177,7 @@ export function DashboardApp() {
         setSession(null);
       }
     },
-    [selectedInstance, threads],
+    [openConversation, selectedInstance, threads],
   );
 
   const startResize = (event: ReactPointerEvent<HTMLDivElement>) => {
@@ -12177,6 +12297,8 @@ export function DashboardApp() {
         onProfileSwitcher={() => setQuickModal("profiles")}
         onLogout={() => void runDirectoryAction("logout")}
         onSelect={(next) => {
+          if (next !== "conversations" && next !== "internalGroups")
+            closeConversation(true);
           setSection(next);
           persistSectionInUrl(next);
           if (next === "internalGroups") setFilter("internal");
@@ -12194,10 +12316,7 @@ export function DashboardApp() {
             loading={loadingThreads}
             onQuery={setQuery}
             onFilter={setFilter}
-            onSelect={(thread) => {
-              setSelected(thread);
-              setMobileChatOpen(true);
-            }}
+            onSelect={(thread) => openConversation(thread)}
             onAction={(thread, action) =>
               void runConversationAction(thread, action)
             }
@@ -12215,7 +12334,7 @@ export function DashboardApp() {
               loadingOlder={loadingOlderMessages}
               hasOlder={hasOlderMessages}
               onLoadOlder={loadOlderMessages}
-              onBack={() => setMobileChatOpen(false)}
+              onBack={() => closeConversation()}
               onSend={sendText}
               onSendMedia={sendMedia}
               onAction={(thread, action) =>
@@ -12262,6 +12381,8 @@ export function DashboardApp() {
               className={section === item ? "active" : ""}
               onClick={() => {
                 if (mobileNavIgnoreClickRef.current) return;
+                if (item !== "conversations" && item !== "internalGroups")
+                  closeConversation(true);
                 setSection(item);
                 persistSectionInUrl(item);
               }}
@@ -12383,11 +12504,7 @@ export function DashboardApp() {
           }}
           onSelectThread={(thread) => {
             setQuickModal(null);
-            setSection("conversations");
-            persistSectionInUrl("conversations");
-            setFilter("all");
-            setSelected(thread);
-            setMobileChatOpen(true);
+            openConversation(thread, { section: "conversations" });
           }}
           onCreated={(result) => {
             // Keep the creation modal open when the API returns an invite so
