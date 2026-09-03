@@ -202,8 +202,12 @@ export type AuthRegisterResponse = {
   expiresAt?: string;
 };
 
-export const absoluteMediaUrl = (value?: string | null) => {
-  const source = value?.trim();
+export const absoluteMediaUrl = (value?: unknown) => {
+  // API responses from older workers occasionally expose media fields as a
+  // nested object (or null) while the media is being hydrated. Never call a
+  // string method on an untrusted response value: one malformed avatar must
+  // not take down the entire conversation screen.
+  const source = typeof value === "string" ? value.trim() : "";
   if (!source) return "";
   if (/^(blob:|data:)/i.test(source)) return source;
   try {

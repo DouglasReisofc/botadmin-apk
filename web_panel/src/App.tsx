@@ -87,6 +87,18 @@ import { getContactActions, type ContactActionKey } from "./contact-actions";
 
 const textOf = (value: unknown, fallback = "") =>
   value === null || value === undefined ? fallback : String(value);
+const safeString = (value: unknown, fallback = "") =>
+  typeof value === "string"
+    ? value
+    : typeof value === "number" && Number.isFinite(value)
+      ? String(value)
+      : fallback;
+const safeTrim = (value: unknown, fallback = "") =>
+  safeString(value, fallback).trim();
+const safeNullableString = (value: unknown) => {
+  const result = safeTrim(value);
+  return result || null;
+};
 const profileAboutText = (value: unknown) => {
   const text = textOf(value).trim();
   if (!text) return "";
@@ -427,8 +439,8 @@ const sectionMeta: Record<
   },
 };
 
-const initials = (name = "") =>
-  name
+const initials = (name: unknown = "") =>
+  safeString(name)
     .trim()
     .split(/\s+/)
     .slice(0, 2)
@@ -889,19 +901,58 @@ function safeJsonRead<T>(key: string, fallback: T): T {
   }
 }
 
-function normalizeThreads(threads: ConversationThread[]) {
+function normalizeThreads(threads: unknown) {
   const deduped = new Map<string, ConversationThread>();
-  for (const thread of threads) {
-    if (!thread?.chatJid) continue;
+  if (!Array.isArray(threads)) return [];
+  for (const value of threads) {
+    if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+    const source = value as JsonRecord;
+    const chatJid = safeTrim(source.chatJid);
+    if (!chatJid) continue;
+    const instanceValue = Number(source.instanceId);
+    const instanceId = Number.isFinite(instanceValue) ? instanceValue : 0;
+    const title =
+      safeTrim(source.title) ||
+      safeTrim(source.phone) ||
+      chatJid.split("@")[0] ||
+      "Conversa";
     const normalized: ConversationThread = {
-      ...thread,
-      title:
-        thread.title?.trim() ||
-        thread.phone?.trim() ||
-        thread.chatJid.split("@")[0] ||
-        "Conversa",
-      lastMessagePreview: thread.lastMessagePreview ?? thread.lastMessage ?? "",
-      lastMessageAt: thread.lastMessageAt ?? thread.lastActivity,
+      ...(source as Partial<ConversationThread>),
+      instanceId,
+      chatJid,
+      title,
+      phone: safeNullableString(source.phone),
+      lastMessage: safeNullableString(source.lastMessage),
+      lastMessagePreview:
+        safeTrim(source.lastMessagePreview) || safeTrim(source.lastMessage) || "",
+      lastMessageAt:
+        safeNullableString(source.lastMessageAt) ||
+        safeNullableString(source.lastActivity),
+      lastActivity: safeNullableString(source.lastActivity),
+      createdAt: safeNullableString(source.createdAt),
+      updatedAt: safeNullableString(source.updatedAt),
+      lastMessageSenderName: safeNullableString(source.lastMessageSenderName),
+      lastMessageSenderJid: safeNullableString(source.lastMessageSenderJid),
+      lastMessageDirection: safeNullableString(source.lastMessageDirection),
+      avatarUrl: safeNullableString(source.avatarUrl),
+      wallpaperUrl: safeNullableString(source.wallpaperUrl),
+      chatType: safeNullableString(source.chatType),
+      unreadCount: Number.isFinite(Number(source.unreadCount))
+        ? Math.max(0, Number(source.unreadCount))
+        : 0,
+      memberCount: Number.isFinite(Number(source.memberCount))
+        ? Math.max(0, Number(source.memberCount))
+        : undefined,
+      participantsCount: Number.isFinite(Number(source.participantsCount))
+        ? Math.max(0, Number(source.participantsCount))
+        : undefined,
+      linkedGroupId: Number.isFinite(Number(source.linkedGroupId))
+        ? Number(source.linkedGroupId)
+        : null,
+      pinned: Boolean(source.pinned),
+      archived: Boolean(source.archived),
+      muted: Boolean(source.muted),
+      canManage: Boolean(source.canManage),
     };
     const key = `${normalized.instanceId}:${normalized.chatJid}`;
     const previous = deduped.get(key);
@@ -1005,16 +1056,21 @@ const mergeBotGroupThreads = (
         `${thread.instanceId}:${normalizeChatIdentity(thread.chatJid)}`,
       );
     if (!group) return thread;
-    const status = String(group.status || "").trim().toLowerCase();
+    const status = safeTrim(group.status).toLowerCase();
+    const groupTitle =
+      safeTrim(group.name) || safeTrim(thread.title) || "Conversa";
+    const groupAvatar =
+      safeTrim(group.imageUrl) ||
+      safeTrim(group.avatarUrl) ||
+      safeTrim(thread.avatarUrl) ||
+      null;
     return {
       ...thread,
       linkedGroupId: Number(group.id || thread.linkedGroupId || 0) || null,
       internalBotEnabled:
         status === "active" || status === "ativo" || status === "enabled",
-      title: String(group.name || thread.title || "").trim() || thread.title,
-      avatarUrl:
-        String(group.imageUrl || group.avatarUrl || thread.avatarUrl || "") ||
-        null,
+      title: groupTitle,
+      avatarUrl: groupAvatar,
       participantsCount: Number(
         group.participantCount ??
           group.participantsCount ??
@@ -1043,8 +1099,112 @@ const messageKey = (message: ChatMessage) => {
 const isChatMessage = (value: unknown): value is ChatMessage =>
   Boolean(value && typeof value === "object" && !Array.isArray(value));
 
+type NormalizedChatButton = NonNullable<ChatMessage["buttons"]>[number];
+
+const normalizeButtons = (value: unknown): NormalizedChatButton[] => {
+  if (!Array.isArray(value)) return [];
+  return value
+    .filter((item): item is JsonRecord => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+    .map((item): NormalizedChatButton => ({
+      id: safeNullableString(item.id) || undefined,
+      title: safeNullableString(item.title) || undefined,
+      label: safeNullableString(item.label) || undefined,
+      type: safeNullableString(item.type) || undefined,
+      url: safeNullableString(item.url) || undefined,
+      copyCode: safeNullableString(item.copyCode) || undefined,
+      phoneNumber: safeNullableString(item.phoneNumber) || undefined,
+    }))
+    .filter((item) => Boolean(item.title || item.label || item.url || item.id));
+};
+
+const normalizeMessageRecord = (
+  value: unknown,
+  depth = 0,
+): ChatMessage | null => {
+  if (!isChatMessage(value)) return null;
+  const source = value as JsonRecord;
+  const rawId = source.id ?? source.messageId ?? source.clientMessageId;
+  if (
+    (typeof rawId !== "string" && typeof rawId !== "number") ||
+    !safeTrim(rawId)
+  )
+    return null;
+  const instanceId = Number(source.instanceId);
+  const mediaSource = source.media;
+  let media: Record<string, unknown> | null = null;
+  if (mediaSource && typeof mediaSource === "object" && !Array.isArray(mediaSource)) {
+    media = { ...(mediaSource as JsonRecord) };
+    if ("buttons" in media) media.buttons = normalizeButtons(media.buttons);
+  }
+  const replyTo =
+    depth < 2 && source.replyTo
+      ? normalizeMessageRecord(source.replyTo, depth + 1)
+      : null;
+  const normalized: ChatMessage = {
+    ...(source as Partial<ChatMessage>),
+    id: typeof rawId === "number" ? rawId : String(rawId),
+    instanceId: Number.isFinite(instanceId) ? instanceId : undefined,
+    chatJid: safeNullableString(source.chatJid) || undefined,
+    messageId: safeNullableString(source.messageId),
+    clientMessageId: safeNullableString(source.clientMessageId),
+    direction: safeNullableString(source.direction) || undefined,
+    senderId: Number.isFinite(Number(source.senderId))
+      ? Number(source.senderId)
+      : null,
+    senderJid: safeNullableString(source.senderJid),
+    senderName: safeNullableString(source.senderName),
+    senderAvatarUrl: safeNullableString(source.senderAvatarUrl),
+    messageType: safeNullableString(source.messageType),
+    type: safeNullableString(source.type),
+    text: safeNullableString(source.text),
+    body: safeNullableString(source.body),
+    caption: safeNullableString(source.caption),
+    title: safeNullableString(source.title),
+    footer: safeNullableString(source.footer),
+    mediaUrl: safeNullableString(source.mediaUrl),
+    mediaSourceUrl: safeNullableString(source.mediaSourceUrl),
+    mediaProxyUrl: safeNullableString(source.mediaProxyUrl),
+    thumbnailUrl: safeNullableString(source.thumbnailUrl),
+    mediaMimeType: safeNullableString(source.mediaMimeType),
+    mimeType: safeNullableString(source.mimeType),
+    fileName: safeNullableString(source.fileName),
+    mediaFileName: safeNullableString(source.mediaFileName),
+    timestamp: safeNullableString(source.timestamp),
+    createdAt: safeNullableString(source.createdAt),
+    deliveryState: safeTrim(source.deliveryState) || undefined,
+    reactions: Array.isArray(source.reactions) ? source.reactions : [],
+    replyTo,
+    media,
+    buttons: normalizeButtons(source.buttons),
+    optimistic: Boolean(source.optimistic),
+    pinned: Boolean(source.pinned),
+    deleted: Boolean(source.deleted),
+    editedAt: safeNullableString(source.editedAt),
+    viewOnce: Boolean(source.viewOnce),
+    viewOnceOpened: Boolean(source.viewOnceOpened),
+    mentionedJids: Array.isArray(source.mentionedJids)
+      ? source.mentionedJids.map((item) => safeTrim(item)).filter(Boolean)
+      : [],
+    mentionsAll: Boolean(source.mentionsAll),
+    mentionTargets: Array.isArray(source.mentionTargets)
+      ? source.mentionTargets
+          .filter((item): item is JsonRecord => Boolean(item && typeof item === "object" && !Array.isArray(item)))
+          .map((item) => ({
+            jid: safeTrim(item.jid),
+            name: safeNullableString(item.name),
+          }))
+          .filter((item) => Boolean(item.jid))
+      : [],
+  };
+  return normalized;
+};
+
 const normalizeChatMessages = (values: unknown): ChatMessage[] =>
-  Array.isArray(values) ? values.filter(isChatMessage) : [];
+  Array.isArray(values)
+    ? values
+        .map((value) => normalizeMessageRecord(value))
+        .filter((message): message is ChatMessage => Boolean(message))
+    : [];
 
 const messageTimeValue = (message: ChatMessage) => {
   const parsed = Date.parse(String(message.createdAt || message.timestamp || ""));
@@ -1074,21 +1234,24 @@ const mergeConversationMessages = (
   const result: ChatMessage[] = [];
   const indexByKey = new Map<string, number>();
   const add = (message: ChatMessage) => {
-    const key = messageKey(message);
+    const safeMessage = normalizeMessageRecord(message) || message;
+    const key = messageKey(safeMessage);
     const currentIndex = indexByKey.get(key);
     if (currentIndex === undefined) {
       indexByKey.set(key, result.length);
-      result.push(message);
+      result.push(safeMessage);
       return;
     }
-    result[currentIndex] = { ...result[currentIndex], ...message };
+    result[currentIndex] = { ...result[currentIndex], ...safeMessage };
   };
   for (const message of existing) {
     if (isChatMessage(message)) add(message);
   }
   for (const serverMessage of incoming) {
     if (!isChatMessage(serverMessage)) continue;
-    const clientId = String(serverMessage.clientMessageId || "").trim();
+    const safeServerMessage = normalizeMessageRecord(serverMessage);
+    if (!safeServerMessage) continue;
+    const clientId = String(safeServerMessage.clientMessageId || "").trim();
     const clientIndex = clientId
       ? result.findIndex(
           (message) =>
@@ -1099,14 +1262,14 @@ const mergeConversationMessages = (
     if (clientIndex >= 0) {
       result[clientIndex] = {
         ...result[clientIndex],
-        ...serverMessage,
+        ...safeServerMessage,
         optimistic: false,
       };
       indexByKey.set(messageKey(result[clientIndex]), clientIndex);
       continue;
     }
-    const serverText = messageComparableText(serverMessage);
-    const serverTime = messageTimeValue(serverMessage);
+    const serverText = messageComparableText(safeServerMessage);
+    const serverTime = messageTimeValue(safeServerMessage);
     const fallbackIndex = serverText
       ? result.findIndex((message) => {
           if (!message.optimistic || messageComparableText(message) !== serverText)
@@ -1118,13 +1281,13 @@ const mergeConversationMessages = (
     if (fallbackIndex >= 0) {
       result[fallbackIndex] = {
         ...result[fallbackIndex],
-        ...serverMessage,
+        ...safeServerMessage,
         optimistic: false,
       };
       indexByKey.set(messageKey(result[fallbackIndex]), fallbackIndex);
       continue;
     }
-    add(serverMessage);
+    add(safeServerMessage);
   }
   return sortMessages(result);
 };
@@ -2184,10 +2347,10 @@ const renderMessageBody = (
         .filter((jid): jid is string => Boolean(jid))
     : [];
   const targetEntries = Array.isArray(message.mentionTargets)
-    ? message.mentionTargets
+      ? message.mentionTargets
         .map((entry) => ({
           jid: normalizeMentionJidForPanel(entry?.jid),
-          name: entry?.name?.trim() || null,
+          name: safeTrim(entry?.name) || null,
         }))
         .filter((entry): entry is { jid: string; name: string | null } => Boolean(entry.jid))
     : [];
@@ -4790,7 +4953,7 @@ function ConversationMemberModal({
   });
   const [busyAction, setBusyAction] = useState<ContactActionKey | null>(null);
   const [error, setError] = useState("");
-  const displayName = participant.name?.trim() || "Participante";
+  const displayName = safeTrim(participant.name) || "Participante";
   const actionConfirmations: Partial<Record<ContactActionKey, string>> = {
     remove: `Remover ${displayName} do grupo? O histórico será preservado.`,
     remove_clean: `Remover ${displayName} e apagar as mensagens recentes para todos?`,
@@ -10627,6 +10790,12 @@ export class DashboardErrorBoundary extends React.Component<
   static getDerivedStateFromError() {
     return { hasError: true };
   }
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    // Keep the production fallback intentionally concise for users, while
+    // preserving a useful diagnostic in DevTools for malformed upstream
+    // payloads that would otherwise be impossible to identify remotely.
+    console.error("[botadmin] dashboard render error", error, info.componentStack);
+  }
   render() {
     if (!this.state.hasError) return this.props.children;
     return (
@@ -10644,6 +10813,47 @@ export class DashboardErrorBoundary extends React.Component<
           Tentar novamente
         </button>
       </main>
+    );
+  }
+}
+
+/**
+ * Keep a malformed message from taking the whole authenticated dashboard
+ * down. The directory and navigation remain usable, and the user can retry
+ * just the affected conversation after its payload has been refreshed.
+ */
+class ConversationErrorBoundary extends React.Component<
+  React.PropsWithChildren<{ onBack: () => void }>,
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error: unknown, info: React.ErrorInfo) {
+    console.error("[botadmin] conversation render error", error, info.componentStack);
+  }
+  render() {
+    if (!this.state.hasError) return this.props.children;
+    return (
+      <section className="chat chat-error" role="alert">
+        <div className="module-error">
+          <RefreshCw />
+          <h2>Não foi possível abrir esta conversa</h2>
+          <p>Os dados desta conversa foram atualizados. Tente novamente.</p>
+          <div className="module-error-actions">
+            <button
+              className="primary-button"
+              onClick={() => this.setState({ hasError: false })}
+            >
+              Tentar novamente
+            </button>
+            <button className="secondary-button" onClick={this.props.onBack}>
+              Voltar para conversas
+            </button>
+          </div>
+        </div>
+      </section>
     );
   }
 }
@@ -10898,7 +11108,7 @@ export function DashboardApp() {
             instanceId: thread.instanceId,
             chatJid: jid,
             chatType: "contact",
-            title: participant.name?.trim() || (phone ? `+${phone}` : "Contato"),
+            title: safeTrim(participant.name) || (phone ? `+${phone}` : "Contato"),
             phone: phone || null,
             lastMessagePreview: "",
             lastMessageAt: null,
@@ -12947,27 +13157,29 @@ export function DashboardApp() {
           />
           <div className="splitter" onPointerDown={startResize} />
           <div className={`chat-host ${mobileChatOpen ? "mobile-open" : ""}`}>
-            <Chat
-              thread={selected}
-              messages={messages}
-              loading={loadingMessages}
-              loadingOlder={loadingOlderMessages}
-              hasOlder={hasOlderMessages}
-              onLoadOlder={loadOlderMessages}
-              onBack={() => closeConversation()}
-              onSend={sendText}
-              onSendMedia={sendMedia}
-              onAction={(thread, action) =>
-                void runConversationAction(thread, action)
-              }
-              onMessageAction={(message, action, payload) =>
-                selected
-                  ? runMessageAction(selected, message, action, payload)
-                  : undefined
-              }
-              onMention={openMentionConversation}
-              onParticipant={openParticipantModal}
-            />
+            <ConversationErrorBoundary onBack={() => closeConversation()}>
+              <Chat
+                thread={selected}
+                messages={messages}
+                loading={loadingMessages}
+                loadingOlder={loadingOlderMessages}
+                hasOlder={hasOlderMessages}
+                onLoadOlder={loadOlderMessages}
+                onBack={() => closeConversation()}
+                onSend={sendText}
+                onSendMedia={sendMedia}
+                onAction={(thread, action) =>
+                  void runConversationAction(thread, action)
+                }
+                onMessageAction={(message, action, payload) =>
+                  selected
+                    ? runMessageAction(selected, message, action, payload)
+                    : undefined
+                }
+                onMention={openMentionConversation}
+                onParticipant={openParticipantModal}
+              />
+            </ConversationErrorBoundary>
           </div>
         </>
       ) : (

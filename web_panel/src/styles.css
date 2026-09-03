@@ -7962,6 +7962,17 @@ img {
   color: #fff;
   background: #b42318;
 }
+.module-error-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+.module-error-actions button {
+  margin-top: 0;
+}
 .rich-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
