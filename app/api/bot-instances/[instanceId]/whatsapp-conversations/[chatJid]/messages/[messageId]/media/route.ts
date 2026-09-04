@@ -12,6 +12,7 @@ import {
   putCachedMediaInR2,
 } from "lib/r2-media-cache";
 import { downloadChatMedia, getChatMessage } from "lib/wuzapi";
+import { getOutgoingWhatsappMedia } from "lib/whatsapp-outgoing-media-cache";
 import { resolveChatConversationAccess } from "lib/whatsapp-conversation-access";
 import {
   getAdminMediaStorageSummary,
@@ -440,6 +441,31 @@ export async function GET(request: Request, context: Context) {
         { status: viewOnceAccess.status },
       );
     }
+
+    // Outgoing stickers are sometimes acknowledged without a WhatsApp CDN
+    // URL/directPath. Resolve the authenticated short-lived upload cache
+    // before asking EasyZap for metadata; otherwise a perfectly valid sticker
+    // would be rendered as an unavailable media bubble after reconciliation.
+    const cachedOutgoing = getOutgoingWhatsappMedia({
+      key: {
+        userId: storageUserId,
+        instanceId: instance.id,
+        chatJid,
+        messageId: stored.messageId ?? messageKey,
+      },
+    });
+    if (cachedOutgoing) {
+      return mediaResponse(
+        cachedOutgoing.buffer,
+        {
+          mimeType: cachedOutgoing.mimeType,
+          filename: cachedOutgoing.filename,
+          cache: "origin",
+        },
+        request,
+      );
+    }
+
     const storedMedia: Record<string, unknown> = stored.media ?? {};
     const nestedInteractiveMedia = getLookupMediaRecord(storedMedia);
     let media: Record<string, unknown> = nestedInteractiveMedia

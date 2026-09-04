@@ -5,6 +5,7 @@ import { BotInstanceError, refreshInstanceStatus } from "lib/bot-instances";
 import { listGroupsForUser } from "lib/bot-groups";
 import { resolveChatConversationAccess } from "lib/whatsapp-conversation-access";
 import { evaluatePlanGuard } from "lib/plan-guard";
+import { cacheOutgoingWhatsappMedia } from "lib/whatsapp-outgoing-media-cache";
 import {
   getGroupInfo,
   getUserAvatar,
@@ -1278,6 +1279,8 @@ export async function POST(request: Request, context: Context) {
         }
       : null;
     const mediaBuffer = file ? Buffer.from(await file.arrayBuffer()) : null;
+    let preparedStickerBuffer: Buffer | null = null;
+    let preparedStickerMimeType = "image/webp";
     const hasInteractiveButtons = interactiveButtons.length > 0;
     const interactiveTitle = instance.name?.trim() || "BotAdmin";
     const interactiveBody =
@@ -1327,6 +1330,10 @@ export async function POST(request: Request, context: Context) {
                   mentionTargets.length > 0 ? mentionTargets : undefined,
                 pack: "BotAdmin",
                 author: "botadmin.shop",
+                onPreparedSticker: (buffer, mimeType) => {
+                  preparedStickerBuffer = buffer;
+                  preparedStickerMimeType = mimeType;
+                },
               })
             : await sendMediaMessage(client, {
                 to: chatJid,
@@ -1349,7 +1356,27 @@ export async function POST(request: Request, context: Context) {
               body: outgoingText,
               mentions: mentionTargets.length > 0 ? mentionTargets : undefined,
               quoted: quoted ?? undefined,
-            });
+          });
+
+    // EasyZap/WhatsApp may acknowledge an outgoing sticker without returning
+    // a CDN URL or encryption metadata. Keep the exact upload bytes available
+    // to the authenticated media endpoint so the message remains a real
+    // sticker after the optimistic preview is reconciled with the server.
+    if (asSticker && (preparedStickerBuffer || mediaBuffer) && messageId) {
+      cacheOutgoingWhatsappMedia({
+        key: {
+          userId: storageUserId,
+          instanceId: instance.id,
+          chatJid,
+          messageId,
+        },
+        buffer: preparedStickerBuffer || mediaBuffer!,
+        mimeType: preparedStickerBuffer
+          ? preparedStickerMimeType
+          : mediaPayload?.mimeType || "image/webp",
+        filename: mediaPayload?.filename || "figurinha.webp",
+      });
+    }
 
     const formMediaPayload = outgoingForm
       ? buildOutgoingFormMediaPayload(outgoingForm)

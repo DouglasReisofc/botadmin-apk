@@ -5055,6 +5055,8 @@ export const sendStickerMessage = async (
     author?: string | null;
     packId?: string | null;
     emojis?: string[] | null;
+    /** Receives the normalized WebP that is actually sent to WhatsApp. */
+    onPreparedSticker?: ((buffer: Buffer, mimeType: string) => void) | null;
   },
 ): Promise<string | null> => {
   const mimeType = params.mimeType?.trim() || "image/webp";
@@ -5071,6 +5073,19 @@ export const sendStickerMessage = async (
     packId,
     emojis: params.emojis,
   });
+  const preparedStickerBuffer = decodeDataUrlBuffer(stickerData);
+  if (preparedStickerBuffer && params.onPreparedSticker) {
+    params.onPreparedSticker(preparedStickerBuffer, "image/webp");
+  }
+  // A sticker sent by the bot may not receive a reusable WhatsApp CDN URL.
+  // Persist only the small, normalized WebP payload in the protected message
+  // record so it can still be rendered after a process restart. Large or
+  // malformed uploads stay on the bounded process cache instead of bloating
+  // the conversation database.
+  const storedStickerDataUrl =
+    preparedStickerBuffer && preparedStickerBuffer.length <= 2 * 1024 * 1024
+      ? stickerData
+      : null;
 
   const payload: Record<string, unknown> = {
     Sticker: stickerData,
@@ -5120,6 +5135,7 @@ export const sendStickerMessage = async (
       pack,
       author,
       packId,
+      dataUrl: storedStickerDataUrl,
       url:
         typeof stickerSource === "string" && /^https?:\/\//i.test(stickerSource)
           ? stickerSource
