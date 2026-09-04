@@ -53,6 +53,7 @@ type OutgoingMediaPayload = {
   thumbnail?: string | null;
   isAnimated?: boolean;
   viewOnce?: boolean;
+  dataUrl?: string | null;
 };
 
 const parseInstanceId = (value: string): number | null => {
@@ -1378,6 +1379,15 @@ export async function POST(request: Request, context: Context) {
       });
     }
 
+    const persistedMediaPayload: OutgoingMediaPayload | null =
+      mediaPayload && asSticker && preparedStickerBuffer &&
+      preparedStickerBuffer.length <= 2 * 1024 * 1024
+        ? {
+            ...mediaPayload,
+            dataUrl: `data:image/webp;base64,${preparedStickerBuffer.toString("base64")}`,
+          }
+        : mediaPayload;
+
     const formMediaPayload = outgoingForm
       ? buildOutgoingFormMediaPayload(outgoingForm)
       : null;
@@ -1438,7 +1448,7 @@ export async function POST(request: Request, context: Context) {
           ? "buttons"
           : (mediaPayload?.mediaType ?? "text"),
       text: outgoingText || null,
-      media: formMediaPayload ?? interactiveMediaPayload ?? mediaPayload,
+      media: formMediaPayload ?? interactiveMediaPayload ?? persistedMediaPayload,
       timestamp: new Date(),
       title:
         getWhatsappChatType(chatJid) === "contact"
