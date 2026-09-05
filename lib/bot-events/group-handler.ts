@@ -26,6 +26,11 @@ import { isGroupJid, normalizeJid } from "lib/whatsapp";
 import { resolveWelcomeAttachmentMedia } from "lib/bot-groups/media";
 import { evaluateBotAutomationGuard } from "lib/bot-automation-guard";
 import { getCachedInstanceSettings } from "./cache";
+import {
+  isOpaqueWhatsappIdentity,
+  resolveTrustedPhoneIdentity,
+  whatsappPhoneIdentitiesOverlap,
+} from "./moderation-identity";
 import type { BotEventContext, NormalizedWebhookPayload } from "./types";
 import type {
   BotGroupWelcomeAttachment,
@@ -627,10 +632,15 @@ export const handleGroupEvent = async (
 
   for (const entry of participantsRaw) {
     const rec = toRecord(entry);
-    const jid =
-      firstString(rec.id, rec.jid, rec.phone, rec.participant) ||
+    const phoneIdentity = resolveTrustedPhoneIdentity([
+      firstString(rec.PhoneNumber, rec.phoneNumber, rec.PN, rec.pn, rec.phone, rec.Phone),
+      firstString(rec.jid, rec.JID, rec.participant, rec.Participant, rec.id, rec.Id, rec.LID, rec.lid),
+      typeof entry === "string" ? entry : null,
+    ]);
+    const jid = phoneIdentity?.identifier ||
+      firstString(rec.id, rec.jid, rec.LID, rec.lid, rec.participant) ||
       String(entry || "");
-    const digits = normalizeDigits(jid);
+    const digits = phoneIdentity?.digits || normalizeDigits(jid);
     if (!digits) {
       continue;
     }
@@ -656,8 +666,15 @@ export const handleGroupEvent = async (
       rec.IsSuperAdmin === true ||
       normalizedRole === "admin" ||
       normalizedRole === "superadmin";
+    const participantIsInstance = whatsappPhoneIdentitiesOverlap(
+      phoneIdentity?.digits,
+      context.instance.phone,
+    );
+    const hasOpaqueIdentityOnly = !phoneIdentity && isOpaqueWhatsappIdentity(jid);
     const canApplyAutomaticRemoval = hasExplicitRole && !participantIsAdmin;
-    if (participantIsAdmin) {
+    const canRemoveParticipant =
+      canApplyAutomaticRemoval && !participantIsInstance && !hasOpaqueIdentityOnly;
+    if (participantIsAdmin || participantIsInstance) {
       console.info(
         "[bot-events] remoção automática ignorada para administrador",
         {
@@ -665,7 +682,7 @@ export const handleGroupEvent = async (
           participant: digits,
         },
       );
-    } else if (!hasExplicitRole) {
+    } else if (!hasExplicitRole || hasOpaqueIdentityOnly) {
       // GroupInfo.Join carries only JIDs. The missing role must block
       // moderation, but it must not block the independent welcome flow.
       console.warn(
@@ -678,7 +695,7 @@ export const handleGroupEvent = async (
     }
 
     if (
-      canApplyAutomaticRemoval &&
+      canRemoveParticipant &&
       Array.isArray(settings.blacklist) &&
       settings.blacklist.includes(digits)
     ) {
@@ -707,7 +724,7 @@ export const handleGroupEvent = async (
     }
 
     if (
-      canApplyAutomaticRemoval &&
+      canRemoveParticipant &&
       antifakeEnabled &&
       !isAllowedDdi(digits, allowedDdis)
     ) {

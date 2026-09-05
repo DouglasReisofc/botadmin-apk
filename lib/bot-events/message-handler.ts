@@ -320,6 +320,10 @@ import type {
   BotAutoResponseMedia,
   BotAutoResponseVcard,
 } from "types/bot-auto-responses";
+import {
+  collectAdminIdentityAliases,
+  resolveTrustedPhoneIdentity,
+} from "lib/bot-events/moderation-identity";
 import type { PlanGuardViolation } from "types/plan-guard";
 
 type GroupAdminCacheEntry = {
@@ -2320,7 +2324,7 @@ const extractAnySpotifyUrl = (raw: Record<string, unknown>): string | null => {
   return null;
 };
 
-type ModerationAuditReason = "link" | "banned_word" | "media" | "spam";
+type ModerationAuditReason = "link" | "banned_word" | "media" | "spam" | "ddi";
 type ModerationAuditAction = "warn" | "ban" | "delete";
 
 type ModerationAuditNsfw = {
@@ -9285,14 +9289,16 @@ const loadGroupAdmins = async (
         const rec = toRecord(entry);
         const isAdmin = Boolean(rec.IsSuperAdmin || rec.isSuperAdmin || rec.IsAdmin || rec.isAdmin);
         if (!isAdmin) continue;
-        const id =
-          firstString(rec.PhoneNumber, rec.phoneNumber, rec.PN, rec.phone, rec.JID, rec.jid, rec.LID) || "";
-        const digits = normalizeJid(id);
-        if (digits) admins.add(digits);
+        collectAdminIdentityAliases(rec, admins);
       }
-      const ownerId = firstString(data.OwnerPN, (data as any).ownerPN, data.OwnerJID, (data as any).ownerJID) || "";
-      const ownerDigits = normalizeJid(ownerId);
-      if (ownerDigits) admins.add(ownerDigits);
+      collectAdminIdentityAliases(
+        {
+          PN: firstString(data.OwnerPN, (data as any).ownerPN),
+          JID: firstString(data.OwnerJID, (data as any).ownerJID),
+          LID: firstString(data.OwnerLID, (data as any).ownerLID),
+        },
+        admins,
+      );
       GROUP_ADMIN_CACHE.set(cacheKey, { expiresAt: now + GROUP_ADMIN_TTL_MS, admins });
       return admins;
     }
@@ -33051,11 +33057,23 @@ const convertStickerSourceToWebp = async (
       register(digits);
     }
 
+    const instancePhoneDigits = normalizeJid(context.instance.phone);
+    if (instancePhoneDigits && Array.from(candidates).some((candidate) =>
+      phoneDigitsOverlap(normalizeJid(candidate), instancePhoneDigits))) {
+      console.warn("[bot-events] remoção bloqueada para o número da própria instância", {
+        groupId: message.chatId,
+        participant: digits || raw,
+        instanceId: context.instance.id,
+      });
+      return false;
+    }
+
     // Never mutate group membership based on a stale/partial event payload.
     // Resolve the target against the current admin list and fail closed when
     // that list cannot be loaded. This protects admins, quoted participants,
     // and every automatic moderation path that funnels through this helper.
-    const admins = await loadGroupAdmins(client, cacheKey, message.chatId);
+    const hadCachedAdminSnapshot = GROUP_ADMIN_CACHE.has(cacheKey);
+    let admins = await loadGroupAdmins(client, cacheKey, message.chatId);
     if (!admins || admins.size === 0) {
       console.warn("[bot-events] remoção bloqueada: lista de administradores indisponível", {
         groupId: message.chatId,
@@ -33064,15 +33082,36 @@ const convertStickerSourceToWebp = async (
       return false;
     }
 
-    for (const candidate of candidates) {
-      const candidateDigits = normalizeJid(candidate);
-      if (candidateDigits && admins.has(candidateDigits)) {
-        console.info("[bot-events] remoção ignorada para administrador do grupo", {
+    const targetsAdmin = (adminAliases: Set<string>) =>
+      Array.from(candidates).some((candidate) => {
+        const candidateDigits = normalizeJid(candidate);
+        return Boolean(candidateDigits && adminAliases.has(candidateDigits));
+      });
+
+    if (!targetsAdmin(admins) && hadCachedAdminSnapshot) {
+      // Membership changes invalidate cached roles. Refresh immediately before
+      // a destructive action so a newly promoted admin cannot be removed.
+      GROUP_ADMIN_CACHE.delete(cacheKey);
+      admins = await loadGroupAdmins(client, cacheKey, message.chatId);
+      if (!admins || admins.size === 0) {
+        console.warn("[bot-events] remoção bloqueada: atualização de administradores indisponível", {
           groupId: message.chatId,
-          participant: candidateDigits,
+          participant: digits || raw,
         });
         return false;
       }
+    }
+
+    if (targetsAdmin(admins)) {
+      console.info("[bot-events] remoção ignorada para administrador do grupo", {
+        groupId: message.chatId,
+        participant: digits || raw,
+      });
+      return false;
+    }
+
+    for (const candidate of candidates) {
+      const candidateDigits = normalizeJid(candidate);
       try {
         await removeGroupParticipant(client, {
           groupJid: message.chatId,
@@ -33681,72 +33720,82 @@ const convertStickerSourceToWebp = async (
     }
   }
 
-	  // Ban gringos
-	  if ((settings.featureFlags.bangringos || settings.commandToggles.bangringos) && (normalizedParticipant || quotedNormalizedParticipant)) {
-	    const isAdmin = await ensureAdminStatus();
-	    if (!isAdmin) {
-        const actionConfig = getBotGroupModerationActionConfig(settings, "bangringos");
-	      const candidates = new Set<string>();
-	      if (normalizedParticipant) {
-	        candidates.add(normalizedParticipant);
-	      }
-      if (quotedNormalizedParticipant) {
-        candidates.add(quotedNormalizedParticipant);
+	  // Ban gringos: somente o remetente real da mensagem pode ser moderado.
+  // Participantes citados, mencionados e LIDs são identidades opacas e nunca
+  // podem virar alvo de uma expulsão baseada em DDI.
+  const directSenderRecord = toRecord(message.raw.eventSender);
+  const directInfoRecord = toRecord(message.raw.Info ?? message.raw.info);
+  const directNormalizedRecord = toRecord(message.raw.normalized ?? message.raw.Normalized);
+  const ddiSender = resolveTrustedPhoneIdentity([
+    message.senderJid,
+    message.participant,
+    firstString(directSenderRecord.phone, directSenderRecord.Phone),
+    firstString(directInfoRecord.SenderAlt, directInfoRecord.senderAlt),
+    firstString(directInfoRecord.ParticipantAlt, directInfoRecord.participantAlt),
+    firstString(directNormalizedRecord.senderJid, directNormalizedRecord.sender),
+    firstString(directNormalizedRecord.participant, directNormalizedRecord.participantJid),
+  ]);
+  if (
+    (settings.featureFlags.bangringos || settings.commandToggles.bangringos) &&
+    !isFromInstance &&
+    ddiSender &&
+    !isAllowedDdi(ddiSender.digits)
+  ) {
+    const isAdmin = await ensureAdminStatus();
+    if (!isAdmin) {
+      const digits = ddiSender.digits;
+      const actionConfig = getBotGroupModerationActionConfig(settings, "bangringos");
+      await markReadIfNeeded();
+      if (actionConfig.deleteMessage) {
+        await deleteMessageSafe(message.id, participantJid ?? undefined);
+      }
+      const infraction = actionConfig.registerInfraction
+        ? await registerModerationInfractionSafe(
+            "ddi",
+            resolveModerationInfractionLimit(actionConfig),
+            digits,
+          )
+        : null;
+      const shouldRemoveParticipant = shouldRemoveForModerationAction(actionConfig, infraction);
+      const removed = shouldRemoveParticipant
+        ? await removeParticipantSafe(ddiSender.identifier)
+        : false;
+      if (removed) {
+        await resetGroupInfractions(group.id, digits).catch(() => {});
       }
 
-      let noticeSent = false;
-
-      for (const digits of candidates) {
-        if (!digits || isAllowedDdi(digits)) {
-          continue;
-        }
-
-	        await markReadIfNeeded();
-	        const targetMessageId =
-	          digits === quotedNormalizedParticipant && message.quotedMessageId
-	            ? message.quotedMessageId
-	            : message.id;
-        const targetParticipant =
-	          digits === quotedNormalizedParticipant && message.quotedParticipant
-	            ? message.quotedParticipant
-	            : participantJid ?? undefined;
-	        if (actionConfig.deleteMessage) {
-	          await deleteMessageSafe(targetMessageId, targetParticipant);
-	        }
-          const infraction = actionConfig.registerInfraction
-            ? await registerModerationInfractionSafe(
-                "ddi",
-                resolveModerationInfractionLimit(actionConfig),
-                digits,
-              )
-            : null;
-          const shouldRemoveParticipant = shouldRemoveForModerationAction(actionConfig, infraction);
-
-	        if (!noticeSent) {
-	          const formattedList =
-	            allowedDdis.length > 1
-              ? `${allowedDdis.slice(0, -1).join(", ")} e ${allowedDdis[allowedDdis.length - 1]}`
-	              : allowedDdis[0];
-	          await sendNotice(
-              [
-                `🚷 Este grupo aceita apenas DDI(s) ${formattedList}.`,
-                actionConfig.deleteMessage ? "🧹 Mensagem removida automaticamente." : null,
-                actionConfig.registerInfraction && infraction
-                  ? `⚠️ Infração registrada. Restam ${infraction.remaining} infração(ões).`
-                  : null,
-                shouldRemoveParticipant ? "🚫 Número não permitido removido do grupo." : null,
-              ]
-                .filter(Boolean)
-                .join("\n"),
-	          );
-	          noticeSent = true;
-	        }
-
-	        if (shouldRemoveParticipant) {
-	          await removeParticipantSafe(digits);
-            await resetGroupInfractions(group.id, digits).catch(() => {});
-	        }
-	      }
+      const formattedList =
+        allowedDdis.length > 1
+          ? `${allowedDdis.slice(0, -1).join(", ")} e ${allowedDdis[allowedDdis.length - 1]}`
+          : allowedDdis[0];
+      await sendNotice(
+        [
+          `🚷 Este grupo aceita apenas DDI(s) ${formattedList}.`,
+          actionConfig.deleteMessage ? "🧹 Mensagem removida automaticamente." : null,
+          actionConfig.registerInfraction && infraction
+            ? `⚠️ Infração registrada. Restam ${infraction.remaining} infração(ões).`
+            : null,
+          removed ? "🚫 Número não permitido removido do grupo." : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      );
+      await recordModerationAudit({
+        reason: "ddi",
+        action: removed ? "ban" : actionConfig.registerInfraction ? "warn" : "delete",
+        groupId: group.id,
+        groupRemoteId: group.remoteId,
+        groupName: group.name,
+        participant: digits,
+        pushName: message.pushName ?? undefined,
+        messageId: message.id,
+        messageText: textContent || undefined,
+        links: [],
+        allowedLinks: allowedDdis,
+        remainingInfractions: infraction?.remaining,
+        instanceId: context.instance.id,
+        instanceName: context.instance.name,
+      });
 	    }
 	  }
 
