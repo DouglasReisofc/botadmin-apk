@@ -14570,6 +14570,59 @@ export const handleMessageUpsert = async (
       });
     }
   }
+
+  // O primeiro webhook depois de um período ocioso pode chegar enquanto o
+  // cache/índice de grupos ainda está sendo aquecido. Não descarte esse
+  // evento (e, consequentemente, o link do autodownloader): faça algumas
+  // tentativas curtas de leitura antes de concluir que o grupo não existe.
+  if (!loadedGroup) {
+    const remoteId = message.chatId;
+    for (let attempt = 1; attempt <= 3 && !loadedGroup; attempt += 1) {
+      if (attempt > 1) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+      invalidateGroupByRemoteIdCache(context.instance.id, remoteId);
+      try {
+        loadedGroup = await getGroupForInstanceOrPhoneByRemoteId(
+          context.instance.id,
+          remoteId,
+        );
+      } catch (error) {
+        console.warn("[bot-events] retry ao resolver grupo recebido", {
+          instanceId: context.instance.id,
+          chatId: remoteId,
+          attempt,
+          error,
+        });
+      }
+      if (!loadedGroup) {
+        try {
+          const all = await listGroupsForUser(context.instance.userId);
+          const digits = remoteId.replace(/[^0-9]/g, "");
+          loadedGroup =
+            all.find(
+              (candidate) =>
+                candidate.instanceId === context.instance.id &&
+                candidate.remoteId.replace(/[^0-9]/g, "") === digits,
+            ) || null;
+        } catch (error) {
+          console.warn("[bot-events] retry na lista de grupos falhou", {
+            instanceId: context.instance.id,
+            chatId: remoteId,
+            attempt,
+            error,
+          });
+        }
+      }
+    }
+    if (loadedGroup) {
+      console.info("[bot-events] grupo resolvido após aquecimento do cache", {
+        instanceId: context.instance.id,
+        groupId: loadedGroup.id,
+        chatId: remoteId,
+      });
+    }
+  }
   if (!loadedGroup) {
     return;
   }
@@ -20375,7 +20428,8 @@ const convertStickerSourceToWebp = async (
             hasRestApiKey: Boolean(restApiKey),
           });
           let success = false;
-          const attempts = isSupportedAutoDownloadLink(link, "kwai") ? 2 : 1;
+          const instagramLink = isSupportedAutoDownloadLink(link, "instagram");
+          const attempts = instagramLink || isSupportedAutoDownloadLink(link, "kwai") ? 2 : 1;
           for (let attempt = 1; attempt <= attempts && !success; attempt += 1) {
             success = await processAutoDownloader({
               client,
@@ -20387,11 +20441,14 @@ const convertStickerSourceToWebp = async (
               userId: context.instance.userId,
             });
             if (!success && attempt < attempts) {
-              await new Promise((resolve) => setTimeout(resolve, 750));
-              console.info("[bot-events] repetindo autodownloader do Kwai", {
+              await new Promise((resolve) =>
+                setTimeout(resolve, instagramLink ? 1_200 : 750),
+              );
+              console.info("[bot-events] repetindo autodownloader", {
                 groupId: group.id,
                 instanceId: context.instance.id,
                 attempt: attempt + 1,
+                platform: instagramLink ? "instagram" : "kwai",
               });
             }
           }
@@ -32322,7 +32379,39 @@ const convertStickerSourceToWebp = async (
       }
 
       if (canonicalCommand === "insta" || canonicalCommand === "instagram") {
-        const user = (commandArgs || "").trim().replace(/^@/, "");
+        const rawInstagramArgument = (commandArgs || "").trim();
+        const instagramUrl = extractLinks(rawInstagramArgument).find((candidate) =>
+          isSupportedAutoDownloadLink(candidate, "instagram"),
+        );
+        if (instagramUrl) {
+          try {
+            const apiKey = await getUserRestApiKey(context.instance.userId);
+            const ok = await processAutoDownloader({
+              client,
+              chatId: message.chatId,
+              link: instagramUrl,
+              quoted: message.id
+                ? { stanzaId: message.id, participant: message.senderJid ?? undefined }
+                : undefined,
+              apiKey,
+              preferNativeButtons: nativeButtonsEnabled,
+              userId: context.instance.userId,
+            });
+            if (!ok) {
+              await sendGroupText("⚠️ Não consegui baixar esse vídeo do Instagram agora. Tente novamente em instantes.");
+            }
+          } catch (error) {
+            console.error("[bot-events] /insta download error", {
+              groupId: group.id,
+              instagramUrl,
+              error,
+            });
+            await sendGroupText("⚠️ Não consegui baixar esse vídeo do Instagram agora. Tente novamente em instantes.");
+          }
+          return;
+        }
+
+        const user = rawInstagramArgument.replace(/^@/, "");
         if (!user) {
           await sendGroupText("Use: /insta <usuario>");
           return;

@@ -81,6 +81,32 @@ type AutoDownloaderOptions = {
 const JSON_HEADERS = { accept: "application/json" };
 const GENERIC_BINARY_MIMES = new Set(["application/octet-stream", "binary/octet-stream"]);
 
+const readAutodownloaderTimeoutMs = (
+  raw: string | undefined,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number => {
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(minimum, Math.min(maximum, Math.floor(parsed)));
+};
+
+// A CDN assinado pode ficar pendurado indefinidamente quando o token expira.
+// Nunca deixe esse fetch ocupar a fila de webhooks sem limite.
+const AUTODOWNLOADER_FETCH_TIMEOUT_MS = readAutodownloaderTimeoutMs(
+  process.env.AUTODOWNLOADER_FETCH_TIMEOUT_MS,
+  30_000,
+  5_000,
+  120_000,
+);
+const AUTODOWNLOADER_RESOLVER_TIMEOUT_MS = readAutodownloaderTimeoutMs(
+  process.env.AUTODOWNLOADER_RESOLVER_TIMEOUT_MS,
+  120_000,
+  15_000,
+  300_000,
+);
+
 // URLs assinadas do CDN do Kwai podem ser acessíveis no navegador, mas o
 // fetch remoto do EasyZap nem sempre consegue recuperá-las. Estes cabeçalhos
 // permitem baixar a mídia no BotAdmin e encaminhá-la como arquivo binário.
@@ -996,7 +1022,7 @@ const fetchJson = async (path: string, apiKey?: string | null): Promise<any> => 
   if (authKey) {
     headers["x-api-key"] = authKey;
   }
-  const resp = await fetch(url.toString(), { headers });
+  const resp = await fetchWithTimeout(url.toString(), { headers }, AUTODOWNLOADER_RESOLVER_TIMEOUT_MS);
   let data: any = null;
   try {
     data = await resp.json();
@@ -1013,12 +1039,30 @@ const fetchJson = async (path: string, apiKey?: string | null): Promise<any> => 
   return data;
 };
 
+const fetchWithTimeout = async (
+  url: string,
+  init: RequestInit = {},
+  timeoutMs = AUTODOWNLOADER_FETCH_TIMEOUT_MS,
+): Promise<Response> => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
 const fetchContentTypeWithHeaders = async (
   url: string,
   headers: Record<string, string>,
 ): Promise<string | null> => {
   try {
-    const headResp = await fetch(url, { method: "HEAD", headers, redirect: "follow" });
+    const headResp = await fetchWithTimeout(
+      url,
+      { method: "HEAD", headers, redirect: "follow" },
+      AUTODOWNLOADER_FETCH_TIMEOUT_MS,
+    );
     if (!headResp.ok) {
       return null;
     }
@@ -1032,27 +1076,45 @@ const downloadWithHeaders = async (
   url: string,
   headers: Record<string, string>,
 ): Promise<{ buffer: Buffer; mimeType: string }> => {
-  let contentType: string | null = null;
-  try {
-    const headResp = await fetch(url, { method: "HEAD", headers, redirect: "follow" });
-    if (headResp.ok) {
-      contentType = headResp.headers.get("content-type");
-    }
-  } catch {
-    /* ignore head failures */
-  }
-
-  const resp = await fetch(url, { headers, redirect: "follow" });
+  // Baixe em uma única requisição. O HEAD de alguns CDNs do Instagram não
+  // termina e deixava o evento preso antes mesmo de tentar enviar a mídia.
+  const resp = await fetchWithTimeout(
+    url,
+    { headers, redirect: "follow" },
+    AUTODOWNLOADER_FETCH_TIMEOUT_MS,
+  );
   if (!resp.ok) {
     throw new Error(`Falha ao baixar mídia (${resp.status})`);
   }
-  if (!contentType) {
-    contentType = resp.headers.get("content-type");
+  let contentType: string | null = resp.headers.get("content-type");
+  const contentLength = Number(resp.headers.get("content-length") || 0);
+  const maxBytes = resolveAutoDownloaderMaxBytes();
+  if (contentLength > 0 && contentLength > maxBytes) {
+    throw new Error(`Mídia excede o limite permitido (${formatHumanSize(maxBytes)}).`);
   }
   const arrayBuffer = await resp.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
+  if (!buffer.length) {
+    throw new Error("A mídia retornou um arquivo vazio.");
+  }
+  if (buffer.length > maxBytes) {
+    throw new Error(`Mídia excede o limite permitido (${formatHumanSize(maxBytes)}).`);
+  }
+
+  const normalizedResponseType = normalizeContentType(contentType);
+  const preview = buffer.subarray(0, 256).toString("utf8").trimStart().toLowerCase();
+  if (
+    normalizedResponseType === "text/html" ||
+    normalizedResponseType === "application/json" ||
+    preview.startsWith("<!doctype html") ||
+    preview.startsWith("<html") ||
+    preview.startsWith("{\"error")
+  ) {
+    throw new Error("O provedor retornou uma página de bloqueio em vez da mídia.");
+  }
 
   const normalizedContentType = (contentType || "").split(";")[0]?.trim().toLowerCase();
+  let detectedMime: string | null = null;
   if (!normalizedContentType || GENERIC_BINARY_MIMES.has(normalizedContentType)) {
     const detector = await loadFileTypeDetector();
     if (detector) {
@@ -1061,7 +1123,7 @@ const downloadWithHeaders = async (
           (await detector.fileTypeFromBuffer?.(buffer)) ||
           (await detector.fromBuffer?.(buffer));
         if (result?.mime) {
-          contentType = result.mime;
+          detectedMime = result.mime;
         }
       } catch {
         /* ignore detection errors */
@@ -1069,7 +1131,7 @@ const downloadWithHeaders = async (
     }
   }
 
-  const mimeType = contentType || detectMimeFromUrl(url, "application/octet-stream");
+  const mimeType = detectedMime || contentType || detectMimeFromUrl(url, "application/octet-stream");
   return { buffer, mimeType };
 };
 
@@ -1152,16 +1214,6 @@ const handleInstagram = async (
     : [];
   const preferVideo = data?.resultado?.isVideo === true || /\/(?:reel|tv)\//i.test(link);
 
-  const captionParts: string[] = [];
-  const username = data?.resultado?.username;
-  if (username) {
-    captionParts.push(`@${username}`);
-  }
-  if (data?.resultado?.caption) {
-    captionParts.push(data.resultado.caption);
-  }
-  const caption = captionParts.join("\n").trim() || undefined;
-
   const headers = {
     "User-Agent":
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
@@ -1195,37 +1247,11 @@ const handleInstagram = async (
   let sent = false;
   for (let i = 0; i < urls.length; i += 1) {
     const mediaUrl = urls[i];
-    const captionPayload = !sent ? caption : undefined;
+    // O autodownloader deve publicar somente a mídia. Legendas e metadados
+    // ficam no histórico do link original e não poluem o grupo.
+    const captionPayload = undefined;
     const downloadEntry = findDownloadEntry(mediaUrl);
     const descriptor = buildDownloadDescriptor(downloadEntry);
-    const headMimeType = await fetchContentTypeWithHeaders(mediaUrl, headers);
-    const baseMimeType = headMimeType ?? detectMimeFromUrl(mediaUrl, "application/octet-stream");
-    const inferredKind = inferRemoteMediaKind(mediaUrl, baseMimeType, descriptor, preferVideo);
-    const isVideo = inferredKind === "video";
-    const effectiveMimeType = isVideo ? "video/mp4" : baseMimeType;
-    const ext = mime.extension(baseMimeType) || (isVideo ? "mp4" : "jpg");
-    const filename = `instagram_${Date.now()}_${i + 1}.${ext}`;
-
-    if (isVideo) {
-      try {
-        await sendRemoteMedia(client, {
-          chatId,
-          url: mediaUrl,
-          mediaType: "video",
-          mimeType: effectiveMimeType,
-          filename: /\.mp4$/i.test(filename) ? filename : filename.replace(/\.[^.]+$/, ".mp4"),
-          caption: captionPayload,
-          quoted,
-        });
-        sent = true;
-        continue;
-      } catch (error) {
-        console.warn("[autodownloader] Falha ao enviar vídeo remoto do Instagram; tentando buffer", {
-          error,
-          mediaUrl,
-        });
-      }
-    }
 
     let downloadResult: { buffer: Buffer; mimeType: string } | null = null;
     try {
@@ -1239,9 +1265,21 @@ const handleInstagram = async (
 
     if (downloadResult) {
       try {
-        const bufferMimeType = normalizeContentType(downloadResult.mimeType) ?? effectiveMimeType;
-        const bufferKind = inferRemoteMediaKind(mediaUrl, bufferMimeType, descriptor, isVideo);
+        const bufferMimeType =
+          normalizeContentType(downloadResult.mimeType) ??
+          detectMimeFromUrl(mediaUrl, preferVideo ? "video/mp4" : "image/jpeg");
+        const bufferKind = inferRemoteMediaKind(mediaUrl, bufferMimeType, descriptor, preferVideo);
         const shouldSendVideo = bufferKind === "video";
+        const extension = shouldSendVideo
+          ? "mp4"
+          : mime.extension(bufferMimeType) || mime.extension(mediaUrl) || "jpg";
+        const filename = `instagram_${Date.now()}_${i + 1}.${extension}`;
+        console.info("[autodownloader] Instagram mídia baixada", {
+          mediaUrl,
+          bytes: downloadResult.buffer.length,
+          mimeType: bufferMimeType,
+          mediaType: shouldSendVideo ? "video" : "image",
+        });
         await sendBufferMedia(client, {
           chatId,
           buffer: downloadResult.buffer,
@@ -1252,6 +1290,11 @@ const handleInstagram = async (
           quoted,
         });
         sent = true;
+        console.info("[autodownloader] Instagram mídia enviada", {
+          chatId,
+          mediaType: shouldSendVideo ? "video" : "image",
+          bytes: downloadResult.buffer.length,
+        });
         continue;
       } catch (error) {
         console.warn("[autodownloader] Falha ao enviar mídia do Instagram", {
@@ -1260,6 +1303,14 @@ const handleInstagram = async (
         });
       }
     }
+
+    const headMimeType = await fetchContentTypeWithHeaders(mediaUrl, headers);
+    const baseMimeType = headMimeType ?? detectMimeFromUrl(mediaUrl, "application/octet-stream");
+    const inferredKind = inferRemoteMediaKind(mediaUrl, baseMimeType, descriptor, preferVideo);
+    const isVideo = inferredKind === "video";
+    const effectiveMimeType = isVideo ? "video/mp4" : baseMimeType;
+    const ext = mime.extension(baseMimeType) || (isVideo ? "mp4" : "jpg");
+    const filename = `instagram_${Date.now()}_${i + 1}.${ext}`;
 
     try {
       const fallbackKind = inferRemoteMediaKind(mediaUrl, baseMimeType, descriptor, isVideo);
@@ -1280,6 +1331,12 @@ const handleInstagram = async (
         mediaUrl,
       });
     }
+  }
+  if (!sent) {
+    console.error("[autodownloader] Instagram não pôde ser enviado após todos os fallbacks", {
+      link,
+      urls: urls.length,
+    });
   }
   return sent;
 };
