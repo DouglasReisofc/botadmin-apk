@@ -11,6 +11,7 @@ import {
   cleanupExpiredWhatsappStatusMessages,
   listActiveWhatsappReceivedStatusesForUser,
 } from "lib/whatsapp-conversations";
+import { ensureInstanceStatusEvents } from "lib/bot-instances";
 
 type StatusPostRow = {
   id: number;
@@ -191,6 +192,10 @@ export async function GET(request: NextRequest) {
     await ensureBotAdCampaignStatusPostTable();
     if (typeof scopedInstanceId === "number" && Number.isFinite(scopedInstanceId)) {
       try {
+        // Older instances may still have the pre-status event subscription.
+        // Upgrade it before requesting HistorySync so statusV3Messages can
+        // reach the webhook and be persisted for this page load.
+        await ensureInstanceStatusEvents(user.id, scopedInstanceId);
         const sync = await requestWhatsappStatusSync(user.id, scopedInstanceId);
         // Give the on-demand HistorySync webhook a short bounded window to be
         // persisted before this same page load reads the status feed.

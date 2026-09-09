@@ -94,6 +94,11 @@ export const BOT_EVENT_SUBSCRIPTIONS = [
   "UndecryptableMessage",
   "ChatAction",
   "MessageAction",
+  // Status updates are delivered by WhatsApp as a separate event stream and
+  // history sync uses the top-level statusV3Messages field. Keep both enabled
+  // so the status area works for existing and newly connected instances.
+  "Status",
+  "HistorySync",
   "GroupInfo",
   "JoinedGroup",
   "Picture",
@@ -247,6 +252,45 @@ const normalizeInstanceEvents = (instance: InstanceRowWithServer): string => {
   if (!raw) return DEFAULT_EVENTS;
   const events = raw.split(",").map((event) => event.trim().toLowerCase());
   return events.includes("all") ? "All" : DEFAULT_EVENTS;
+};
+
+/**
+ * Upgrade an existing instance that was created before status/history events
+ * were part of the default subscription. The operation is idempotent: when
+ * both events are already present no remote request is made.
+ */
+export const ensureInstanceStatusEvents = async (
+  userId: number,
+  instanceId: number,
+): Promise<boolean> => {
+  if (!Number.isFinite(userId) || userId <= 0 || !Number.isFinite(instanceId) || instanceId <= 0) {
+    throw new BotInstanceError("Instância inválida.", 400);
+  }
+
+  const rows = await fetchInstanceRows({ userId, instanceId, order: "desc" });
+  const instance = rows[0];
+  if (!instance) {
+    throw new BotInstanceError("Instância não encontrada.", 404);
+  }
+
+  const current = typeof instance.events === "string"
+    ? instance.events
+        .split(",")
+        .map((event) => event.trim().toLowerCase())
+        .filter(Boolean)
+    : [];
+  const hasStatus = current.includes("all") || current.includes("status");
+  const hasHistory = current.includes("all") || current.includes("historysync");
+  if (hasStatus && hasHistory) {
+    return false;
+  }
+
+  await syncInstanceWebhookUsingRow(instance, {
+    webhookUrl: DEFAULT_WEBHOOK_URL,
+    events: [...BOT_EVENT_SUBSCRIPTIONS],
+  });
+  invalidateInstanceByTokenCache(instance.token);
+  return true;
 };
 
 const normalizeInstancePurpose = (value: unknown): BotInstancePurpose => {
