@@ -16231,6 +16231,17 @@ export const handleMessageUpsert = async (
           }
         }
       }
+      // Alguns webhooks WuzAPI/EasyZap entregam o texto visível fora de
+      // message.text (por exemplo data.body ou extendedTextMessage.text).
+      // Esses campos são conteúdo da mensagem, não metadados técnicos: eles
+      // precisam alimentar a moderação direta para que o anti-link possa
+      // apagar a mensagem mesmo quando o normalizador não os copiou para
+      // textContent.
+      const addVisibleTextCandidate = (value: unknown) => {
+        if (typeof value === "string" && value.trim().length > 0) {
+          registerLinksFromString(value, "direct");
+        }
+      };
       const addReplyTextCandidate = (value: unknown) => {
         if (typeof value === "string" && value.trim().length > 0) {
           registerLinksFromString(value, "metadata");
@@ -16247,12 +16258,12 @@ export const handleMessageUpsert = async (
       );
 
       if (!isMutedParticipant) {
-        addReplyTextCandidate(dataRecord.body);
-        addReplyTextCandidate(dataRecord.text);
-        addReplyTextCandidate(messageRecord.text);
-        addReplyTextCandidate(messageRecord.body);
-        addReplyTextCandidate(extendedTextRecord.text);
-        addReplyTextCandidate(extendedTextRecord.matchedText);
+        addVisibleTextCandidate(dataRecord.body);
+        addVisibleTextCandidate(dataRecord.text);
+        addVisibleTextCandidate(messageRecord.text);
+        addVisibleTextCandidate(messageRecord.body);
+        addVisibleTextCandidate(extendedTextRecord.text);
+        addVisibleTextCandidate(extendedTextRecord.matchedText);
         addReplyTextCandidate(paymentNoteRecord.body);
       }
 
