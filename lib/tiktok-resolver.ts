@@ -193,7 +193,10 @@ const normalizeTikwmData = (data: any) => {
           title: data?.title || "",
           author: data?.author?.nickname || "",
           duration: data?.duration || 0,
-          url: absolutize(data?.hdplay || data?.play || data?.download),
+          // O TikWM alterna o campo principal entre hdplay, play, download e
+          // wmplay conforme a região e o tipo de link.  wmplay continua sendo
+          // uma URL de vídeo válida e não pode ser descartada como falha.
+          url: absolutize(data?.hdplay || data?.play || data?.download || data?.wmplay),
           thumbnail: absolutize(data?.cover),
           music: absolutize(data?.music),
         };
