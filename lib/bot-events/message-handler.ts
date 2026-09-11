@@ -14688,7 +14688,31 @@ export const handleMessageUpsert = async (
 
   const client = buildWuzapiClient(context);
   const cacheKey = `${context.instance.id}:${message.chatId}`;
-  const participantJid = message.participant ?? message.senderJid;
+  // Alguns eventos de grupos chegam sem participant/senderJid no objeto
+  // normalizado, embora o remetente esteja presente em data.sender ou
+  // eventSender. Sem esse fallback a API de revoke responde "missing
+  // Participant in Payload" e o antilink aparenta não funcionar.
+  const payloadDataRecord = toRecord(payload.data);
+  const payloadRawRecord = toRecord(payload.raw);
+  const rawSenderRecord = toRecord(
+    payloadDataRecord.sender ??
+      payloadDataRecord.Sender ??
+      payloadDataRecord.eventSender ??
+      payloadRawRecord.sender ??
+      payloadRawRecord.Sender ??
+      payloadRawRecord.eventSender,
+  );
+  const eventSenderJid = firstString(
+    rawSenderRecord.jid,
+    rawSenderRecord.JID,
+    rawSenderRecord.id,
+    rawSenderRecord.phone,
+    rawSenderRecord.Phone,
+    rawSenderRecord.originalJid,
+    rawSenderRecord.lid,
+    rawSenderRecord.LID,
+  );
+  const participantJid = message.participant ?? message.senderJid ?? eventSenderJid;
   const normalizedParticipant = normalizeJid(participantJid);
   const quotedNormalizedParticipant = message.quotedParticipant ? normalizeJid(message.quotedParticipant) : "";
   const textContent = [message.text, message.caption].filter(Boolean).join("\n").trim();
