@@ -1,6 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { hasAutomationContent, originalSenderForDeletion } from "../lib/bot-events/message-automation-input";
+import { extractLinks } from "../lib/whatsapp";
+
+test("all eleven reported Shopee URLs are retained as direct content", () => {
+  const urls = ["7fZHBkVnbR", "W5ZbKoNmg", "6L3MY69IOG", "4fv8ZBKjgE", "2BDpct8Tbe", "40fRm0UrST", "9Kgy81EF9I", "80BcZTcAHj", "4Ayu0ccyRh", "19L32Hku2", "9fJrsPRJrc"]
+    .map(slug => `https://s.shopee.com.br/${slug}`);
+  const text = urls.map(url => `${url}\n💥 Oferta 👆`).join("\n");
+  assert.deepEqual(extractLinks(text), urls);
+  assert.equal(hasAutomationContent({ text, messageType: "unknown" }), true);
+});
 
 test("empty EasyZap twin must not consume the complete message automation claim", () => {
   const claimed = new Set<string>();
