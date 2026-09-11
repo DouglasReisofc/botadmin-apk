@@ -18,6 +18,12 @@ test("media, captions and buttons remain actionable", () => {
     assert.equal(hasAutomationContent(message), true);
   }
 });
+test("visible legacy text is not confused with an empty envelope", () => {
+  for (const raw of [{body:"https://s.shopee.com.br/abc"},{Message:{extendedTextMessage:{text:"https://example.com"}}},{RawMessage:{conversation:"oi"}}]) {
+    assert.equal(hasAutomationContent({messageType:"unknown",raw}), true);
+  }
+  assert.equal(hasAutomationContent({messageType:"unknown",raw:{sender:{jid:"123@lid"},token:"secret"}}),false);
+});
 test("deletion uses the original LID without converting it into a phone", () => {
   assert.equal(originalSenderForDeletion({ eventSender: { jid: "554792386695@s.whatsapp.net", originalJid: "51226192420995@lid" } }), "51226192420995@lid");
   assert.equal(originalSenderForDeletion({ Info: { Sender: "51226192420995:2@lid", SenderAlt: "554792386695@s.whatsapp.net" } }), "51226192420995@lid");

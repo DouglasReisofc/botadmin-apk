@@ -15,6 +15,13 @@ export function hasAutomationContent(message: {
   const type = message.messageType?.trim().toLowerCase();
   if (type && !["unknown", "message", "text", "conversation", "extendedtextmessage"].includes(type)) return true;
   const raw = record(message.raw);
+  // Visible text can live outside the normalized text field (legacy webhooks).
+  const messages = [raw, record(raw.Message), record(raw.message), record(raw.RawMessage), record(raw.eventMessage)];
+  for (const source of messages) {
+    const extended = record(source.extendedTextMessage);
+    if ([source.text, source.body, source.caption, source.conversation, extended.text]
+      .some(value => typeof value === "string" && value.trim().length > 0)) return true;
+  }
   // Media-only and interactive messages are actionable even without a caption.
   return [raw.media, raw.eventMedia, raw.interactive, raw.poll, raw.contact, raw.location]
     .some(value => Object.keys(record(value)).length > 0);
