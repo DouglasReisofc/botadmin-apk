@@ -324,6 +324,7 @@ import {
   collectAdminIdentityAliases,
   resolveTrustedPhoneIdentity,
 } from "lib/bot-events/moderation-identity";
+import { hasAutomationContent, originalSenderForDeletion } from "lib/bot-events/message-automation-input";
 import type { PlanGuardViolation } from "types/plan-guard";
 
 type GroupAdminCacheEntry = {
@@ -14438,6 +14439,16 @@ export const handleMessageUpsert = async (
     return;
   }
 
+  if (!hasAutomationContent(message)) {
+    console.info("[bot-events] empty message envelope deferred without automation claim", {
+      instanceId: context.instance.id,
+      chatId: message.chatId,
+      messageId: message.id,
+      messageType: message.messageType,
+    });
+    return;
+  }
+
   const automationClaimed = await claimMessageAutomation({
     instanceId: context.instance.id,
     chatId: message.chatId,
@@ -14688,10 +14699,7 @@ export const handleMessageUpsert = async (
 
   const client = buildWuzapiClient(context);
   const cacheKey = `${context.instance.id}:${message.chatId}`;
-  // Alguns eventos de grupos chegam sem participant/senderJid no objeto
-  // normalizado, embora o remetente esteja presente em data.sender ou
-  // eventSender. Sem esse fallback a API de revoke responde "missing
-  // Participant in Payload" e o antilink aparenta não funcionar.
+  // Fallback defensivo para envelopes que expõem apenas a identidade do remetente.
   const payloadDataRecord = toRecord(payload.data);
   const payloadRawRecord = toRecord(payload.raw);
   const rawSenderRecord = toRecord(
@@ -18208,6 +18216,8 @@ const convertStickerSourceToWebp = async (
   };
 
   function buildStrictDeleteParticipantCandidates(): Array<string | null | undefined> {
+    const originalSender = originalSenderForDeletion(message.raw, payload.data, payload.raw);
+    if (originalSender) return [originalSender];
     const candidates: string[] = [];
     const seen = new Set<string>();
 
@@ -18439,7 +18449,8 @@ const convertStickerSourceToWebp = async (
         }
       }
 
-      const digits = normalizeJid(trimmed);
+      // LIDs são identificadores opacos, não números de telefone.
+      const digits = trimmed.toLowerCase().endsWith("@lid") ? "" : normalizeJid(trimmed);
       if (digits) {
         const digitsKey = `digits:${digits}`;
         if (!seen.has(digitsKey)) {
@@ -18456,7 +18467,10 @@ const convertStickerSourceToWebp = async (
       }
     };
 
-    registerCandidate(participant ?? undefined);
+    const originalSender = targetMessageId === message.id
+      ? originalSenderForDeletion(message.raw, payload.data, payload.raw)
+      : null;
+    registerCandidate(originalSender ?? participant ?? undefined);
 
     if (options?.fallbackParticipants) {
       for (const fallback of options.fallbackParticipants) {
@@ -18464,7 +18478,7 @@ const convertStickerSourceToWebp = async (
       }
     }
 
-    const shouldAttemptWithoutParticipant = options?.attemptWithoutParticipant !== false;
+    const shouldAttemptWithoutParticipant = !isGroupJid(message.chatId) && options?.attemptWithoutParticipant !== false;
     if (shouldAttemptWithoutParticipant) {
       registerCandidate(null);
     }
@@ -18522,11 +18536,11 @@ const convertStickerSourceToWebp = async (
         const retryDeleted = await deleteMessageSafe(targetMessageId, participantJid ?? undefined, {
           fallbackParticipants: participantCandidates,
           attemptWithoutParticipant: true,
-          forceAllCandidates: true,
+          forceAllCandidates: false,
           quietErrors: true,
           logContext: { reason, strictRetry: true, delayMs },
         });
-        console.info("[bot-events] verificação severa de exclusão pós-moderação", {
+        console.info("[bot-events] nova solicitação de exclusão pós-moderação", {
           chatId: message.chatId,
           messageId: targetMessageId,
           reason,
@@ -18534,6 +18548,7 @@ const convertStickerSourceToWebp = async (
           retryAccepted: retryDeleted,
           candidateCount: participantCandidates.length,
         });
+        if (retryDeleted) break;
       }
     })();
   }
@@ -18543,11 +18558,20 @@ const convertStickerSourceToWebp = async (
     const deleted = await deleteMessageSafe(message.id, participantJid ?? undefined, {
       fallbackParticipants: participantCandidates,
       attemptWithoutParticipant: true,
-      forceAllCandidates: true,
+      forceAllCandidates: false,
       logContext: { reason, strictModerationDelete: true },
     });
 
-    if (isGroupJid(message.chatId)) {
+    console.info("[bot-events] moderation delete request", {
+      groupId: group.id,
+      instanceId: context.instance.id,
+      chatId: message.chatId,
+      messageId: message.id,
+      reason,
+      participant: participantCandidates[0] ?? participantJid,
+      accepted: deleted,
+    });
+    if (!deleted && isGroupJid(message.chatId)) {
       scheduleStrictModerationDeleteRetry(message.id, participantCandidates, reason);
     }
 
