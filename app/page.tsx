@@ -20,19 +20,19 @@ import { getPublicAppBaseUrl } from "lib/meta";
 import { getAllSubscriptionPlans } from "lib/plans";
 import { getPartnerPanelAccess } from "lib/reseller-program";
 import type { SubscriptionPlan } from "types/plans";
-import HeroPhone3D from "components/site/HeroPhone3D";
 import LottieAnimation from "components/site/LottieAnimation";
 import NativeAppOpenScript from "components/mobile/NativeAppOpenScript";
 import PublicBrand from "components/site/PublicBrand";
 import ThemeToggle from "components/theme/ThemeToggle";
+import FeatureShowcase from "components/site/FeatureShowcase";
 
 const DEFAULT_TITLE = "StoreBot | Bot Admin para grupos de WhatsApp";
 const DEFAULT_DESCRIPTION =
   "Ative um bot administrador para moderar grupos: boas‑vindas, regras, bloqueio de spam e comandos automáticos com a API oficial da Meta.";
-const FALLBACK_OG_IMAGE = "/images/png/dasher-ai.png";
-const heroDashboardImage = "/images/png/dasher-ai.png";
+const FALLBACK_OG_IMAGE = "/botadmin-landing/botadmin-hero-v2.webp";
+const heroDashboardImage = "/botadmin-landing/botadmin-hero-v2.webp";
 const qrScanAnimation = "/animations/whatsapp-qr-scan.json";
-const workflowImage = "/images/png/botadmin-workflow.jpg";
+const workflowImage = "/botadmin-landing/botadmin-community-v2.webp";
 const mercadoLivreLogo = "/images/affiliates/mercado-livre-logo.png";
 const shopeeLogo = "/images/affiliates/shopee-logo.png";
 type BootstrapShellProps = {
@@ -579,7 +579,7 @@ const LandingPage = async () => {
             <Col lg={6} className="text-center">
               <div className="landing-hero__phone-stage">
                 <div className="landing-hero__phone-glow" aria-hidden="true" />
-                <HeroPhone3D />
+                <Image src={heroImageSrc} alt={heroImageAlt} width={1200} height={800} priority unoptimized sizes="(max-width: 991px) 100vw, 50vw" style={{ width: "100%", height: "auto", borderRadius: 24 }} />
               </div>
               <noscript>
                 <Image
@@ -942,6 +942,8 @@ const LandingPage = async () => {
           </Row>
         </Container>
       </section>
+
+      <FeatureShowcase />
 
       <section id="planos" className="landing-section landing-section--mesh py-10">
         <Container>

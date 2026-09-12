@@ -1,0 +1,30 @@
+.section { --show-text: #e9edef; --show-muted: #a8b8b1; --show-bg: #111e19; --show-line: #ffffff20; padding: clamp(48px, 7vw, 96px) 24px; color: var(--show-text); background: #0b1410; }
+:global(html[data-theme="clean"]) .section { --show-text: #14261e; --show-muted: #586960; --show-bg: #fff; --show-line: #172b331c; background: #f4f9f5; }
+.inner { max-width: 1200px; margin-inline: auto; min-width: 0; }
+.header { display: flex; align-items: end; justify-content: space-between; gap: 24px; margin-bottom: 30px; }
+.eyebrow { color: #0cb96a; font: 750 12px/1.5 system-ui,sans-serif; letter-spacing: .12em; }
+.header h2, .faq h2 { color: var(--show-text); font: 750 clamp(27px, 3.4vw, 43px)/1.13 system-ui,sans-serif; letter-spacing: -.035em; margin: 12px 0 16px; }
+.header p, .copy p, .steps p, .faq p { color: var(--show-muted); font: 400 15px/1.65 system-ui,sans-serif; margin: 0; }
+.controls { display: flex; gap: 8px; flex-shrink: 0; }
+.controls button { width: 46px; height: 46px; border: 1px solid var(--show-line); border-radius: 50%; background: var(--show-bg); color: var(--show-text); font-size: 25px; cursor: pointer; }
+.controls button:hover:not(:disabled) { background: #12e86a; color: #10281b; }
+.controls button:disabled { opacity: .35; cursor: default; }
+.controls button:focus-visible, .track:focus-visible, .faq summary:focus-visible { outline: 3px solid #00a884; outline-offset: 4px; }
+.track { display: grid; grid-auto-flow: column; grid-auto-columns: calc((100% - 48px) / 3); gap: 24px; overflow-x: auto; scroll-snap-type: x mandatory; scrollbar-width: thin; scrollbar-color: #00a884 transparent; padding: 2px 0 18px; overscroll-behavior-x: contain; }
+.card { min-width: 0; scroll-snap-align: start; border-radius: 22px; overflow: hidden; background: var(--show-bg); border: 1px solid var(--show-line); display: flex; flex-direction: column; }
+.art { position: relative; background: #fff; aspect-ratio: 4 / 3; }
+.art img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.art span { position: absolute; top: 14px; left: 14px; padding: 6px 10px; border-radius: 20px; color: #10281b; background: #d9ffe7; font: 750 12px system-ui,sans-serif; }
+.copy { padding: 24px; display: flex; flex-direction: column; flex: 1; gap: 14px; }
+.copy h3 { color: var(--show-text); font: 700 22px/1.25 system-ui,sans-serif; letter-spacing: -.025em; margin: 0; }
+.example { margin-top: auto; padding: 16px 0 0; border-top: 1px solid var(--show-line); color: var(--show-muted); font: 400 13px/1.6 system-ui,sans-serif; }
+.hint { color: var(--show-muted); font: 400 12px/1.6 system-ui,sans-serif; margin: 10px 0 0; }
+.steps { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 32px; margin-top: 64px; padding-top: 40px; border-top: 1px solid var(--show-line); }
+.steps b { color: #12c86a; font: 800 30px system-ui,sans-serif; }
+.steps h3 { color: var(--show-text); font: 700 19px system-ui,sans-serif; margin: 14px 0 10px; }
+.faq { margin: 64px auto 0; max-width: 820px; }
+.faq details { border-bottom: 1px solid var(--show-line); padding: 18px 0; }
+.faq summary { cursor: pointer; color: var(--show-text); font: 600 16px/1.5 system-ui,sans-serif; }
+.faq p { padding: 14px 0 4px; }
+@media(max-width: 1000px) { .track { grid-auto-columns: calc((100% - 24px) / 2); } }
+@media(max-width: 600px) { .section { padding-inline: 18px; } .header { align-items: start; flex-wrap: wrap; gap: 16px; } .track { grid-auto-columns: 88%; gap: 24px; } .copy { padding: 20px; } .steps { grid-template-columns: 1fr; gap: 28px; margin-top: 36px; } .faq { margin-top: 40px; } }
