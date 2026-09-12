@@ -13,6 +13,7 @@ import {
 
 import { absoluteMediaUrl, api } from "./api";
 import FeatureShowcase from "../../components/site/FeatureShowcase";
+import { landingArtwork } from "../../components/site/landing-art";
 
 type PublicFeature = { title?: string; description?: string };
 type PublicGroup = { id?: string | number; title?: string; description?: string; imageUrl?: string; isActive?: boolean };
@@ -110,8 +111,8 @@ export function LandingPage() {
   const features = settings.features?.length ? settings.features : defaultFeatures;
   const groups = (settings.officialGroups || []).filter((group) => group.isActive !== false);
   const logo = safeAsset(settings.logoUrl) || "/images/brand/botadmin-logo.webp";
-  const heroImage = safeAsset(settings.heroImageUrl) || "/botadmin-landing/botadmin-hero-v2.webp";
-  const workflowImage = safeAsset(settings.workflowImageUrl) || "/botadmin-landing/botadmin-community-v2.webp";
+  const heroImage = landingArtwork(safeAsset(settings.heroImageUrl), "hero");
+  const workflowImage = landingArtwork(safeAsset(settings.workflowImageUrl), "community");
   const primaryUrl = safePath(settings.heroButtonUrl, "/sign-up");
   const secondaryUrl = safePath(settings.heroSecondaryButtonUrl, "/sign-in");
   const ctaUrl = safePath(settings.ctaButtonUrl, "/sign-up");

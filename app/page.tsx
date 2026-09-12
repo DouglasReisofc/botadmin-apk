@@ -25,14 +25,13 @@ import NativeAppOpenScript from "components/mobile/NativeAppOpenScript";
 import PublicBrand from "components/site/PublicBrand";
 import ThemeToggle from "components/theme/ThemeToggle";
 import FeatureShowcase from "components/site/FeatureShowcase";
+import { landingArtwork } from "components/site/landing-art";
 
 const DEFAULT_TITLE = "StoreBot | Bot Admin para grupos de WhatsApp";
 const DEFAULT_DESCRIPTION =
   "Ative um bot administrador para moderar grupos: boas‑vindas, regras, bloqueio de spam e comandos automáticos com a API oficial da Meta.";
 const FALLBACK_OG_IMAGE = "/botadmin-landing/botadmin-hero-v2.webp";
-const heroDashboardImage = "/botadmin-landing/botadmin-hero-v2.webp";
 const qrScanAnimation = "/animations/whatsapp-qr-scan.json";
-const workflowImage = "/botadmin-landing/botadmin-community-v2.webp";
 const mercadoLivreLogo = "/images/affiliates/mercado-livre-logo.png";
 const shopeeLogo = "/images/affiliates/shopee-logo.png";
 type BootstrapShellProps = {
@@ -243,7 +242,7 @@ export async function generateMetadata(): Promise<Metadata> {
     const description = settings.seoDescription ?? settings.tagline ?? DEFAULT_DESCRIPTION;
     const ogImageUrl =
       settings.seoImageUrl ??
-      settings.heroImageUrl ??
+      landingArtwork(settings.heroImageUrl, "hero") ??
       settings.logoUrl ??
       new URL(FALLBACK_OG_IMAGE, appUrl).toString();
     const absoluteOgImage = new URL(ogImageUrl, appUrl).toString();
@@ -431,7 +430,7 @@ const LandingPage = async () => {
   const heroBadge = settings.heroBadge ?? FALLBACK_HERO_BADGE;
   const heroTitle = settings.heroTitle ?? FALLBACK_HERO_TITLE;
   const heroSubtitle = settings.heroSubtitle ?? FALLBACK_HERO_SUBTITLE;
-  const heroImageSrc = settings.heroImageUrl ? settings.heroImageUrl : heroDashboardImage;
+  const heroImageSrc = landingArtwork(settings.heroImageUrl, "hero");
   const heroImageAlt = settings.heroTitle
     ? `Ilustração: ${settings.heroTitle}`
     : "Chatbot StoreBot para WhatsApp";
@@ -449,7 +448,7 @@ const LandingPage = async () => {
   const featuresTitle = settings.featuresTitle ?? FALLBACK_FEATURES_TITLE;
   const featuresSubtitle = settings.featuresSubtitle ?? FALLBACK_FEATURES_SUBTITLE;
 
-  const workflowImageSrc = settings.workflowImageUrl ? settings.workflowImageUrl : workflowImage;
+  const workflowImageSrc = landingArtwork(settings.workflowImageUrl, "community");
   const workflowImageAlt = settings.workflowTitle ? `Fluxo: ${settings.workflowTitle}` : "Fluxo do chatbot";
   const workflowTitle = settings.workflowTitle ?? FALLBACK_WORKFLOW_TITLE;
   const workflowDescription = settings.workflowDescription ?? FALLBACK_WORKFLOW_DESCRIPTION;

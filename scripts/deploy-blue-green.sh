@@ -77,7 +77,7 @@ rsync -az --delete --exclude='/cache/***' --exclude='/diagnostics/***' \
 
 # Public é compartilhado pelos dois processos; uploads/downloads gerados em
 # produção nunca são apagados pelo deploy.
-rsync -az --delete-delay \
+rsync -az \
   --exclude='/uploads/***' --exclude='/downloads/***' \
   -e "$rsync_ssh" public/ "${DEPLOY_HOST}:${REMOTE_APP_DIR}/public/"
 
