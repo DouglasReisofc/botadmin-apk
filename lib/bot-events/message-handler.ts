@@ -135,6 +135,7 @@ import {
   type WuzapiClient,
 } from "lib/wuzapi";
 import { sendReactionMessage } from "lib/wuzapi";
+import { canAutoDownloadMessage, youtubeVideoThumbnail } from "./autodownload-input";
 import { downloadChatMedia, downloadViewOnce } from "lib/wuzapi";
 import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } from "lib/sticker";
 import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
@@ -14695,6 +14696,7 @@ export const handleMessageUpsert = async (
 	  const isFromInstance =
 	    Boolean(botNorm && phoneDigitsOverlap(senderNorm, botNorm)) ||
 	    (sourceBelongsToBot && message.fromMe);
+  const automaticDownloadInputAllowed = canAutoDownloadMessage(message, isFromInstance);
   const isBlacklistedMember = Array.isArray(settings.blacklist) && settings.blacklist.includes(senderNorm);
 
   const client = buildWuzapiClient(context);
@@ -14937,7 +14939,7 @@ export const handleMessageUpsert = async (
 		      : null;
 	    const earlyButtonCommand = deriveButtonCommandFromResponse(message.buttonResponse);
     const earlyAutodownloadLink = (() => {
-      if (isMutedParticipant || !settings.commandToggles.autodownloader || isStickerMedia) {
+      if (!automaticDownloadInputAllowed || isMutedParticipant || !settings.commandToggles.autodownloader || isStickerMedia) {
         return null;
       }
       const candidates: string[] = [];
@@ -16360,6 +16362,7 @@ export const handleMessageUpsert = async (
 
   const youtubeChoiceLink = (() => {
     if (
+      !automaticDownloadInputAllowed ||
       isCommand ||
       isMutedParticipant ||
       isStickerMedia ||
@@ -20431,6 +20434,7 @@ const convertStickerSourceToWebp = async (
 	  if (
 	    canInteractWithBot &&
 	    settings.commandToggles.autodownloader &&
+	    automaticDownloadInputAllowed &&
 	    !hasActionableLinkGuardViolation &&
 	    !isCommand &&
 	    directAutodownloadLinks.length > 0
@@ -30340,7 +30344,7 @@ const convertStickerSourceToWebp = async (
               to: message.chatId,
               title: params.title,
               body: params.body,
-              footer: "Escolha o formato para baixar",
+              footer: "Escolha abaixo uma opção 👇",
               quoted: quotedContext,
               buttonType: "native" as const,
               headerMedia: params.thumbnailUrl
@@ -30408,6 +30412,7 @@ const convertStickerSourceToWebp = async (
               title: "YouTube",
               body,
               resolvedUrl: directYoutubeUrl,
+              thumbnailUrl: youtubeVideoThumbnail(directYoutubeUrl),
             });
             return;
           }
@@ -30470,7 +30475,7 @@ const convertStickerSourceToWebp = async (
             (typeof best.thumbnail === "string" && best.thumbnail.trim()) ||
             (typeof best.image === "string" && best.image.trim()) ||
             (typeof best.thumb === "string" && best.thumb.trim()) ||
-            null;
+            youtubeVideoThumbnail(resolvedUrl);
           const buttonBody = [caption, "", resolvedUrl].filter(Boolean).join("\n");
           console.info("[bot-events] play sending native buttons", {
             instanceId: context.instance.id,
