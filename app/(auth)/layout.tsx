@@ -50,6 +50,7 @@ const AuthLayout = async ({ children }: { children: React.ReactNode }) => {
         </div>
 
         <div className={styles.brandCopy}>
+          <div className={styles.authIllustration}><Image src="/botadmin-landing/botadmin-connect-v2.webp" alt="Ilustração da conexão do BotAdmin" width={900} height={675} priority unoptimized /></div>
           <span className={styles.brandEyebrow}>Painel WhatsApp</span>
           <h2 className={styles.brandTitle}>
             Administre grupos com proteção automática
@@ -63,16 +64,6 @@ const AuthLayout = async ({ children }: { children: React.ReactNode }) => {
             <li>Comandos e boas-vindas prontos para o seu grupo</li>
             <li>Acesso seguro ao painel de conversas</li>
           </ul>
-          <div className={styles.authIllustration}>
-            <Image
-              src="/botadmin-landing/botadmin-connect-v2.webp"
-              alt="Ilustração da conexão do BotAdmin"
-              width={900}
-              height={675}
-              priority
-              unoptimized
-            />
-          </div>
         </div>
 
         <div className={styles.brandFooter}>

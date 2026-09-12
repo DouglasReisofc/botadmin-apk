@@ -837,10 +837,10 @@ export function LocalLoginScreen({ redirectPath }: { redirectPath?: string } = {
     <main className="local-auth-screen">
       <aside className="local-auth-visual">
         <a href="/" className="local-auth-back">← Página inicial</a>
+        <img src={mode === "signup" ? "/botadmin-landing/botadmin-community-v2.webp" : "/botadmin-landing/botadmin-hero-v2.webp"} alt="Pessoas usando o BotAdmin para organizar suas comunidades" width={1200} height={900} />
         <span className="local-auth-eyebrow">SEU GRUPO. SUAS REGRAS.</span>
         <h2>Mais tempo para conversar.<br />Menos tarefas para repetir.</h2>
         <p>Comunidades, comandos e divulgações organizados em um só lugar.</p>
-        <img src={mode === "signup" ? "/botadmin-landing/botadmin-community-v2.webp" : "/botadmin-landing/botadmin-hero-v2.webp"} alt="Pessoas usando o BotAdmin para organizar suas comunidades" width={1200} height={900} />
         <div className="local-auth-benefits"><span>Regras do seu jeito</span><span>Acesso no celular e no computador</span></div>
       </aside>
       <form className="local-auth-card" onSubmit={submit}>

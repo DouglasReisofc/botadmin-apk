@@ -1136,6 +1136,26 @@ $public-spacers: (
     color: var(--lp-muted);
   }
 
+  .landing-resource-image {
+    margin: -1.5rem -1.5rem 1.25rem;
+    overflow: hidden;
+    aspect-ratio: 16 / 9;
+    background: #fff;
+    border-radius: 1.25rem 1.25rem 0 0;
+  }
+
+  .landing-resource-image img {
+    display: block;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+
+  .landing-cta--detailed .landing-cta__panel { padding: clamp(1.25rem, 4vw, 3rem); }
+  .landing-cta__image { display: block; width: 100%; max-height: 300px; object-fit: contain; border-radius: 1rem; background: #fff; }
+  .landing-cta__list { display: grid; gap: .55rem; padding: 0; list-style: none; }
+  .landing-cta__list li::before { content: '✓'; color: #04150c; font-weight: 800; margin-right: .6rem; }
+
   .landing-footer__brand {
     font-size: 1.2rem;
     color: #f2fbf6;

@@ -763,10 +763,9 @@ const LandingPage = async () => {
                 return (
                   <Col md={featureItems.length >= 3 ? 4 : 6} key={`${feature.title}-${index}`}>
                     <Card className="h-100 border-0 landing-card landing-card--hover">
+                        <div className="landing-resource-image"><Image src={`/botadmin-landing/botadmin-resource-${(index % 3) + 1}.webp`} alt="" width={1200} height={900} loading="lazy" unoptimized /></div>
                       <CardBody className="p-5">
-                        <div className="landing-icon-badge mb-3">
-                          <IconComponent size={28} />
-                        </div>
+                        <div className="landing-icon-badge mb-3"><IconComponent size={28} /></div>
                         <h3 className="h4 mb-3">{feature.title}</h3>
                         <p className="text-secondary mb-0">{feature.description}</p>
                       </CardBody>
@@ -1052,22 +1051,19 @@ const LandingPage = async () => {
         </Container>
       </section>
 
-      <section className="landing-cta py-10">
+      <section className="landing-cta landing-cta--detailed py-10">
         <Container>
-          <div className="landing-cta__panel">
-            <Row className="align-items-center gy-4">
-              <Col lg={8}>
-                <h2 className="fw-bold mb-2">{ctaTitle}</h2>
-                {ctaDescription && <p className="mb-0 opacity-90">{ctaDescription}</p>}
-              </Col>
-              <Col lg={4} className="text-lg-end">
+          <div className="landing-cta__panel"><Row className="align-items-center gy-4">
+              <Col lg={5} className="order-lg-2"><Image className="landing-cta__image" src="/botadmin-landing/botadmin-commerce-v2.webp" alt="Pessoas organizando operações no BotAdmin" width={1200} height={900} loading="lazy" unoptimized /></Col>
+              <Col lg={7} className="order-lg-1">
+                <span className="landing-kicker">COMECE COM CLAREZA</span><h2 className="fw-bold mb-3">{ctaTitle}</h2>
+                <p className="mb-3 opacity-90">{ctaDescription}</p><ul className="landing-cta__list"><li>Configure suas regras em poucos minutos</li><li>Acompanhe grupos, campanhas e automações no mesmo painel</li><li>Tenha uma experiência organizada no celular e no computador</li></ul>
                 {ctaButton && (
-                  <Link href={ctaButton.url} className="btn btn-light btn-lg rounded-pill px-4 fw-bold">
+                  <Link href={ctaButton.url} className="btn landing-btn landing-btn--neon rounded-pill px-4 fw-bold mt-3">
                     {ctaButton.label}
                   </Link>
                 )}
-              </Col>
-            </Row>
+              </Col></Row>
           </div>
         </Container>
       </section>
