@@ -13,7 +13,6 @@ export function hasAutomationContent(message: {
 }): boolean {
   if (message.text?.trim() || message.caption?.trim() || message.links?.length || message.buttonResponse) return true;
   const type = message.messageType?.trim().toLowerCase();
-  if (type && !["unknown", "message", "text", "conversation", "extendedtextmessage"].includes(type)) return true;
   const raw = record(message.raw);
   // Visible text can live outside the normalized text field (legacy webhooks).
   const messages = [raw, record(raw.Message), record(raw.message), record(raw.RawMessage), record(raw.eventMessage)];
@@ -22,6 +21,15 @@ export function hasAutomationContent(message: {
     if ([source.text, source.body, source.caption, source.conversation, extended.text]
       .some(value => typeof value === "string" && value.trim().length > 0)) return true;
   }
+  // EasyZap emits message.undecryptable before the decrypted upsert, using
+  // the SAME ID. It is not a media message and must never reserve that ID.
+  // Check actual text first: stored envelopes may retain unavailable=true
+  // after the recovered content is merged into them.
+  const pendingTypes = new Set(["undecryptable", "unavailable", "ciphertext", "encrypted", "pending"]);
+  if (pendingTypes.has(type ?? "") || messages.some(source =>
+    pendingTypes.has(String(source.type ?? source.messageType ?? "").trim().toLowerCase()),
+  )) return false;
+  if (type && !["unknown", "message", "text", "conversation", "extendedtextmessage"].includes(type)) return true;
   // Media-only and interactive messages are actionable even without a caption.
   return [raw.media, raw.eventMedia, raw.interactive, raw.poll, raw.contact, raw.location]
     .some(value => Object.keys(record(value)).length > 0);

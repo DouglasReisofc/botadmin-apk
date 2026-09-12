@@ -27,6 +27,32 @@ test("media, captions and buttons remain actionable", () => {
     assert.equal(hasAutomationContent(message), true);
   }
 });
+test("Google link recovery after EasyZap undecryptable event reserves its ID only once", () => {
+  const claimed = new Set<string>();
+  const id = "google-link-regression";
+  const process = (message: Parameters<typeof hasAutomationContent>[0]) => {
+    if (!hasAutomationContent(message) || claimed.has(id)) return false;
+    claimed.add(id);
+    return true;
+  };
+  // Exact shape emitted by buildUndecryptableMessageWebhookData before recovery.
+  assert.equal(process({ messageType: "undecryptable", text: null, caption: null, links: [],
+    raw: { eventMessage: { id, type: "undecryptable", unavailable: true, requestSent: false } } }), false);
+  assert.equal(claimed.size, 0);
+  const recovered = { messageType: "text", text: "https://google.com", links: extractLinks("https://google.com"),
+    raw: { eventMessage: { id, type: "text", text: "https://google.com", unavailable: true } } };
+  assert.equal(process(recovered), true);
+  assert.equal(process(recovered), false);
+  assert.equal(claimed.size, 1);
+});
+test("pending envelope types are not media and recovered legacy text still runs", () => {
+  for (const type of ["undecryptable", "unavailable", "ciphertext", "encrypted", "pending"]) {
+    assert.equal(hasAutomationContent({messageType:type}), false);
+    assert.equal(hasAutomationContent({messageType:"media",raw:{eventMessage:{type}}}), false);
+    assert.equal(hasAutomationContent({messageType:type,raw:{Message:{conversation:"google.com"}}}), true);
+  }
+  assert.equal(extractLinks("google.com").length, 1);
+});
 test("visible legacy text is not confused with an empty envelope", () => {
   for (const raw of [{body:"https://s.shopee.com.br/abc"},{Message:{extendedTextMessage:{text:"https://example.com"}}},{RawMessage:{conversation:"oi"}}]) {
     assert.equal(hasAutomationContent({messageType:"unknown",raw}), true);
