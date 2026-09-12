@@ -7,6 +7,7 @@ import "lib/server-bootstrap";
 
 // import lightweight public styles
 import "styles/public.scss";
+import "styles/landing-details.css";
 import "styles/theme-toggle.css";
 import { ThemeProvider } from "components/theme/ThemeProvider";
 import { themeBootstrapScript } from "components/theme/theme-script";
