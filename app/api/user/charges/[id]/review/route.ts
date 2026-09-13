@@ -7,6 +7,7 @@ import {
   updatePaymentChargeStatus,
 } from "lib/payments";
 import { processBotStoreApprovedCharge } from "lib/bot-store";
+import { processRaffleApprovedCharge } from "lib/user-raffles";
 
 type RouteContext = { params: Promise<{ id: string }> };
 
@@ -43,6 +44,7 @@ export async function POST(request: Request, context: RouteContext) {
     if (!reviewed) return NextResponse.json({ message: "Não foi possível atualizar a cobrança." }, { status: 500 });
     if (action === "approve") {
       await processBotStoreApprovedCharge(reviewed);
+      await processRaffleApprovedCharge(reviewed);
     }
     return NextResponse.json({ message: action === "approve" ? "Pagamento aprovado." : "Pagamento recusado.", charge: reviewed });
   } catch (error) {

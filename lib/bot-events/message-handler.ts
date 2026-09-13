@@ -89,9 +89,11 @@ import {
 import { getInstanceById, listInstancesForUser } from "lib/bot-instances";
 import {
   createMercadoPagoCheckoutCharge,
+  createManualPixCharge,
   createMercadoPagoPixCharge,
   createPoloPagPixCharge,
   getMercadoPagoCheckoutConfigForUser,
+  getManualPixConfigForUser,
   getMercadoPagoPixConfigForUser,
   getPoloPagPixConfigForUser,
 } from "lib/payments";
@@ -17988,10 +17990,11 @@ const convertStickerSourceToWebp = async (
       return;
     }
 
-    let mpPixConfig: Awaited<ReturnType<typeof getMercadoPagoPixConfigForUser>> | null = null;
-    let polopagConfig: Awaited<ReturnType<typeof getPoloPagPixConfigForUser>> | null = null;
-    try {
-      mpPixConfig = await getMercadoPagoPixConfigForUser(context.instance.userId);
+      let mpPixConfig: Awaited<ReturnType<typeof getMercadoPagoPixConfigForUser>> | null = null;
+      let polopagConfig: Awaited<ReturnType<typeof getPoloPagPixConfigForUser>> | null = null;
+      let manualPixConfig: Awaited<ReturnType<typeof getManualPixConfigForUser>> | null = null;
+      try {
+        mpPixConfig = await getMercadoPagoPixConfigForUser(context.instance.userId);
     } catch (error) {
       console.error("[raffle] failed to load Mercado Pago pix config", error);
       mpPixConfig = null;
@@ -18003,6 +18006,12 @@ const convertStickerSourceToWebp = async (
       console.error("[raffle] failed to load PoloPag pix config", error);
       polopagConfig = null;
     }
+    try {
+      manualPixConfig = await getManualPixConfigForUser(context.instance.userId);
+    } catch (error) {
+      console.error("[raffle] failed to load manual Pix config", { error });
+      manualPixConfig = null;
+    }
 
     const polopagActive = Boolean(
       polopagConfig?.isConfigured && polopagConfig?.isActive && polopagConfig.apiKey,
@@ -18010,12 +18019,17 @@ const convertStickerSourceToWebp = async (
     const mercadopagoActive = Boolean(
       mpPixConfig?.isConfigured && mpPixConfig?.isActive && mpPixConfig.accessToken,
     );
+    const manualPixActive = Boolean(
+      manualPixConfig?.isConfigured && manualPixConfig?.isActive && manualPixConfig.pixKey,
+    );
 
-    let activeProvider: "polopag_pix" | "mercadopago_pix" | null = null;
+    let activeProvider: "polopag_pix" | "mercadopago_pix" | "manual_pix" | null = null;
     if (polopagActive) {
       activeProvider = "polopag_pix";
     } else if (mercadopagoActive) {
       activeProvider = "mercadopago_pix";
+    } else if (manualPixActive) {
+      activeProvider = "manual_pix";
     }
 
     if (!activeProvider) {
@@ -18086,18 +18100,31 @@ const convertStickerSourceToWebp = async (
           publicId: chargeId,
         });
       } else {
-        if (!mpPixConfig) {
-          throw new Error('Configuração do Mercado Pago indisponível');
+        if (activeProvider === "manual_pix") {
+          if (!manualPixConfig) throw new Error("Configuração Pix manual indisponível");
+          charge = await createManualPixCharge({
+            userId: context.instance.userId,
+            amount,
+            customerWhatsapp: purchaserDigits,
+            customerName: senderName ?? null,
+            config: manualPixConfig,
+            metadata,
+            publicId: chargeId,
+          });
+        } else {
+          if (!mpPixConfig) {
+            throw new Error('Configuração do Mercado Pago indisponível');
+          }
+          charge = await createMercadoPagoPixCharge({
+            userId: context.instance.userId,
+            amount,
+            customerWhatsapp: purchaserDigits,
+            customerName: senderName ?? null,
+            config: mpPixConfig,
+            metadata,
+            publicId: chargeId,
+          });
         }
-        charge = await createMercadoPagoPixCharge({
-          userId: context.instance.userId,
-          amount,
-          customerWhatsapp: purchaserDigits,
-          customerName: senderName ?? null,
-          config: mpPixConfig,
-          metadata,
-          publicId: chargeId,
-        });
       }
     } catch (error) {
       console.error("[raffle] failed to create pix charge", error);
@@ -18132,7 +18159,9 @@ const convertStickerSourceToWebp = async (
     }
     captionLines.push(
       "",
-      "✅ Os números ficam reservados por alguns minutos e serão confirmados automaticamente após o pagamento aprovado.",
+      activeProvider === "manual_pix"
+        ? "📎 Envie o comprovante no grupo. O administrador aprovará o pagamento pelo painel e confirmará seus números."
+        : "✅ Os números ficam reservados por alguns minutos e serão confirmados automaticamente após o pagamento aprovado.",
     );
 
     const collapseBlankLines = <T extends string>(entries: T[]): T[] => {

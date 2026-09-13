@@ -21,6 +21,7 @@ export type { UserRaffleStatus } from "types/user-raffles";
 import { ensureUserRafflesTable, getDb } from "lib/db";
 import { getGroupByIdForUser } from "lib/bot-groups";
 import { getMercadoPagoPixConfigForUser, getPoloPagPixConfigForUser } from "lib/payments";
+import type { PaymentCharge } from "types/payments";
 import { normalizeJid, stripJidDevice } from "lib/whatsapp";
 import { formatCurrency } from "lib/format";
 import { ARCHIVE_UPLOAD_ROOT, UPLOADS_STORAGE_ROOT, resolveUploadedFileUrl, deleteUploadedFile } from "lib/uploads";
@@ -2350,6 +2351,42 @@ export const markRaffleTicketsPaidByCharge = async (
     numbers.sort((a, b) => a - b);
     return { raffle: mapRowToRaffle(updatedRow), numbers };
   });
+
+export const processRaffleApprovedCharge = async (charge: PaymentCharge): Promise<boolean> => {
+  const context = charge.metadata?.context;
+  if (!context || typeof context !== "object" || context.type !== "raffle_purchase") return false;
+  const raffleId = Number(context.raffleId ?? context.raffle_id);
+  const quantity = Number(context.ticketQuantity ?? context.quantity ?? context.tickets);
+  const suggested = context.suggestedNumbers ?? context.ticketNumbers ?? context.numbers;
+  const suggestedNumbers = Array.isArray(suggested)
+    ? suggested.map((entry) => Number(entry)).filter((entry, index, array) => Number.isFinite(entry) && entry > 0 && array.indexOf(entry) === index)
+    : [];
+  const groupJid = typeof context.groupJid === "string" ? context.groupJid : null;
+  const contextName = typeof context.purchaserName === "string" ? context.purchaserName : null;
+  const contextWhatsapp = typeof context.purchaserWhatsapp === "string" ? context.purchaserWhatsapp : null;
+  const result = await markRaffleTicketsPaidByCharge({
+    userId: charge.userId,
+    chargePublicId: charge.publicId,
+    raffleId: Number.isFinite(raffleId) && raffleId > 0 ? raffleId : undefined,
+    quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : undefined,
+    suggestedNumbers,
+    customerName: charge.customerName ?? contextName,
+    customerWhatsapp: charge.customerWhatsapp ?? contextWhatsapp,
+    groupJid,
+  });
+  if (result) {
+    await announceRafflePaymentToGroups({
+      userId: charge.userId,
+      raffle: result.raffle,
+      numbers: result.numbers,
+      customerName: charge.customerName ?? contextName,
+      customerWhatsapp: charge.customerWhatsapp ?? contextWhatsapp,
+      groupJid,
+      amount: charge.amount,
+    });
+  }
+  return Boolean(result);
+};
 
 export const deleteUserRaffleForUser = async (
   userId: number,
