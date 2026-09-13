@@ -2,6 +2,7 @@ import type { RowDataPacket } from "mysql2";
 
 import { getDb } from "lib/db";
 import { getUserPlanStatus } from "lib/plans";
+import { ensurePanelModuleGovernanceTable, getGlobalPanelModuleStates, type GlobalPanelModuleState } from "lib/panel-module-governance";
 import {
   getPanelModule,
   getPanelModules,
@@ -91,11 +92,16 @@ const availabilityFor = (
   enabledIds: Set<string>,
   plan: Awaited<ReturnType<typeof getUserPlanStatus>> | null,
   isAdmin: boolean,
+  globalState?: GlobalPanelModuleState,
 ): Pick<ResolvedPanelModule, "availability" | "canEnable" | "reason"> => {
-  if (definition.lifecycle === "maintenance") {
+  if (globalState && !globalState.globalEnabled) {
+    return { availability: "maintenance", canEnable: false, reason: "Módulo desativado pelo administrador." };
+  }
+  const lifecycle = globalState?.lifecycle || definition.lifecycle;
+  if (lifecycle === "maintenance") {
     return { availability: "maintenance", canEnable: false, reason: "Módulo temporariamente em manutenção." };
   }
-  if (definition.lifecycle === "coming_soon") {
+  if (lifecycle === "coming_soon") {
     return { availability: "coming_soon", canEnable: false, reason: "Este módulo estará disponível em breve." };
   }
   const missing = definition.dependencies.filter((dependency) => !enabledIds.has(dependency));
@@ -114,6 +120,7 @@ export const resolvePanelModules = async (options: {
   isAdmin: boolean;
 }): Promise<ResolvedPanelModule[]> => {
   await ensurePanelModuleTables();
+  await ensurePanelModuleGovernanceTable();
   const db = getDb();
   const [rows] = await db.query<ModulePreferenceRow[]>(
     `SELECT module_key, enabled, menu_order, pinned
@@ -134,11 +141,12 @@ export const resolvePanelModules = async (options: {
   const plan = options.scope === "user" && !options.isAdmin
     ? await getUserPlanStatus(options.userId)
     : null;
+  const globalStates = new Map((await getGlobalPanelModuleStates()).map((item) => [item.id, item]));
 
   return definitions
     .map((definition, index) => {
       const preference = preferences.get(definition.id);
-      const access = availabilityFor(definition, enabledIds, plan, options.isAdmin);
+      const access = availabilityFor(definition, enabledIds, plan, options.isAdmin, globalStates.get(definition.id));
       const preferredEnabled = preference
         ? Number(preference.enabled) === 1
         : definition.defaultEnabled;

@@ -1262,7 +1262,7 @@ function AdminShell({ onLogout, userId }: { onLogout: () => void; userId: number
   const visibleMenu = normalizedSearch
     ? ADMIN_NAV.filter((item) => item.id !== "payments" && moduleState.visible(item.id) && `${item.label} ${item.subtitle}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch))
     : railMenu;
-  const content = section === "modules" ? <PanelModules state={moduleState} items={ADMIN_NAV.filter(item => (PANEL_MODULES.admin as readonly string[]).includes(item.id)).map(item => ({ id: item.id, label: item.label, description: item.subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.id}.webp` }))} onOpen={id => changeSection(id as AdminSection)} />
+  const content = section === "modules" ? <PanelModules scope="admin" state={moduleState} items={ADMIN_NAV.filter(item => (PANEL_MODULES.admin as readonly string[]).includes(item.id)).map(item => ({ id: item.id, label: item.label, description: item.subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.id}.webp` }))} onOpen={id => changeSection(id as AdminSection)} />
     : section === "dashboard" ? <AdminDashboardWorkspace nav={adminNav("dashboard")} onToast={onToast} />
     : section === "servers" ? <AdminServersWorkspace nav={adminNav("servers")} onToast={onToast} />
     : section === "mega" ? <AdminMegaWorkspace nav={adminNav("mega")} onToast={onToast} />

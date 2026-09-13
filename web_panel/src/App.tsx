@@ -13850,7 +13850,7 @@ export function DashboardApp() {
           </div>
         </>
       ) : section === "modules" ? (
-        <PanelModules state={moduleState} items={navigation.filter(item => (PANEL_MODULES.user as readonly string[]).includes(item.section)).map(item => ({ id: item.section, label: item.label, description: sectionMeta[item.section].subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.section}.webp` }))} onOpen={id => { setSection(id as Section); persistSectionInUrl(id as Section); }} />
+        <PanelModules scope="user" state={moduleState} items={navigation.filter(item => (PANEL_MODULES.user as readonly string[]).includes(item.section)).map(item => ({ id: item.section, label: item.label, description: sectionMeta[item.section].subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.section}.webp` }))} onOpen={id => { setSection(id as Section); persistSectionInUrl(id as Section); }} />
       ) : (
         <ModuleWorkspace
           section={section}
