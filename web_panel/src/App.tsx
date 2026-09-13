@@ -11573,6 +11573,19 @@ export function DashboardApp() {
       ? shared === "dark"
       : localStorage.getItem("botadmin.react.theme") === "dark";
   });
+  useEffect(() => {
+    if (moduleState.loading) return;
+    const protectedModule = moduleState.modules.find(
+      (item) => item.id === section,
+    );
+    if (
+      protectedModule &&
+      !moduleState.enabled.includes(protectedModule.id)
+    ) {
+      setSection("modules");
+      persistSectionInUrl("modules");
+    }
+  }, [moduleState.enabled, moduleState.loading, moduleState.modules, section]);
   const reloadTimer = useRef<number | null>(null);
   const lastDashboardReload = useRef(0);
   const lastMessageReload = useRef(0);

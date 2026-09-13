@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   createUserRaffleForUser,
   listUserRafflesForUser,
@@ -34,6 +35,8 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const raffles = await listUserRafflesForUser(user.id);
     return NextResponse.json({ raffles: raffles.map(summarizeRaffle) });
@@ -52,6 +55,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     let body: Record<string, unknown>;
     try {

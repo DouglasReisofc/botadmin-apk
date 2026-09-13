@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import { getChargeHistoryForUser } from "lib/payments";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ export async function GET(request: Request) {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "payments");
+    if (blocked) return blocked;
 
     const charges = await getChargeHistoryForUser(user.id, parseLimit(request));
 

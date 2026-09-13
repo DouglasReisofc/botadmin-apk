@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   connectBotStoreCentralCart,
   connectBotStoreSmm,
@@ -67,6 +68,8 @@ export async function GET(request: Request) {
         { status: 401 },
       );
     }
+    const blocked = await guardPanelModuleRequest(user, "store");
+    if (blocked) return blocked;
     const instanceId = readInstanceId(
       new URL(request.url).searchParams.get("instanceId"),
     );
@@ -100,6 +103,8 @@ export async function PUT(request: Request) {
         { status: 401 },
       );
     }
+    const blocked = await guardPanelModuleRequest(user, "store");
+    if (blocked) return blocked;
     const body = await readBody(request);
     if (!body) {
       return NextResponse.json(
@@ -142,6 +147,8 @@ export async function POST(request: Request) {
         { status: 401 },
       );
     }
+    const blocked = await guardPanelModuleRequest(user, "store");
+    if (blocked) return blocked;
     const body = await readBody(request);
     if (!body) {
       return NextResponse.json(

@@ -1256,6 +1256,23 @@ function AdminShell({ onLogout, userId }: { onLogout: () => void; userId: number
     url.searchParams.set("section", next);
     window.history.pushState({}, "", url.toString());
   };
+  useEffect(() => {
+    if (moduleState.loading) return;
+    const protectedModule = moduleState.modules.find(
+      (item) => item.id === section,
+    );
+    if (
+      protectedModule &&
+      !moduleState.enabled.includes(protectedModule.id)
+    ) {
+      setMobileMenuOpen(false);
+      window.localStorage.setItem("botadmin.admin.section", "modules");
+      setSection("modules");
+      const url = new URL(window.location.href);
+      url.searchParams.set("section", "modules");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [moduleState.enabled, moduleState.loading, moduleState.modules, section]);
   const activeRail = visibleRail.find((item) => item.sections.includes(section)) || visibleRail[0];
   const railMenu = activeRail.sections.map(adminNav);
   const normalizedSearch = menuSearch.trim().toLocaleLowerCase("pt-BR");

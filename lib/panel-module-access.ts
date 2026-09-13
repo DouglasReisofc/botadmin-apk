@@ -250,5 +250,10 @@ export const assertPanelModuleAccess = async (options: {
     error.status = item?.availability === "plan_locked" ? 402 : 403;
     throw error;
   }
+  if (!item.enabled) {
+    const error = new Error("Ative este módulo no catálogo para continuar.") as Error & { status?: number };
+    error.status = 403;
+    throw error;
+  }
   return item;
 };

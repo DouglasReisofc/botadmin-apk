@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   getOrCreateUserApiKey,
   rotateUserApiKey,
@@ -22,6 +23,8 @@ export async function GET() {
   if (!sessionUser) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
+  const blocked = await guardPanelModuleRequest(sessionUser, "api");
+  if (blocked) return blocked;
 
   const apiKey = await getOrCreateUserApiKey(sessionUser.id);
   return NextResponse.json(serialize(apiKey));
@@ -32,6 +35,8 @@ export async function POST(request: Request) {
   if (!sessionUser) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
+  const blocked = await guardPanelModuleRequest(sessionUser, "api");
+  if (blocked) return blocked;
 
   let payload: Record<string, unknown> = {};
   try {

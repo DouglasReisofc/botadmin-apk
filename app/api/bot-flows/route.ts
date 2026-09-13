@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import { createBotFlowForUser, listBotFlowsForUser } from "lib/bot-flows";
 import { publishBotFlowRealtimeEvent } from "lib/bot-flow-realtime-bus";
 import { userPlanAllowsFlows } from "lib/plans";
@@ -14,6 +15,8 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "flows");
+    if (blocked) return blocked;
 
     const flows = await listBotFlowsForUser(user.id);
     return NextResponse.json({ flows });
@@ -29,6 +32,8 @@ export async function POST(request: Request) {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "flows");
+    if (blocked) return blocked;
 
     const payload = await request.json().catch(() => null);
     if (!assertPayload(payload)) {
