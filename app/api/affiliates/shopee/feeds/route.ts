@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   fetchShopeeItemFeedData,
   listShopeeItemFeeds,
@@ -25,6 +26,8 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
 
     const url = new URL(request.url);
     const mode = parseMode(url.searchParams.get("mode"));

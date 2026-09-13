@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   deleteAffiliateMlLinksForUser,
   listAffiliateMlLinksForUser,
@@ -13,6 +14,8 @@ export async function GET(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
     const url = new URL(request.url);
     const parsedLimit = Number(url.searchParams.get("limit"));
     const limit = Number.isFinite(parsedLimit)
@@ -33,6 +36,8 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
     const payload = (await request.json().catch(() => ({}))) as {
       affiliateUrl?: string;
       url?: string;
@@ -66,6 +71,8 @@ export async function DELETE(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
     const payload = (await request.json().catch(() => ({}))) as {
       all?: unknown;
       itemIds?: unknown;

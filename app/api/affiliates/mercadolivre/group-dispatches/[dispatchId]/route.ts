@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   deleteAffiliateMlGroupDispatchForUser,
   updateAffiliateMlGroupDispatchForUser,
@@ -14,6 +15,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
 
     const params = await Promise.resolve(context.params);
     const dispatchId = Number(params.dispatchId);
@@ -55,6 +58,8 @@ export async function DELETE(_request: NextRequest, context: RouteContext) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
 
     const params = await Promise.resolve(context.params);
     const dispatchId = Number(params.dispatchId);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import { createAffiliateOAuthAuthorizationUrl } from "lib/affiliate-connections";
 
 type RouteContext = { params: Promise<{ provider: string }> | { provider: string } };
@@ -12,6 +13,8 @@ export async function POST(request: NextRequest, context: RouteContext) {
     if (!user) {
       return NextResponse.json({ status: false, message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "affiliates");
+    if (blocked) return blocked;
 
     const params = await Promise.resolve(context.params);
     const provider = String(params.provider || "").trim();
