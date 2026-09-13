@@ -319,9 +319,11 @@ function PaymentSettingsModal({
   const [credential, setCredential] = useState("");
   const [showCredential, setShowCredential] = useState(false);
   const providerData =
-    provider === "polopag_pix"
-      ? (settings.poloPag as JsonRecord | undefined)
-      : (settings.mercadoPago as JsonRecord | undefined);
+    provider === "manual_pix"
+      ? (settings.manualPix as JsonRecord | undefined)
+      : provider === "polopag_pix"
+        ? (settings.poloPag as JsonRecord | undefined)
+        : (settings.mercadoPago as JsonRecord | undefined);
   // The API has returned both `isConfigured` and `configured` over time;
   // accepting either keeps the edit action usable after a deployment where
   // the payment settings payload is still in the older shape.
@@ -334,9 +336,13 @@ function PaymentSettingsModal({
   const [expiration, setExpiration] = useState(
     text(providerData?.pixExpirationMinutes, "30"),
   );
+  const [recipientName, setRecipientName] = useState(text(providerData?.recipientName));
+  const [instructions, setInstructions] = useState(text(providerData?.instructions));
   useEffect(() => {
     setExpiration(text(providerData?.pixExpirationMinutes, "30"));
-  }, [provider, providerData?.pixExpirationMinutes]);
+    setRecipientName(text(providerData?.recipientName));
+    setInstructions(text(providerData?.instructions));
+  }, [provider, providerData?.instructions, providerData?.pixExpirationMinutes, providerData?.recipientName]);
   return (
     <div
       className="modal-backdrop"
@@ -370,10 +376,11 @@ function PaymentSettingsModal({
             >
               <option value="mercadopago_pix">Mercado Pago · Pix</option>
               <option value="polopag_pix">PoloPag · Pix</option>
+              <option value="manual_pix">Pix manual · aprovação no painel</option>
             </select>
           </label>
           <label>
-            {provider === "polopag_pix" ? "Chave da API" : "Access Token"}
+            {provider === "manual_pix" ? "Chave Pix para receber" : provider === "polopag_pix" ? "Chave da API" : "Access Token"}
             <span className="protected-input">
               <input
                 type={showCredential ? "text" : "password"}
@@ -396,6 +403,19 @@ function PaymentSettingsModal({
               </button>
             </span>
           </label>
+          {provider === "manual_pix" && (
+            <>
+              <label>
+                Nome do recebedor
+                <input value={recipientName} onChange={(event) => setRecipientName(event.target.value)} placeholder="Nome exibido ao cliente" />
+              </label>
+              <label>
+                Instruções para o comprovante
+                <textarea value={instructions} onChange={(event) => setInstructions(event.target.value)} placeholder="Explique como enviar o comprovante e prazo de aprovação." rows={3} />
+              </label>
+              <p className="settings-muted">Quando o Mercado Pago/PoloPag não estiver ativo, o sistema usa este Pix e deixa a cobrança pendente para aprovação no painel.</p>
+            </>
+          )}
           <label>
             Validade do Pix em minutos
             <input
@@ -440,6 +460,8 @@ function PaymentSettingsModal({
                 provider,
                 credential: credential.trim(),
                 pixExpirationMinutes: Number(expiration) || 30,
+                recipientName: recipientName.trim(),
+                instructions: instructions.trim(),
               })
             }
           >
@@ -2839,6 +2861,9 @@ export function PaymentsWorkspace() {
   const configured = Boolean(
     paymentSettings.configured || paymentSettings.isConfigured,
   );
+  useEffect(() => {
+    if (!loading && !configured) setSettingsOpen(true);
+  }, [configured, loading]);
   const historyItems = historyTab === "purchases" ? purchases : charges;
   const filtered = historyItems.filter((item) =>
     `${text(item.categoryName)} ${text(item.customerName)} ${text(item.description)} ${text(item.planName)} ${text(item.status)} ${text(item.provider)} ${text(item.id)}`
@@ -2860,6 +2885,20 @@ export function PaymentsWorkspace() {
           ? cause.message
           : "Não foi possível salvar as credenciais.",
       );
+    } finally {
+      setBusy(false);
+    }
+  };
+  const reviewManual = async (charge: JsonRecord, action: "approve" | "reject") => {
+    if (busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      await api.reviewManualCharge(text(charge.id), action);
+      setNotice(action === "approve" ? "Pagamento manual aprovado." : "Pagamento manual recusado.");
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível revisar o pagamento manual.");
     } finally {
       setBusy(false);
     }
@@ -3045,11 +3084,17 @@ export function PaymentsWorkspace() {
                 {historyTab === "purchases" ? (
                   <em className="state-pill active">Concluída</em>
                 ) : (
-                  <em
-                    className={`state-pill ${text(item.status).toLowerCase()}`}
-                  >
-                    {text(item.status, "pendente")}
-                  </em>
+                  <span className="payment-status-actions">
+                    <em className={`state-pill ${text(item.status).toLowerCase()}`}>
+                      {text(item.status, "pendente")}
+                    </em>
+                    {text(item.provider) === "manual_pix" && ["pending", "in_process"].includes(text(item.status).toLowerCase()) && (
+                      <span className="payment-review-buttons">
+                        <button type="button" className="secondary-button" disabled={busy} onClick={() => void reviewManual(item, "approve")}>Aprovar</button>
+                        <button type="button" className="secondary-button danger" disabled={busy} onClick={() => void reviewManual(item, "reject")}>Recusar</button>
+                      </span>
+                    )}
+                  </span>
                 )}
               </article>
             ))}

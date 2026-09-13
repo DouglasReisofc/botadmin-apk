@@ -8,6 +8,8 @@ import type {
   MercadoPagoCheckoutPaymentType,
   MercadoPagoPixCharge,
   MercadoPagoPixConfig,
+  ManualPixCharge,
+  ManualPixConfig,
   PaymentCharge,
   PaymentChargeMetadata,
   PaymentConfirmationMessageConfig,
@@ -31,6 +33,7 @@ import { createPoloPagPixCharge as requestPoloPagPixCharge } from "./polopag";
 const DEFAULT_MERCADO_PAGO_PIX_DISPLAY_NAME = "Pagamento Pix";
 const DEFAULT_POLOPAG_PIX_DISPLAY_NAME = "Pagamento Pix (PoloPag)";
 const DEFAULT_MERCADO_PAGO_CHECKOUT_DISPLAY_NAME = "Pagamento online";
+const DEFAULT_MANUAL_PIX_DISPLAY_NAME = "Pix manual";
 const DEFAULT_EXPIRATION_MINUTES = 30;
 const DEFAULT_AMOUNT_OPTIONS = [25, 50, 100];
 const DEFAULT_CONFIRMATION_MESSAGE =
@@ -420,6 +423,45 @@ const mapPoloPagPaymentMethodRow = (row: UserPaymentMethodRow | null): PoloPagPi
   } satisfies PoloPagPixConfig;
 };
 
+const mapManualPixPaymentMethodRow = (row: UserPaymentMethodRow | null): ManualPixConfig => {
+  const defaultConfig: ManualPixConfig = {
+    isActive: false,
+    displayName: DEFAULT_MANUAL_PIX_DISPLAY_NAME,
+    pixKey: "",
+    recipientName: null,
+    instructions: null,
+    isConfigured: false,
+    updatedAt: null,
+  };
+  if (!row) return defaultConfig;
+
+  let credentials: Record<string, unknown> = {};
+  let settings: Record<string, unknown> = {};
+  try {
+    const parsed = row.credentials ? JSON.parse(row.credentials) as unknown : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) credentials = parsed as Record<string, unknown>;
+  } catch (error) {
+    console.warn("Failed to parse manual Pix credentials", error);
+  }
+  try {
+    const parsed = row.settings ? JSON.parse(row.settings) as unknown : null;
+    if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) settings = parsed as Record<string, unknown>;
+  } catch (error) {
+    console.warn("Failed to parse manual Pix settings", error);
+  }
+
+  const pixKey = sanitizeText(credentials.pixKey);
+  return {
+    isActive: row.is_active === 1 && pixKey.length > 0,
+    displayName: row.display_name?.trim() || DEFAULT_MANUAL_PIX_DISPLAY_NAME,
+    pixKey,
+    recipientName: sanitizeOptionalText(settings.recipientName),
+    instructions: sanitizeOptionalText(settings.instructions),
+    isConfigured: pixKey.length > 0,
+    updatedAt: row.updated_at instanceof Date ? row.updated_at.toISOString() : new Date(row.updated_at).toISOString(),
+  } satisfies ManualPixConfig;
+};
+
 const mapPaymentConfirmationRow = (
   row: UserPaymentMethodRow | null,
 ): PaymentConfirmationMessageConfig => {
@@ -635,6 +677,16 @@ export const getPoloPagPixConfigForUser = async (
   return mapPoloPagPaymentMethodRow(rows[0]);
 };
 
+export const getManualPixConfigForUser = async (userId: number): Promise<ManualPixConfig> => {
+  await ensurePaymentMethodTable();
+  const db = getDb();
+  const [rows] = await db.query<UserPaymentMethodRow[]>(
+    `SELECT * FROM user_payment_methods WHERE user_id = ? AND provider = 'manual_pix' LIMIT 1`,
+    [userId],
+  );
+  return Array.isArray(rows) && rows.length ? mapManualPixPaymentMethodRow(rows[0]) : mapManualPixPaymentMethodRow(null);
+};
+
 export const getPaymentConfirmationConfigForUser = async (
   userId: number,
 ): Promise<PaymentConfirmationMessageConfig> => {
@@ -672,10 +724,11 @@ export const getMercadoPagoCheckoutConfigForUser = async (
 export const getPaymentMethodSummariesForUser = async (
   userId: number,
 ): Promise<PaymentMethodSummary[]> => {
-  const [mpPixConfig, polopagConfig, checkoutConfig] = await Promise.all([
+  const [mpPixConfig, polopagConfig, checkoutConfig, manualPixConfig] = await Promise.all([
     getMercadoPagoPixConfigForUser(userId),
     getPoloPagPixConfigForUser(userId),
     getMercadoPagoCheckoutConfigForUser(userId),
+    getManualPixConfigForUser(userId),
   ]);
 
   const summaries: PaymentMethodSummary[] = [
@@ -696,6 +749,12 @@ export const getPaymentMethodSummariesForUser = async (
       displayName: checkoutConfig.displayName,
       isActive: checkoutConfig.isActive,
       isConfigured: checkoutConfig.isConfigured,
+    },
+    {
+      provider: "manual_pix",
+      displayName: manualPixConfig.displayName,
+      isActive: manualPixConfig.isActive,
+      isConfigured: manualPixConfig.isConfigured,
     },
   ];
 
@@ -841,6 +900,37 @@ export const upsertPoloPagPixConfig = async (payload: {
   return getPoloPagPixConfigForUser(payload.userId);
 };
 
+export const upsertManualPixConfig = async (payload: {
+  userId: number;
+  isActive: boolean;
+  displayName?: string | null;
+  pixKey: string;
+  recipientName?: string | null;
+  instructions?: string | null;
+}): Promise<ManualPixConfig> => {
+  await ensurePaymentMethodTable();
+  const db = getDb();
+  const pixKey = sanitizeText(payload.pixKey).slice(0, 255);
+  const recipientName = sanitizeOptionalText(payload.recipientName)?.slice(0, 255) || null;
+  const instructions = sanitizeOptionalText(payload.instructions)?.slice(0, 2000) || null;
+  await db.query<ResultSetHeader>(
+    `INSERT INTO user_payment_methods
+      (user_id, provider, is_active, display_name, credentials, settings, metadata)
+     VALUES (?, 'manual_pix', ?, ?, ?, ?, NULL)
+     ON DUPLICATE KEY UPDATE
+       is_active = VALUES(is_active), display_name = VALUES(display_name),
+       credentials = VALUES(credentials), settings = VALUES(settings), metadata = VALUES(metadata)`,
+    [
+      payload.userId,
+      payload.isActive && pixKey ? 1 : 0,
+      payload.displayName?.trim() || DEFAULT_MANUAL_PIX_DISPLAY_NAME,
+      JSON.stringify({ pixKey }),
+      JSON.stringify({ recipientName, instructions }),
+    ],
+  );
+  return getManualPixConfigForUser(payload.userId);
+};
+
 export const upsertPaymentConfirmationConfig = async (payload: {
   userId: number;
   messageText: string;
@@ -962,6 +1052,56 @@ export const upsertMercadoPagoCheckoutConfig = async (payload: {
   );
 
   return getMercadoPagoCheckoutConfigForUser(payload.userId);
+};
+
+export const createManualPixCharge = async (payload: {
+  userId: number;
+  amount: number;
+  customerWhatsapp: string;
+  customerName?: string | null;
+  config: ManualPixConfig;
+  metadata?: PaymentChargeMetadata | null;
+  publicId?: string | null;
+}): Promise<ManualPixCharge> => {
+  await ensurePaymentChargeTable();
+  if (!payload.config.isActive || !payload.config.isConfigured || !payload.config.pixKey) {
+    throw new Error("Pix manual não configurado para este usuário.");
+  }
+  const amount = Number(payload.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    throw new Error("Valor inválido para geração da cobrança manual.");
+  }
+  const publicId = payload.publicId?.trim() || randomUUID();
+  const providerPaymentId = `manual:${publicId}`;
+  const metadata: PaymentChargeMetadata = {
+    ...(payload.metadata || {}),
+    requiresManualApproval: true,
+    recipientName: payload.config.recipientName,
+    instructions: payload.config.instructions,
+    createdAt: new Date().toISOString(),
+  };
+  const db = getDb();
+  await db.query<ResultSetHeader>(
+    `INSERT INTO user_payment_charges
+      (public_id, user_id, provider, provider_payment_id, status, amount, currency,
+       qr_code, qr_code_base64, ticket_url, expires_at, customer_whatsapp, customer_name, metadata)
+     VALUES (?, ?, 'manual_pix', ?, 'pending', ?, 'BRL', ?, NULL, NULL, NULL, ?, ?, ?)`,
+    [
+      publicId,
+      payload.userId,
+      providerPaymentId,
+      Number(amount.toFixed(2)),
+      payload.config.pixKey,
+      sanitizeOptionalText(payload.customerWhatsapp),
+      sanitizeOptionalText(payload.customerName),
+      JSON.stringify(metadata),
+    ],
+  );
+  const charge = await getPaymentChargeByPublicId(publicId);
+  if (!charge || charge.provider !== "manual_pix") {
+    throw new Error("Não foi possível recuperar a cobrança manual recém-criada.");
+  }
+  return charge as ManualPixCharge;
 };
 
 export const createMercadoPagoPixCharge = async (payload: {
@@ -1341,6 +1481,19 @@ export const getPaymentChargeByPublicId = async (
   }
 
   return mapChargeRow(rows[0]);
+};
+
+export const getPaymentChargeByIdForUser = async (
+  userId: number,
+  chargeId: number,
+): Promise<PaymentCharge | null> => {
+  await ensurePaymentChargeTable();
+  const db = getDb();
+  const [rows] = await db.query<UserPaymentChargeRow[]>(
+    `SELECT * FROM user_payment_charges WHERE id = ? AND user_id = ? LIMIT 1`,
+    [chargeId, userId],
+  );
+  return Array.isArray(rows) && rows.length ? mapChargeRow(rows[0]) : null;
 };
 
 export const getPaymentChargeByProviderPaymentId = async (

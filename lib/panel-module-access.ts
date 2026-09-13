@@ -169,7 +169,12 @@ export const resolvePanelModules = async (options: {
       return {
         ...definition,
         enabled: preferredEnabled && access.availability === "available",
-        pinned: Number(preference?.pinned || 0) === 1,
+        // An enabled module is a menu destination by definition. Keep the
+        // persisted flag for ordering compatibility, but heal older rows that
+        // were enabled before automatic pinning was introduced.
+        pinned: preferredEnabled && access.availability === "available"
+          ? true
+          : Number(preference?.pinned || 0) === 1,
         order: Number(preference?.menu_order ?? index),
         ...access,
       };
@@ -196,17 +201,18 @@ export const savePanelModulePreference = async (options: {
   }
   const db = getDb();
   const previous = moduleState?.enabled || false;
+  const nextPinned = options.enabled;
   await db.query(
     `INSERT INTO user_panel_modules (user_id, panel_scope, module_key, enabled, menu_order, pinned)
      VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), updated_at = CURRENT_TIMESTAMP`,
-    [options.userId, options.scope, options.moduleId, options.enabled ? 1 : 0, moduleState?.order || 0, moduleState?.pinned ? 1 : 0],
+     ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), pinned = VALUES(pinned), updated_at = CURRENT_TIMESTAMP`,
+    [options.userId, options.scope, options.moduleId, options.enabled ? 1 : 0, moduleState?.order || 0, nextPinned ? 1 : 0],
   );
   await db.query(
     `INSERT INTO panel_module_audit_logs
       (actor_user_id, target_user_id, panel_scope, module_key, action, previous_value, next_value)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [options.actorUserId, options.userId, options.scope, options.moduleId, options.enabled ? "module.enabled" : "module.disabled", JSON.stringify({ enabled: previous }), JSON.stringify({ enabled: options.enabled })],
+    [options.actorUserId, options.userId, options.scope, options.moduleId, options.enabled ? "module.enabled" : "module.disabled", JSON.stringify({ enabled: previous, pinned: moduleState?.pinned || false }), JSON.stringify({ enabled: options.enabled, pinned: nextPinned })],
   );
   return resolvePanelModules({ userId: options.userId, scope: options.scope, isAdmin: options.isAdmin });
 };

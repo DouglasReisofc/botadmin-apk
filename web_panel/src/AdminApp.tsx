@@ -7673,7 +7673,7 @@ function AdminShell({
   const visibleRail = ADMIN_RAIL_NAV.map((item) => ({
     ...item,
     sections: item.sections.filter(
-      (id) => id !== "payments" && moduleState.visible(id),
+      (id) => moduleState.visible(id),
     ),
   })).filter((item) => item.sections.length > 0);
   const [section, setSection] = useState<AdminSection>(sectionFromUrl);
@@ -7722,7 +7722,6 @@ function AdminShell({
   const visibleMenu = normalizedSearch
     ? ADMIN_NAV.filter(
         (item) =>
-          item.id !== "payments" &&
           moduleState.visible(item.id) &&
           `${item.label} ${item.subtitle}`
             .toLocaleLowerCase("pt-BR")

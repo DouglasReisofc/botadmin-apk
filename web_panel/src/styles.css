@@ -7999,7 +7999,7 @@ img {
   .affiliate-account-list,
   .payments-workspace > .commerce-message,
   .payments-workspace > .commerce-metrics,
-  .payments-workspace > .settings-card {
+.payments-workspace > .settings-card {
     margin-inline: 10px;
   }
   .affiliate-platform-toolbar {
@@ -8100,6 +8100,11 @@ img {
     margin: 0;
   }
 }
+.payment-status-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.payment-review-buttons { display:flex; flex-wrap:wrap; gap:5px; }
+.payment-review-buttons .secondary-button { min-height:28px; padding:0 8px; font-size:11px; }
+.payment-review-buttons .secondary-button.danger { color:#b42318; border-color:#f3b8b2; }
+.theme-dark .payment-review-buttons .secondary-button.danger { color:#ff9b91; border-color:#703f3a; }
 .module-error {
   color: #b42318;
 }

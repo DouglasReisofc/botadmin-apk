@@ -7,7 +7,9 @@ import { getInstanceById, getInstanceForUser } from "lib/bot-instances";
 import { getDb } from "lib/db";
 import {
   createMercadoPagoPixCharge,
+  createManualPixCharge,
   createPoloPagPixCharge,
+  getManualPixConfigForUser,
   getMercadoPagoPixConfigForUser,
   getPoloPagPixConfigForUser,
 } from "lib/payments";
@@ -22,6 +24,35 @@ import {
   type ListMessageRow,
   type WuzapiClient,
 } from "lib/wuzapi";
+
+const createStorePaymentCharge = async (payload: {
+  userId: number;
+  provider: string;
+  amount: number;
+  customerWhatsapp: string;
+  customerName?: string | null;
+  metadata: Record<string, unknown>;
+}) => {
+  const manualConfig = await getManualPixConfigForUser(payload.userId);
+  if (payload.provider === "manual_pix") {
+    return createManualPixCharge({ ...payload, config: manualConfig });
+  }
+  if (payload.provider === "polopag_pix") {
+    const config = await getPoloPagPixConfigForUser(payload.userId);
+    if (config.isActive && config.isConfigured) {
+      return createPoloPagPixCharge({ ...payload, config });
+    }
+  } else {
+    const config = await getMercadoPagoPixConfigForUser(payload.userId);
+    if (config.isActive && config.isConfigured) {
+      return createMercadoPagoPixCharge({ ...payload, config });
+    }
+  }
+  if (manualConfig.isActive && manualConfig.isConfigured) {
+    return createManualPixCharge({ ...payload, config: manualConfig });
+  }
+  throw new Error("Nenhum meio de recebimento está configurado. Configure Mercado Pago ou Pix manual.");
+};
 import {
   activateWwPanelApp,
   activateWwPanelTrial,
@@ -6433,24 +6464,14 @@ const buyLocalProduct = async (params: {
   const phone = normalizePhone(params.to);
   let charge: PaymentCharge;
   try {
-    charge =
-      provider === "polopag_pix"
-        ? await createPoloPagPixCharge({
-            userId: params.store.userId,
-            amount: product.price,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getPoloPagPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          })
-        : await createMercadoPagoPixCharge({
-            userId: params.store.userId,
-            amount: product.price,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getMercadoPagoPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          });
+    charge = await createStorePaymentCharge({
+      userId: params.store.userId,
+      provider,
+      amount: product.price,
+      customerWhatsapp: phone,
+      customerName: params.customerName,
+      metadata: { skipBalanceCredit: true, context },
+    });
     await attachChargeToOrder(order.id, charge);
   } catch (error) {
     await failPendingOrder(params.store.id, order.id);
@@ -6781,24 +6802,14 @@ const buyWwPanelOffer = async (params: {
   const phone = normalizePhone(params.to);
   let charge: PaymentCharge;
   try {
-    charge =
-      provider === "polopag_pix"
-        ? await createPoloPagPixCharge({
-            userId: params.store.userId,
-            amount: offer.price,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getPoloPagPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          })
-        : await createMercadoPagoPixCharge({
-            userId: params.store.userId,
-            amount: offer.price,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getMercadoPagoPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          });
+    charge = await createStorePaymentCharge({
+      userId: params.store.userId,
+      provider,
+      amount: offer.price,
+      customerWhatsapp: phone,
+      customerName: params.customerName,
+      metadata: { skipBalanceCredit: true, context },
+    });
     await attachChargeToOrder(order.id, charge);
   } catch (error) {
     await failPendingOrder(params.store.id, order.id);
@@ -7731,24 +7742,14 @@ const buySmmService = async (params: {
   const phone = normalizePhone(params.to);
   let charge: PaymentCharge;
   try {
-    charge =
-      provider === "polopag_pix"
-        ? await createPoloPagPixCharge({
-            userId: params.store.userId,
-            amount: quote.totalCents / 100,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getPoloPagPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          })
-        : await createMercadoPagoPixCharge({
-            userId: params.store.userId,
-            amount: quote.totalCents / 100,
-            customerWhatsapp: phone,
-            customerName: params.customerName,
-            config: await getMercadoPagoPixConfigForUser(params.store.userId),
-            metadata: { skipBalanceCredit: true, context },
-          });
+    charge = await createStorePaymentCharge({
+      userId: params.store.userId,
+      provider,
+      amount: quote.totalCents / 100,
+      customerWhatsapp: phone,
+      customerName: params.customerName,
+      metadata: { skipBalanceCredit: true, context },
+    });
     await attachChargeToOrder(order.id, charge);
   } catch (error) {
     await failPendingOrder(params.store.id, order.id);

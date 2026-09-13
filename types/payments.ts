@@ -12,6 +12,7 @@ export type PaymentMethodProvider =
   | "mercadopago_pix"
   | "mercadopago_checkout"
   | "polopag_pix"
+  | "manual_pix"
   | "bot_resale_payout";
 
 export type BotResalePayoutMode = "automatic" | "manual";
@@ -97,6 +98,16 @@ export type PoloPagPixConfig = {
   updatedAt: string | null;
 };
 
+export type ManualPixConfig = {
+  isActive: boolean;
+  displayName: string;
+  pixKey: string;
+  recipientName: string | null;
+  instructions: string | null;
+  isConfigured: boolean;
+  updatedAt: string | null;
+};
+
 export type PaymentCharge = {
   id: number;
   publicId: string;
@@ -140,4 +151,8 @@ export type MercadoPagoCheckoutCharge = PaymentCharge & {
 
 export type PoloPagPixCharge = PaymentCharge & {
   provider: "polopag_pix";
+};
+
+export type ManualPixCharge = PaymentCharge & {
+  provider: "manual_pix";
 };

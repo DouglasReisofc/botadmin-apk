@@ -1098,6 +1098,11 @@ export const api = {
       body: JSON.stringify({ command, value }),
     }),
   charges: () => request<JsonRecord>("/api/user/charges?limit=120"),
+  reviewManualCharge: (chargeId: number | string, action: "approve" | "reject") =>
+    request<JsonRecord>(`/api/user/charges/${encodeURIComponent(String(chargeId))}/review`, {
+      method: "POST",
+      body: JSON.stringify({ action }),
+    }),
   purchases: () => request<JsonRecord>("/api/user/purchases?limit=120"),
   affiliateProviders: () => request<JsonRecord>("/api/affiliates/providers"),
   updateAffiliateProvider: (provider: string, payload: JsonRecord) =>

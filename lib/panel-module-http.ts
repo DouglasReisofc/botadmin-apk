@@ -38,3 +38,17 @@ export const guardPanelModuleRequest = async (
     );
   }
 };
+
+export const guardAnyPanelModuleRequest = async (
+  user: ModuleUser,
+  moduleIds: string[],
+  scope: PanelModuleScope = "user",
+): Promise<NextResponse | null> => {
+  let lastBlocked: NextResponse | null = null;
+  for (const moduleId of moduleIds) {
+    const blocked = await guardPanelModuleRequest(user, moduleId, scope);
+    if (!blocked) return null;
+    lastBlocked = blocked;
+  }
+  return lastBlocked;
+};
