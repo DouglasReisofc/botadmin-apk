@@ -4,6 +4,7 @@ import { isIP } from "net";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 import { getDb } from "lib/db";
+import { assertPanelModuleAccess, isUserModuleEnabled } from "lib/panel-module-access";
 import { getGoogleSheetsAccessToken } from "lib/google-oauth";
 import { getInstanceForUser } from "lib/bot-instances";
 import { convertTimezoneLocalToUtc, normalizeTimezoneInput } from "lib/timezones";
@@ -570,7 +571,9 @@ const ensureTables = async () => {
     await addColumn("bot_broadcast_schedules", "recurrence_minutes", "recurrence_minutes INT NULL AFTER scheduled_for");
     await addColumn("bot_broadcast_schedules", "occurrence_count", "occurrence_count INT NOT NULL DEFAULT 0 AFTER recurrence_minutes");
     await addColumn("bot_broadcast_schedules", "message_id", "message_id CHAR(36) NULL AFTER run_id");
+    await addColumn("bot_broadcast_schedules", "module_paused_at", "module_paused_at DATETIME NULL AFTER message_id");
     await addColumn("bot_broadcast_runs", "schedule_id", "schedule_id CHAR(36) NULL AFTER message_id");
+    await addColumn("bot_broadcast_runs", "module_paused_at", "module_paused_at DATETIME NULL AFTER schedule_id");
     await db.query(`
       CREATE TABLE IF NOT EXISTS bot_broadcast_run_contacts (
         id CHAR(36) PRIMARY KEY,
@@ -637,6 +640,8 @@ const ensureTables = async () => {
   });
   return tablesReady;
 };
+
+export const ensureBroadcastTables = ensureTables;
 
 export const normalizeBroadcastPhone = (value: unknown): { key: string; phone: string; jid: string } | null => {
   const raw = typeof value === "string" ? value : "";
@@ -752,9 +757,9 @@ export const getBroadcastList = async (userId: number, instanceId: number, listI
       AND EXISTS (SELECT 1 FROM bot_broadcast_runs r WHERE r.message_id=m.id)
     ORDER BY m.created_at ASC LIMIT 100`, [listId]);
   const [templates] = await db.query<MessageRow[]>("SELECT * FROM bot_broadcast_messages WHERE list_id=? AND is_template=1 ORDER BY created_at DESC LIMIT 100", [listId]);
-  const [runs] = await db.query<RowDataPacket[]>("SELECT id,message_id,schedule_id,status,total_count,sent_count,failed_count,typing_enabled,min_delay_ms,max_delay_ms,created_at,started_at,completed_at,error_message FROM bot_broadcast_runs WHERE list_id=? ORDER BY created_at DESC LIMIT 20", [listId]);
+  const [runs] = await db.query<RowDataPacket[]>("SELECT id,message_id,schedule_id,status,module_paused_at,total_count,sent_count,failed_count,typing_enabled,min_delay_ms,max_delay_ms,created_at,started_at,completed_at,error_message FROM bot_broadcast_runs WHERE list_id=? ORDER BY created_at DESC LIMIT 20", [listId]);
   const [schedules] = await db.query<RowDataPacket[]>(`SELECT s.id,s.body,s.payload_json,s.scheduled_for,s.recurrence_minutes,
-      s.occurrence_count,s.status,s.run_id,s.message_id,s.created_at,s.error_message,
+      s.occurrence_count,s.status,s.module_paused_at,s.run_id,s.message_id,s.created_at,s.error_message,
       COALESCE((SELECT SUM(r.sent_count) FROM bot_broadcast_runs r WHERE r.schedule_id=s.id),0) AS sent_total,
       COALESCE((SELECT SUM(r.failed_count) FROM bot_broadcast_runs r WHERE r.schedule_id=s.id),0) AS failed_total
     FROM bot_broadcast_schedules s WHERE s.list_id=? ORDER BY s.scheduled_for DESC LIMIT 40`, [listId]);
@@ -767,8 +772,8 @@ export const getBroadcastList = async (userId: number, instanceId: number, listI
     contacts: contacts.map((row) => ({ id: row.id, phone: row.phone, jid: row.jid, name: row.name ?? "", pushName: row.push_name ?? "", location: row.location ?? "", details: row.details_json ?? "", attributes: parseJsonObject(row.attributes_json), source: row.source, recipientType: (row.recipient_type === "group" ? "group" : "contact") as BroadcastContact["recipientType"], groupId: row.group_id == null ? null : Number(row.group_id), mentionAll: Boolean(row.mention_all), excludeAdmins: Boolean(row.exclude_admins) })),
     messages: messages.map((row) => ({ id: row.id, body: row.body, payload: parsePayload(row.payload_json), createdAt: new Date(row.created_at).toISOString() })),
     templates: templates.map((row) => ({ id: row.id, name: row.template_name || "Mensagem salva", body: row.body, payload: parsePayload(row.payload_json), createdAt: new Date(row.created_at).toISOString() })),
-    schedules: schedules.map((row) => ({ id: row.id, body: row.body, payload: parsePayload(row.payload_json), scheduledFor: new Date(row.scheduled_for).toISOString(), recurrenceMinutes: row.recurrence_minutes == null ? null : Number(row.recurrence_minutes), occurrenceCount: Number(row.occurrence_count ?? 0), sentTotal: Number(row.sent_total ?? 0), failedTotal: Number(row.failed_total ?? 0), status: row.status, runId: row.run_id ?? null, messageId: row.message_id ?? null, error: row.error_message ?? null })),
-    runs: runs.map((row) => ({ id: row.id, messageId: row.message_id, scheduleId: row.schedule_id ?? null, status: row.status, total: Number(row.total_count), sent: Number(row.sent_count), failed: Number(row.failed_count), typingEnabled: Boolean(row.typing_enabled), minDelayMs: Number(row.min_delay_ms), maxDelayMs: Number(row.max_delay_ms), createdAt: new Date(row.created_at).toISOString(), startedAt: row.started_at ? new Date(row.started_at).toISOString() : null, completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null, error: row.error_message ?? null })),
+    schedules: schedules.map((row) => ({ id: row.id, body: row.body, payload: parsePayload(row.payload_json), scheduledFor: new Date(row.scheduled_for).toISOString(), recurrenceMinutes: row.recurrence_minutes == null ? null : Number(row.recurrence_minutes), occurrenceCount: Number(row.occurrence_count ?? 0), sentTotal: Number(row.sent_total ?? 0), failedTotal: Number(row.failed_total ?? 0), status: row.module_paused_at ? "paused" : row.status, runId: row.run_id ?? null, messageId: row.message_id ?? null, error: row.error_message ?? null })),
+    runs: runs.map((row) => ({ id: row.id, messageId: row.message_id, scheduleId: row.schedule_id ?? null, status: row.module_paused_at ? "paused" : row.status, total: Number(row.total_count), sent: Number(row.sent_count), failed: Number(row.failed_count), typingEnabled: Boolean(row.typing_enabled), minDelayMs: Number(row.min_delay_ms), maxDelayMs: Number(row.max_delay_ms), createdAt: new Date(row.created_at).toISOString(), startedAt: row.started_at ? new Date(row.started_at).toISOString() : null, completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null, error: row.error_message ?? null })),
     latestRunContacts: latestRunContacts.map((row) => ({ id: row.id, runId: row.run_id, contactId: row.contact_id, position: Number(row.position), phone: row.phone, name: row.name ?? "", status: row.status, scheduledAt: row.scheduled_at ? new Date(row.scheduled_at).toISOString() : null, startedAt: row.started_at ? new Date(row.started_at).toISOString() : null, completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null, error: row.error_message ?? null })),
     googleSheet: list.google_sheet_url ? { configured: true, url: list.google_sheet_url, mapping: parseJsonRecord(list.google_sheet_mapping_json ?? null), lastSyncedAt: list.google_sheet_last_synced_at ? new Date(list.google_sheet_last_synced_at).toISOString() : null } : { configured: false },
   };
@@ -899,6 +904,12 @@ const recipientMentions = async (client: WuzapiClient, contact: BroadcastContact
 const processRun = async (runId: string, body: string, payload: BroadcastPayload, contacts: BroadcastRunRecipient[], client: WuzapiClient, typing: boolean, minDelay: number, maxDelay: number) => {
   const db = getDb();
   try {
+    const [ownerRows] = await db.query<RowDataPacket[]>("SELECT user_id FROM bot_broadcast_runs WHERE id=? LIMIT 1", [runId]);
+    const ownerId = Number(ownerRows[0]?.user_id || 0);
+    if (!ownerId || !await isUserModuleEnabled(ownerId, "broadcasts")) {
+      await db.query("UPDATE bot_broadcast_runs SET status='queued',module_paused_at=COALESCE(module_paused_at,CURRENT_TIMESTAMP),error_message=NULL WHERE id=? AND status IN ('queued','running')", [runId]);
+      return;
+    }
     await db.query("UPDATE bot_broadcast_runs SET status='running',started_at=COALESCE(started_at,CURRENT_TIMESTAMP) WHERE id=?", [runId]);
     const [counterRows] = await db.query<RowDataPacket[]>("SELECT sent_count,failed_count FROM bot_broadcast_runs WHERE id=? LIMIT 1", [runId]);
     let sent = Number(counterRows[0]?.sent_count ?? 0);
@@ -918,6 +929,11 @@ const processRun = async (runId: string, body: string, payload: BroadcastPayload
     }
     await db.query("UPDATE bot_broadcast_run_contacts SET status='sending',started_at=CURRENT_TIMESTAMP,scheduled_at=COALESCE(scheduled_at,CURRENT_TIMESTAMP) WHERE run_id=? AND position=?", [runId, contact.runPosition]);
     try {
+      if (!await isUserModuleEnabled(ownerId, "broadcasts")) {
+        await db.query("UPDATE bot_broadcast_run_contacts SET status='pending',started_at=NULL WHERE run_id=? AND position=?", [runId, contact.runPosition]);
+        await db.query("UPDATE bot_broadcast_runs SET status='queued',module_paused_at=COALESCE(module_paused_at,CURRENT_TIMESTAMP),error_message=NULL WHERE id=?", [runId]);
+        return;
+      }
       const mentions = await recipientMentions(client, contact);
       if (typing) {
         await sendChatPresence(client, { to: contact.jid, state: "composing" });
@@ -993,6 +1009,7 @@ const launchBroadcastRun = (
 };
 
 export const startBroadcastRun = async (userId: number, instanceId: number, listId: string, input: { body?: unknown; media?: unknown; buttons?: unknown; variables?: unknown; messageVariants?: unknown; quietHours?: unknown; pacing?: unknown; typingEnabled?: unknown; minDelayMs?: unknown; maxDelayMs?: unknown; cloneFromMessageId?: unknown; reuseMessageId?: unknown; scheduleId?: unknown }) => {
+  await assertPanelModuleAccess({ userId, scope: "user", moduleId: "broadcasts", isAdmin: false });
   const data = await getBroadcastList(userId, instanceId, listId);
   if (!data) throw new Error("Lista não encontrada.");
   const body = text(input.body, 4_096);
@@ -1235,6 +1252,7 @@ export const updateBroadcastSchedule = async (
     updates.push("status=?");
     values.push(enabled ? "pending" : "cancelled");
     if (enabled) {
+      updates.push("module_paused_at=NULL");
       const existing = new Date(row.scheduled_for).getTime();
       if (!Number.isFinite(existing) || existing < Date.now() + 30_000) {
         const recurrence = Number(input.recurrenceMinutes ?? row.recurrence_minutes ?? 0);
@@ -1264,11 +1282,25 @@ export const deleteBroadcastSchedule = async (userId: number, instanceId: number
   return result.affectedRows > 0;
 };
 
+export const resumeBroadcastRun = async (userId: number, instanceId: number, listId: string, runId: string) => {
+  const list = await ensureListAccess(userId, instanceId, listId);
+  if (!list) throw new Error("Lista não encontrada.");
+  await assertPanelModuleAccess({ userId, scope: "user", moduleId: "broadcasts", isAdmin: false });
+  const db = getDb();
+  const [result] = await db.query<ResultSetHeader>(
+    "UPDATE bot_broadcast_runs SET status='queued',module_paused_at=NULL,error_message=NULL WHERE id=? AND list_id=? AND user_id=? AND instance_id=? AND module_paused_at IS NOT NULL AND status IN ('queued','running')",
+    [runId, listId, userId, instanceId],
+  );
+  if (!result.affectedRows) throw new Error("Este envio não está pausado ou já foi concluído.");
+  return { resumed: true };
+};
+
 export const dispatchDueBroadcastSchedules = async () => {
   await ensureTables();
   const db = getDb();
-  const [rows] = await db.query<RowDataPacket[]>("SELECT id,list_id,user_id,instance_id,body,payload_json,typing_enabled,min_delay_ms,max_delay_ms,scheduled_for,recurrence_minutes,message_id FROM bot_broadcast_schedules WHERE status='pending' AND scheduled_for<=CURRENT_TIMESTAMP ORDER BY scheduled_for ASC LIMIT 8");
+  const [rows] = await db.query<RowDataPacket[]>("SELECT id,list_id,user_id,instance_id,body,payload_json,typing_enabled,min_delay_ms,max_delay_ms,scheduled_for,recurrence_minutes,message_id FROM bot_broadcast_schedules WHERE status='pending' AND module_paused_at IS NULL AND scheduled_for<=CURRENT_TIMESTAMP ORDER BY scheduled_for ASC LIMIT 8");
   for (const row of rows) {
+    if (!await isUserModuleEnabled(Number(row.user_id), "broadcasts")) continue;
     const payload = parsePayload(row.payload_json);
     const quietDelay = quietHoursDelayMs(payload.quietHours);
     if (quietDelay > 0) {
@@ -1324,7 +1356,7 @@ export const dispatchDueBroadcastRuns = async () => {
     SELECT r.id,r.user_id,r.instance_id,r.message_id,r.typing_enabled,r.min_delay_ms,r.max_delay_ms,m.body,m.payload_json
       FROM bot_broadcast_runs r
       INNER JOIN bot_broadcast_messages m ON m.id=r.message_id
-     WHERE r.status='queued'
+       WHERE r.status='queued' AND r.module_paused_at IS NULL
        AND EXISTS (
          SELECT 1 FROM bot_broadcast_run_contacts rc
           WHERE rc.run_id=r.id AND rc.status='pending'
@@ -1339,6 +1371,7 @@ export const dispatchDueBroadcastRuns = async () => {
      LIMIT 12
   `);
   for (const row of rows) {
+    if (!await isUserModuleEnabled(Number(row.user_id), "broadcasts")) continue;
     const runId = String(row.id);
     if (activeBroadcastRuns.has(runId)) continue;
     const [claim] = await db.query<ResultSetHeader>("UPDATE bot_broadcast_runs SET status='running' WHERE id=? AND status='queued'", [runId]);

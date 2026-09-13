@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getCurrentUser } from "lib/auth";
 import { getInstanceForUser } from "lib/bot-instances";
-import { deleteBroadcastSchedule, scheduleBroadcastRun, updateBroadcastSchedule } from "lib/broadcast-lists";
+import { deleteBroadcastSchedule, resumeBroadcastRun, scheduleBroadcastRun, updateBroadcastSchedule } from "lib/broadcast-lists";
 
 type Context = { params: Promise<{ instanceId: string; listId: string }> };
 export async function POST(request: Request, context: Context) {
@@ -21,6 +21,11 @@ export async function PATCH(request: Request, context: Context) {
     if (!Number.isFinite(instanceId) || !listId || !await getInstanceForUser(user.id, instanceId)) return NextResponse.json({ message: "Lista ou perfil não encontrado." }, { status: 404 });
     const body = await request.json().catch(() => ({}));
     const scheduleId = body && typeof body === "object" ? String((body as Record<string, unknown>).scheduleId ?? "") : "";
+    const runId = body && typeof body === "object" ? String((body as Record<string, unknown>).runId ?? "") : "";
+    if (body && typeof body === "object" && (body as Record<string, unknown>).action === "resume-run") {
+      if (!runId) return NextResponse.json({ message: "Informe o envio pausado." }, { status: 400 });
+      return NextResponse.json(await resumeBroadcastRun(user.id, instanceId, listId, runId));
+    }
     if (!scheduleId) return NextResponse.json({ message: "Informe a programação." }, { status: 400 });
     return NextResponse.json(await updateBroadcastSchedule(user.id, instanceId, listId, scheduleId, body as Record<string, unknown>));
   } catch (error) { return NextResponse.json({ message: error instanceof Error ? error.message : "Não consegui atualizar a programação." }, { status: 400 }); }

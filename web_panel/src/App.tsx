@@ -9642,6 +9642,30 @@ function LegacyBroadcastWorkspace({
       setBusy(false);
     }
   };
+  const resumePausedTransmission = async (item: JsonRecord) => {
+    if (!selectedInstance || !selectedId || busy) return;
+    setBusy(true);
+    setError("");
+    try {
+      if (String(item.kind || "schedule") === "run") {
+        await api.updateBroadcastSchedule(selectedInstance, selectedId, {
+          action: "resume-run",
+          runId: String(item.id || ""),
+        });
+      } else {
+        await api.updateBroadcastSchedule(selectedInstance, selectedId, {
+          scheduleId: String(item.id || ""),
+          enabled: true,
+        });
+      }
+      setNotice("Transmissão ativada. O envio continuará somente após esta confirmação.");
+      await openList(selectedId);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível ativar a transmissão.");
+    } finally {
+      setBusy(false);
+    }
+  };
   return (
     <main className="module broadcast-workspace">
       <header className="module-header">
@@ -9962,13 +9986,36 @@ function LegacyBroadcastWorkspace({
                           <b>{dateText(item.scheduledFor)}</b>
                           <small>{String(item.body || "Mídia")}</small>
                         </span>
-                        <strong>{String(item.status || "pending")}</strong>
+                        <span className="broadcast-history-status">
+                          <strong>{String(item.status || "pending")}</strong>
+                          {String(item.status) === "paused" && (
+                            <button
+                              type="button"
+                              className="secondary-button"
+                              disabled={busy}
+                              onClick={() => void resumePausedTransmission({ ...item, kind: "schedule" })}
+                            >
+                              Ativar envio
+                            </button>
+                          )}
+                        </span>
                       </div>
                     ))
                   ) : (
                     <p className="settings-muted">
                       Nenhum agendamento nesta lista.
                     </p>
+                  )}
+                  {runs.some((item) => String(item.status) === "paused") && (
+                    <div className="broadcast-paused-runs">
+                      <b>Envios pausados pelo módulo</b>
+                      {runs.filter((item) => String(item.status) === "paused").map((item, index) => (
+                        <div key={String(item.id || index)}>
+                          <span>Envio {String(item.id || "").slice(0, 8)} · {Number(item.sent || 0)}/{Number(item.total || 0)} enviados</span>
+                          <button type="button" className="secondary-button" disabled={busy} onClick={() => void resumePausedTransmission({ ...item, kind: "run" })}>Ativar envio</button>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </section>
               </>

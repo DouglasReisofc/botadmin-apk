@@ -29,6 +29,35 @@ export type ResolvedPanelModule = PanelModuleDefinition & {
 
 let ensurePromise: Promise<void> | null = null;
 
+// Existing accounts predate the module catalog. Infer an initial preference only
+// when the owner has never explicitly enabled/disabled that module.
+const legacyModuleSources: Record<string, readonly string[]> = {
+  broadcasts: ["bot_broadcast_lists", "bot_ad_campaigns"],
+  raffles: ["user_raffles"],
+  store: ["bot_stores"],
+  affiliates: ["affiliate_product_links", "affiliate_provider_connections"],
+  flows: ["bot_flows"],
+  payments: ["user_payment_methods"],
+};
+
+const existingUserModules = async (userId: number, ids: readonly string[]): Promise<Set<string>> => {
+  const db = getDb();
+  const found = await Promise.all(ids.map(async (id) => {
+    for (const table of legacyModuleSources[id] || []) {
+      try {
+        const [rows] = await db.query<RowDataPacket[]>(`SELECT 1 AS found FROM ${table} WHERE user_id=? LIMIT 1`, [userId]);
+        if (rows.length) return id;
+      } catch (error) {
+        // Fresh installations can legitimately lack tables for unused modules.
+        const code = String((error as { code?: unknown })?.code || "");
+        if (code !== "ER_NO_SUCH_TABLE" && code !== "42P01") throw error;
+      }
+    }
+    return null;
+  }));
+  return new Set(found.filter((id): id is string => id !== null));
+};
+
 export const ensurePanelModuleTables = async (): Promise<void> => {
   if (ensurePromise) return ensurePromise;
   ensurePromise = (async () => {
@@ -146,12 +175,16 @@ export const resolvePanelModules = async (options: {
   );
   const preferences = new Map(rows.map((row) => [String(row.module_key), row]));
   const definitions = getPanelModules(options.scope);
+  const existing = options.scope === "user"
+    ? await existingUserModules(options.userId, definitions.filter((item) => !preferences.has(item.id) && item.id in legacyModuleSources).map((item) => item.id))
+    : new Set<string>();
+  const preferred = (definition: PanelModuleDefinition) => {
+    const preference = preferences.get(definition.id);
+    return preference ? Number(preference.enabled) === 1 : definition.defaultEnabled || existing.has(definition.id);
+  };
   const enabledIds = new Set(
     definitions
-      .filter((definition) => {
-        const preference = preferences.get(definition.id);
-        return preference ? Number(preference.enabled) === 1 : definition.defaultEnabled;
-      })
+      .filter(preferred)
       .map((definition) => definition.id),
   );
   const plan = options.scope === "user" && !options.isAdmin
@@ -163,9 +196,7 @@ export const resolvePanelModules = async (options: {
     .map((definition, index) => {
       const preference = preferences.get(definition.id);
       const access = availabilityFor(definition, enabledIds, plan, options.isAdmin, options.userId, globalStates.get(definition.id));
-      const preferredEnabled = preference
-        ? Number(preference.enabled) === 1
-        : definition.defaultEnabled;
+      const preferredEnabled = preferred(definition);
       return {
         ...definition,
         enabled: preferredEnabled && access.availability === "available",
@@ -202,19 +233,50 @@ export const savePanelModulePreference = async (options: {
   const db = getDb();
   const previous = moduleState?.enabled || false;
   const nextPinned = options.enabled;
-  await db.query(
-    `INSERT INTO user_panel_modules (user_id, panel_scope, module_key, enabled, menu_order, pinned)
-     VALUES (?, ?, ?, ?, ?, ?)
-     ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), pinned = VALUES(pinned), updated_at = CURRENT_TIMESTAMP`,
-    [options.userId, options.scope, options.moduleId, options.enabled ? 1 : 0, moduleState?.order || 0, nextPinned ? 1 : 0],
-  );
-  await db.query(
-    `INSERT INTO panel_module_audit_logs
-      (actor_user_id, target_user_id, panel_scope, module_key, action, previous_value, next_value)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
-    [options.actorUserId, options.userId, options.scope, options.moduleId, options.enabled ? "module.enabled" : "module.disabled", JSON.stringify({ enabled: previous, pinned: moduleState?.pinned || false }), JSON.stringify({ enabled: options.enabled, pinned: nextPinned })],
-  );
+  if (options.scope === "user" && options.moduleId === "broadcasts" && !options.enabled) {
+    // Prepare the additive pause columns before opening the transaction.
+    await (await import("lib/broadcast-lists")).ensureBroadcastTables();
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      `INSERT INTO user_panel_modules (user_id, panel_scope, module_key, enabled, menu_order, pinned)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), pinned = VALUES(pinned), updated_at = CURRENT_TIMESTAMP`,
+      [options.userId, options.scope, options.moduleId, options.enabled ? 1 : 0, moduleState?.order || 0, nextPinned ? 1 : 0],
+    );
+    if (options.scope === "user" && options.moduleId === "broadcasts" && !options.enabled) {
+      await connection.query(
+        `UPDATE bot_broadcast_schedules SET module_paused_at=CURRENT_TIMESTAMP
+          WHERE user_id=? AND module_paused_at IS NULL AND status='pending'`,
+        [options.userId],
+      );
+      await connection.query(
+        `UPDATE bot_broadcast_runs SET module_paused_at=CURRENT_TIMESTAMP
+          WHERE user_id=? AND module_paused_at IS NULL AND status IN ('queued','running')`,
+        [options.userId],
+      );
+    }
+    await connection.query(
+      `INSERT INTO panel_module_audit_logs
+        (actor_user_id, target_user_id, panel_scope, module_key, action, previous_value, next_value)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [options.actorUserId, options.userId, options.scope, options.moduleId, options.enabled ? "module.enabled" : "module.disabled", JSON.stringify({ enabled: previous, pinned: moduleState?.pinned || false }), JSON.stringify({ enabled: options.enabled, pinned: nextPinned })],
+    );
+    await connection.commit();
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
+  }
   return resolvePanelModules({ userId: options.userId, scope: options.scope, isAdmin: options.isAdmin });
+};
+
+export const isUserModuleEnabled = async (userId: number, moduleId: string): Promise<boolean> => {
+  const modules = await resolvePanelModules({ userId, scope: "user", isAdmin: false });
+  return modules.find((item) => item.id === moduleId)?.enabled === true;
 };
 
 export const savePanelModuleLayout = async (options: {
