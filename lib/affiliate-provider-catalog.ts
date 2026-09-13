@@ -98,10 +98,11 @@ export const AFFILIATE_PROVIDER_CATALOG: Record<AffiliateProviderKey, AffiliateP
 
 export const AFFILIATE_PROVIDER_ORDER = Object.keys(AFFILIATE_PROVIDER_CATALOG) as AffiliateProviderKey[];
 
-/** Provedores implementados e disponíveis para uso no painel do cliente. */
-export const AFFILIATE_USER_PROVIDER_ORDER = AFFILIATE_PROVIDER_ORDER.filter(
-  (provider) => AFFILIATE_PROVIDER_CATALOG[provider].implemented,
-);
+/** Provedores liberados para uso do cliente neste momento. */
+export const AFFILIATE_USER_PROVIDER_ORDER: AffiliateProviderKey[] = [
+  "mercadolivre",
+  "shopee",
+];
 
 export const resolveAffiliateProviderKey = (providerRaw: string): AffiliateProviderKey | null => {
   const normalized = String(providerRaw || "").trim().toLowerCase();
