@@ -18,6 +18,25 @@ const admin = async () => {
   return user && user.role === "admin" ? user : null;
 };
 
+const isSameOrigin = (request: Request): boolean => {
+  const origin = request.headers.get("origin");
+  if (!origin) return true;
+  try {
+    const originUrl = new URL(origin);
+    const requestUrl = new URL(request.url);
+    const host =
+      request.headers.get("x-forwarded-host")?.split(",")[0]?.trim() ||
+      request.headers.get("host") ||
+      requestUrl.host;
+    const protocol =
+      request.headers.get("x-forwarded-proto")?.split(",")[0]?.trim() ||
+      requestUrl.protocol.replace(":", "");
+    return originUrl.host === host && originUrl.protocol === `${protocol}:`;
+  } catch {
+    return false;
+  }
+};
+
 export async function GET() {
   try {
     if (!(await admin())) return NextResponse.json({ message: "Acesso restrito." }, { status: 403 });
@@ -30,7 +49,9 @@ export async function GET() {
 
 export async function PATCH(request: Request) {
   try {
-    if (!(await admin())) return NextResponse.json({ message: "Acesso restrito." }, { status: 403 });
+    const actor = await admin();
+    if (!actor) return NextResponse.json({ message: "Acesso restrito." }, { status: 403 });
+    if (!isSameOrigin(request)) return NextResponse.json({ message: "Origem inválida." }, { status: 403 });
     const body: unknown = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return NextResponse.json({ message: "Dados inválidos." }, { status: 400 });
     const input = body as Record<string, unknown>;
@@ -48,6 +69,7 @@ export async function PATCH(request: Request) {
       return NextResponse.json({ message: "A liberação deve estar entre 0 e 100%." }, { status: 400 });
     }
     const state = await saveGlobalPanelModuleState({
+      actorUserId: actor.id,
       moduleId,
       enabled: input.enabled as boolean | undefined,
       lifecycle: lifecycle as "active" | "beta" | "maintenance" | "coming_soon" | undefined,

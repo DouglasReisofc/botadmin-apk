@@ -1,7 +1,7 @@
 import type { RowDataPacket } from "mysql2";
 
 import { getDb } from "lib/db";
-import { getUserPlanStatus } from "lib/plans";
+import { DEFAULT_PLAN_FEATURES, getUserPlanStatus } from "lib/plans";
 import { ensurePanelModuleGovernanceTable, getGlobalPanelModuleStates, type GlobalPanelModuleState } from "lib/panel-module-governance";
 import {
   getPanelModule,
@@ -84,7 +84,11 @@ const featureEnabled = (
   if (feature === "allow_flows") {
     return Boolean(plan.plan.allowFlows || plan.plan.features.fluxos);
   }
-  return Boolean(plan.plan.features[feature]);
+  const configured = plan.plan.features[feature];
+  if (configured === undefined && feature in DEFAULT_PLAN_FEATURES) {
+    return DEFAULT_PLAN_FEATURES[feature] === true;
+  }
+  return Boolean(configured);
 };
 
 const availabilityFor = (

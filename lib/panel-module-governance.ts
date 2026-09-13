@@ -32,6 +32,17 @@ export const ensurePanelModuleGovernanceTable = async (): Promise<void> => {
       rollout_percent INTEGER NOT NULL DEFAULT 100,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
     )`);
+    await db.query(`CREATE TABLE IF NOT EXISTS panel_module_audit_logs (
+      id BIGINT NOT NULL AUTO_INCREMENT PRIMARY KEY,
+      actor_user_id BIGINT NOT NULL,
+      target_user_id BIGINT NOT NULL,
+      panel_scope VARCHAR(16) NOT NULL,
+      module_key VARCHAR(40) NOT NULL,
+      action VARCHAR(40) NOT NULL,
+      previous_value TEXT NULL,
+      next_value TEXT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    )`);
     for (const definition of getPanelModules("user")) {
       await db.query(
         `INSERT INTO panel_module_catalog (module_key, enabled, lifecycle, rollout_percent)
@@ -86,6 +97,7 @@ export const getGlobalPanelModuleState = async (moduleId: string): Promise<Globa
 };
 
 export const saveGlobalPanelModuleState = async (options: {
+  actorUserId: number;
   moduleId: string;
   enabled?: boolean;
   lifecycle?: PanelModuleLifecycle;
@@ -104,5 +116,18 @@ export const saveGlobalPanelModuleState = async (options: {
      ON DUPLICATE KEY UPDATE enabled = VALUES(enabled), lifecycle = VALUES(lifecycle), rollout_percent = VALUES(rollout_percent), updated_at = CURRENT_TIMESTAMP`,
     [options.moduleId, enabled ? 1 : 0, lifecycle, rolloutPercent],
   );
-  return (await getGlobalPanelModuleState(options.moduleId))!;
+  const next = (await getGlobalPanelModuleState(options.moduleId))!;
+  await getDb().query(
+    `INSERT INTO panel_module_audit_logs
+      (actor_user_id, target_user_id, panel_scope, module_key, action, previous_value, next_value)
+     VALUES (?, ?, 'admin', ?, 'module.global_updated', ?, ?)`,
+    [
+      options.actorUserId,
+      options.actorUserId,
+      options.moduleId,
+      JSON.stringify(current),
+      JSON.stringify(next),
+    ],
+  );
+  return next;
 };

@@ -41,6 +41,7 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     dependencies: [],
     defaultEnabled: false,
     scopes: ["user"],
+    requiresFeature: "modulo_rifas",
     lifecycle: "active",
   },
   {
@@ -53,6 +54,7 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     dependencies: [],
     defaultEnabled: false,
     scopes: ["user"],
+    requiresFeature: "modulo_loja",
     lifecycle: "active",
   },
   {
@@ -65,6 +67,7 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     dependencies: [],
     defaultEnabled: false,
     scopes: ["user", "admin"],
+    requiresFeature: "modulo_afiliados",
     lifecycle: "active",
   },
   {
@@ -103,6 +106,7 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     dependencies: [],
     defaultEnabled: false,
     scopes: ["user", "admin"],
+    requiresFeature: "modulo_pagamentos",
     lifecycle: "active",
   },
   {

@@ -1324,6 +1324,13 @@ export const adminApi = {
         ? { method, body: JSON.stringify(payload) }
         : undefined,
     ),
+  userModules: (id: number | string, payload?: JsonRecord) =>
+    request<JsonRecord>(
+      `/api/admin/users/${encodeURIComponent(String(id))}/modules`,
+      payload
+        ? { method: "PATCH", body: JSON.stringify(payload) }
+        : undefined,
+    ),
   impersonateUser: (id: number | string) =>
     request<JsonRecord>(`/api/admin/users/${encodeURIComponent(String(id))}/impersonate`, {
       method: "POST",
