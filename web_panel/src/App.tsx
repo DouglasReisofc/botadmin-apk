@@ -1699,7 +1699,7 @@ function Rail({
         <Brand compact />
       </button>
       <nav>
-        {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).map(
+        {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).sort((left, right) => moduleState.ordered([left.section, right.section])[0] === left.section ? -1 : 1).map(
           ({ section: item, label, icon: Icon, dot, dividerBefore }) => (
             <React.Fragment key={item}>
               {dividerBefore && (
@@ -13876,7 +13876,7 @@ export function DashboardApp() {
           onPointerUp={handleMobileNavPointerEnd}
           onPointerCancel={handleMobileNavPointerEnd}
         >
-          {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).map(({ section: item, icon: Icon, label }) => (
+          {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).sort((left, right) => moduleState.ordered([left.section, right.section])[0] === left.section ? -1 : 1).map(({ section: item, icon: Icon, label }) => (
             <button
               type="button"
               key={item}
