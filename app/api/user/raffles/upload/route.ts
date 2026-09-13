@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   deleteUploadedFile,
   resolveUploadedFileUrl,
@@ -32,6 +33,8 @@ export async function POST(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const formData = await request.formData();
     const file = formData.get("file") ?? formData.get("media") ?? formData.get("upload");
@@ -74,6 +77,8 @@ export async function DELETE(request: NextRequest) {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { searchParams } = new URL(request.url);
     const pathParam = searchParams.get("path") ?? searchParams.get("media") ?? "";
@@ -89,4 +94,3 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ message: "Não foi possível remover a mídia." }, { status: 500 });
   }
 }
-

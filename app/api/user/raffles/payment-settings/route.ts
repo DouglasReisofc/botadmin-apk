@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   getMercadoPagoPixConfigForUser,
   getPoloPagPixConfigForUser,
@@ -62,6 +63,8 @@ export async function GET() {
   if (!user) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
+  const blocked = await guardPanelModuleRequest(user, "raffles");
+  if (blocked) return blocked;
 
   try {
     return NextResponse.json({ settings: await loadSettings(user.id) });
@@ -79,6 +82,8 @@ export async function PUT(request: Request) {
   if (!user) {
     return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
   }
+  const blocked = await guardPanelModuleRequest(user, "raffles");
+  if (blocked) return blocked;
 
   const body = (await request.json().catch(() => null)) as
     | Record<string, unknown>

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   dispatchRaffleFinalization,
   drawUserRaffle,
@@ -39,6 +40,8 @@ export async function POST(
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { raffleId: rawId } = await context.params;
     const raffleId = Number.parseInt(rawId, 10);

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import { resolveUploadedFileUrl, saveUploadedFile } from "lib/uploads";
 
 export async function POST(request: NextRequest) {
@@ -12,6 +13,8 @@ export async function POST(request: NextRequest) {
         { status: 401 },
       );
     }
+    const blocked = await guardPanelModuleRequest(user, "store");
+    if (blocked) return blocked;
     const form = await request.formData();
     const file = form.get("file");
     if (!(file instanceof File) || file.size <= 0) {

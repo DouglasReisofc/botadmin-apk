@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { getCurrentUser } from "lib/auth";
+import { guardPanelModuleRequest } from "lib/panel-module-http";
 import {
   getUserRaffleByIdForUser,
   summarizeRaffle,
@@ -67,6 +68,8 @@ export async function GET(
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { raffleId: rawId } = await context.params;
     const raffleId = Number.parseInt(rawId, 10);
@@ -98,6 +101,8 @@ export async function PATCH(
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { raffleId: rawId } = await context.params;
     const raffleId = Number.parseInt(rawId, 10);
@@ -142,6 +147,8 @@ export async function PUT(
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { raffleId: rawId } = await context.params;
     const raffleId = Number.parseInt(rawId, 10);
@@ -282,6 +289,8 @@ export async function DELETE(
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+    const blocked = await guardPanelModuleRequest(user, "raffles");
+    if (blocked) return blocked;
 
     const { raffleId: rawId } = await context.params;
     const raffleId = Number.parseInt(rawId, 10);
