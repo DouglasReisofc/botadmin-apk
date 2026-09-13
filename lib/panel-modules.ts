@@ -94,7 +94,6 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     // A API REST é a única extensão ativada por padrão; os demais módulos são opt-in.
     defaultEnabled: true,
     scopes: ["user"],
-    requiresFeature: "api",
     lifecycle: "active",
   },
   {

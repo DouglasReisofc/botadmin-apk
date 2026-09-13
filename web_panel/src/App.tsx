@@ -340,6 +340,7 @@ const navigation: Array<{
   { section: "affiliates", label: "Afiliados", icon: Tag },
   { section: "payments", label: "Pagamentos", icon: BadgeDollarSign },
   { section: "api", label: "API REST", icon: Webhook },
+  { section: "broadcasts", label: "Transmissão", icon: RadioTower },
   { section: "modules", label: "Módulos", icon: LayoutGrid },
 ];
 
