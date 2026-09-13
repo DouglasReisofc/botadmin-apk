@@ -4,8 +4,7 @@
 .panel-modules { flex: 1; min-width: 0; overflow: auto; padding: clamp(20px, 3vw, 40px); color: #24333d; background-color: #f4faf8; background-image: linear-gradient(#00856c05 1px, transparent 1px), linear-gradient(90deg,#00856c05 1px,transparent 1px); background-size: 40px 40px; }
 .panel-modules > header { display:flex; align-items:center; gap:14px; margin:0 0 12px; }
 .panel-modules-heading-icon { display:grid; place-items:center; width:50px; height:50px; flex-shrink:0; border-radius:16px; color:#00856c; background:#d8f8e9; }
-.panel-modules-kicker { font-size:10px; letter-spacing:.12em; font-weight:800; color:#00856c; }
-.panel-modules h1 { font-size:28px; margin:3px 0; }
+.panel-modules h1 { font-size:28px; line-height:1.15; margin:0 0 4px; }
 .panel-modules p { line-height:1.5; margin:0; color:#647785; }
 .panel-modules-note { font-size:12px; margin-bottom:26px!important; }
 .panel-modules-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr)); gap:24px; }

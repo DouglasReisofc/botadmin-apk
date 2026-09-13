@@ -3577,6 +3577,10 @@ img {
 .instance-identity-modal {
   width: min(560px, calc(100vw - 24px));
 }
+.profile-pairing-modal {
+  width: min(580px, calc(100vw - 32px));
+  max-height: min(720px, calc(100dvh - 32px));
+}
 .quick-modal.instance-identity-modal {
   width: min(700px, calc(100vw - 24px));
   max-height: min(760px, calc(100dvh - 24px));
@@ -3681,6 +3685,7 @@ img {
 }
 .pairing-modal-content {
   gap: 13px;
+  padding: 16px 18px 18px;
 }
 .pairing-methods {
   display: grid;
@@ -3842,6 +3847,19 @@ img {
   background: #302714;
 }
 @media (max-width: 560px) {
+  .profile-pairing-modal {
+    width: min(100%, calc(100vw - 16px));
+    max-height: calc(100dvh - 16px);
+    border-radius: 13px;
+  }
+  .profile-pairing-modal > header {
+    min-height: 54px;
+    padding-left: 15px;
+  }
+  .pairing-modal-content {
+    padding: 12px;
+    overflow-y: auto;
+  }
   .pairing-methods {
     grid-template-columns: 1fr;
   }

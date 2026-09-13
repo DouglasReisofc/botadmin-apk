@@ -1699,7 +1699,7 @@ function Rail({
         <Brand compact />
       </button>
       <nav>
-        {navigation.filter(item => moduleState.visible(item.section)).map(
+        {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).map(
           ({ section: item, label, icon: Icon, dot, dividerBefore }) => (
             <React.Fragment key={item}>
               {dividerBefore && (
@@ -8860,7 +8860,12 @@ function ProfilesWorkspace({
 }) {
   const [items, setItems] = useState<BotInstance[]>(instances);
   const [selectedId, setSelectedId] = useState<number | null>(
-    instances[0]?.id || null,
+    () => {
+      const remembered = Number(window.localStorage.getItem("botadmin.profile.selected"));
+      return instances.some((item) => item.id === remembered)
+        ? remembered
+        : instances[0]?.id || null;
+    },
   );
   const [profile, setProfile] = useState<JsonRecord | null>(null);
   const [proxy, setProxy] = useState<JsonRecord | null>(null);
@@ -8908,8 +8913,17 @@ function ProfilesWorkspace({
   }, []);
   useEffect(() => {
     setItems(instances);
-    if (!selectedId && instances[0]?.id) setSelectedId(instances[0].id);
+    setSelectedId((current) => {
+      const next = current && instances.some((item) => item.id === current)
+        ? current
+        : instances[0]?.id || null;
+      if (next !== null) window.localStorage.setItem("botadmin.profile.selected", String(next));
+      return next;
+    });
   }, [instances, selectedId]);
+  useEffect(() => {
+    if (selectedId !== null) window.localStorage.setItem("botadmin.profile.selected", String(selectedId));
+  }, [selectedId]);
   useEffect(() => {
     if (!selected) {
       setProfile(null);
@@ -8927,6 +8941,10 @@ function ProfilesWorkspace({
       .then(([profileResult, proxyResult, settingsResult]) => {
         const nextProfile = profileResult.profile || null;
         setProfile(nextProfile);
+        const avatar = textOf(nextProfile?.avatarUrl || nextProfile?.profilePictureUrl);
+        if (avatar) {
+          setItems((current) => current.map((item) => item.id === selected.id ? { ...item, avatarUrl: avatar } : item));
+        }
         setProxy(proxyResult.proxy || null);
         setInstanceSettings(settingsResult.settings || {});
         setInstanceStorage(settingsResult.storage || null);
@@ -13858,7 +13876,7 @@ export function DashboardApp() {
           onPointerUp={handleMobileNavPointerEnd}
           onPointerCancel={handleMobileNavPointerEnd}
         >
-          {navigation.filter(item => moduleState.visible(item.section)).map(({ section: item, icon: Icon, label }) => (
+          {navigation.filter(item => item.section !== "payments" && moduleState.visible(item.section)).map(({ section: item, icon: Icon, label }) => (
             <button
               type="button"
               key={item}

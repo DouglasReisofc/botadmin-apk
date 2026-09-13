@@ -1231,7 +1231,7 @@ function SettingsWorkspace({ onToast }: { onToast: (message: string, success?: b
 
 function AdminShell({ onLogout, userId }: { onLogout: () => void; userId: number }) {
   const moduleState = usePanelModules(userId, "admin");
-  const visibleRail = ADMIN_RAIL_NAV.map(item => ({ ...item, sections: item.sections.filter(id => moduleState.visible(id)) })).filter(item => item.sections.length > 0);
+  const visibleRail = ADMIN_RAIL_NAV.map(item => ({ ...item, sections: item.sections.filter(id => id !== "payments" && moduleState.visible(id)) })).filter(item => item.sections.length > 0);
   const [section, setSection] = useState<AdminSection>(sectionFromUrl);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
@@ -1260,7 +1260,7 @@ function AdminShell({ onLogout, userId }: { onLogout: () => void; userId: number
   const railMenu = activeRail.sections.map(adminNav);
   const normalizedSearch = menuSearch.trim().toLocaleLowerCase("pt-BR");
   const visibleMenu = normalizedSearch
-    ? ADMIN_NAV.filter((item) => moduleState.visible(item.id) && `${item.label} ${item.subtitle}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch))
+    ? ADMIN_NAV.filter((item) => item.id !== "payments" && moduleState.visible(item.id) && `${item.label} ${item.subtitle}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch))
     : railMenu;
   const content = section === "modules" ? <PanelModules state={moduleState} items={ADMIN_NAV.filter(item => (PANEL_MODULES.admin as readonly string[]).includes(item.id)).map(item => ({ id: item.id, label: item.label, description: item.subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.id}.webp` }))} onOpen={id => changeSection(id as AdminSection)} />
     : section === "dashboard" ? <AdminDashboardWorkspace nav={adminNav("dashboard")} onToast={onToast} />

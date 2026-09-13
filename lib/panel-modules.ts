@@ -1,6 +1,6 @@
 export const PANEL_MODULES = {
-  user: ["raffles", "store", "affiliates", "flows", "api"],
-  admin: ["affiliates", "campaigns", "mega", "botinterage"],
+  user: ["raffles", "store", "affiliates", "flows", "api", "payments"],
+  admin: ["affiliates", "campaigns", "mega", "botinterage", "payments"],
 } as const;
 
 export function validModulePreference(value: unknown): value is { scope: "user" | "admin"; module: string; enabled: boolean } {
