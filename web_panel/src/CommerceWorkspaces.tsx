@@ -903,6 +903,9 @@ const AFFILIATE_PLATFORMS = [
   },
 ] as const;
 type AffiliateProvider = (typeof AFFILIATE_PLATFORMS)[number]["id"];
+const SUPPORTED_AFFILIATE_PROVIDER_IDS = new Set<AffiliateProvider>(
+  AFFILIATE_PLATFORMS.map((item) => item.id),
+);
 const affiliateProviderLabel = (provider: string) =>
   AFFILIATE_PLATFORMS.find((item) => item.id === provider)?.label || provider;
 
@@ -2230,7 +2233,16 @@ export function AffiliatesWorkspace() {
         api.affiliateMessageTemplate("mercadolivre"),
         api.affiliateMlResolver().catch(() => ({ resolver: {} })),
       ]);
-      setProviders(listOf(providerResult, ["providers"]));
+      // A versão antiga da API podia devolver o catálogo inteiro, incluindo
+      // integrações futuras. Não deixe esses provedores aparecerem como se
+      // estivessem disponíveis para o cliente.
+      setProviders(
+        listOf(providerResult, ["providers"]).filter((item) =>
+          SUPPORTED_AFFILIATE_PROVIDER_IDS.has(
+            text(item.provider) as AffiliateProvider,
+          ),
+        ),
+      );
       setLinks([
         ...listOf(shopee, ["links"]).map((item) => ({
           ...item,
@@ -2646,9 +2658,17 @@ export function AffiliatesWorkspace() {
             </div>
           )}
         </>
-      ) : providers.length ? (
+      ) : providers.filter((item) =>
+        SUPPORTED_AFFILIATE_PROVIDER_IDS.has(
+          text(item.provider) as AffiliateProvider,
+        ),
+      ).length ? (
         <div className="affiliate-account-list">
-          {providers.map((provider, index) => {
+          {providers.filter((item) =>
+            SUPPORTED_AFFILIATE_PROVIDER_IDS.has(
+              text(item.provider) as AffiliateProvider,
+            ),
+          ).map((provider, index) => {
             const key = text(provider.provider, `conta-${index}`);
             const accounts = listOf(provider, ["accounts", "connections"]);
             return (

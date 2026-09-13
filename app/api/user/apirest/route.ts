@@ -7,6 +7,7 @@ import {
   rotateUserApiKey,
   setUserApiKey,
 } from "lib/user-api-keys";
+import { API_REST_ENDPOINTS } from "lib/api-rest-catalog";
 
 const serialize = (record: Awaited<ReturnType<typeof getOrCreateUserApiKey>>) => ({
   apiKey: record.apiKey,
@@ -16,6 +17,7 @@ const serialize = (record: Awaited<ReturnType<typeof getOrCreateUserApiKey>>) =>
   resetAt: record.resetAt ? record.resetAt.toISOString() : null,
   rotationLockedUntil: record.rotationLockedUntil ? record.rotationLockedUntil.toISOString() : null,
   updatedAt: record.updatedAt.toISOString(),
+  endpoints: API_REST_ENDPOINTS,
 });
 
 export async function GET() {

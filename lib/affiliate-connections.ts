@@ -3,7 +3,12 @@ import crypto from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2";
 
 import { getAffiliateProviderRuntimeConfig, getAffiliateProviderRuntimeConfigMap } from "lib/admin-affiliate-providers";
-import { AFFILIATE_PROVIDER_CATALOG, AFFILIATE_PROVIDER_ORDER, resolveAffiliateProviderKey } from "lib/affiliate-provider-catalog";
+import {
+  AFFILIATE_PROVIDER_CATALOG,
+  AFFILIATE_PROVIDER_ORDER,
+  AFFILIATE_USER_PROVIDER_ORDER,
+  resolveAffiliateProviderKey,
+} from "lib/affiliate-provider-catalog";
 import { ensureUserTable, getDb } from "lib/db";
 import type {
   AffiliateConnectionStatus,
@@ -1138,7 +1143,7 @@ export const listAffiliateProvidersForUser = async (userId: number): Promise<Aff
     }
 
     const runtimeConfigMap = await getAffiliateProviderRuntimeConfigMap();
-    return AFFILIATE_PROVIDER_ORDER.map((providerKey) =>
+    return AFFILIATE_USER_PROVIDER_ORDER.map((providerKey) =>
       rowToProviderSummary(
         providerKey,
         byProvider.get(providerKey) || [],
@@ -1161,7 +1166,7 @@ export const listAffiliateProvidersForUser = async (userId: number): Promise<Aff
     } catch {
       runtimeConfigMap = null;
     }
-    return AFFILIATE_PROVIDER_ORDER.map((providerKey) => {
+    return AFFILIATE_USER_PROVIDER_ORDER.map((providerKey) => {
       const runtime = runtimeConfigMap?.get(providerKey) || null;
       return buildProviderSummaryFallback(providerKey, runtime
         ? {

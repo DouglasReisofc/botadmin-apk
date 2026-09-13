@@ -6543,6 +6543,14 @@ function ApiWorkspace() {
     }
   };
   const key = String(data?.apiKey || "");
+  const endpointCatalog = Array.isArray(data?.endpoints)
+    ? (data.endpoints as JsonRecord[])
+    : [];
+  const endpointUrl = (path: string) => `${API_ORIGIN}${path}`;
+  const copyEndpoint = async (path: string) => {
+    const copied = await copyText(endpointUrl(path));
+    setNotice(copied ? "Endpoint copiado. Envie sua chave no header X-API-Key." : "Não foi possível copiar o endpoint.");
+  };
   const openWebhook = () => {
     setForm({
       verifyToken: String(webhook?.verifyToken || ""),
@@ -6664,6 +6672,56 @@ function ApiWorkspace() {
               <b>{String(data?.dailyQuota ?? 0)}</b> limite diário
             </span>
           </div>
+          <section className="api-endpoints-card" aria-labelledby="api-download-endpoints-title">
+            <header className="api-endpoints-heading">
+              <div>
+                <h2 id="api-download-endpoints-title">Endpoints disponíveis</h2>
+                <p className="settings-muted">Use sua chave no header <code>X-API-Key</code> ou como <code>apikey</code>. Os endpoints cobram a mesma cota diária.</p>
+              </div>
+              <Download aria-hidden="true" />
+            </header>
+            <div className="api-endpoint-list">
+              {endpointCatalog.map((item) => {
+                const path = textOf(item.path);
+                const parameters = Array.isArray(item.parameters) ? item.parameters as JsonRecord[] : [];
+                return (
+                  <article className="api-endpoint-item" key={textOf(item.id, path)}>
+                    <div className="api-endpoint-item__top">
+                      <div>
+                        <span className={`api-endpoint-category ${textOf(item.category) === "utility" ? "utility" : "download"}`}>
+                          {textOf(item.category) === "utility" ? "Utilitário" : "Download"}
+                        </span>
+                        <h3>{textOf(item.title, path)}</h3>
+                        <p>{textOf(item.description)}</p>
+                      </div>
+                      <button className="api-endpoint-copy" type="button" onClick={() => void copyEndpoint(path)} title="Copiar endpoint" aria-label={`Copiar ${textOf(item.title, path)}`}>
+                        <Copy />
+                      </button>
+                    </div>
+                    <code className="api-endpoint-path">GET {path}</code>
+                    {parameters.length > 0 && (
+                      <div className="api-endpoint-params">
+                        {parameters.map((parameter) => (
+                          <span key={textOf(parameter.name)}>
+                            <b>{textOf(parameter.name)}</b>{parameter.required ? " obrigatório" : " opcional"} · {textOf(parameter.description)}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                    <small>{textOf(item.response)}</small>
+                    <code className="api-endpoint-example">{endpointUrl(path)}{textOf(item.example).replace(path, "")}</code>
+                  </article>
+                );
+              })}
+              {!endpointCatalog.length && (
+                <div className="module-state compact">
+                  <Download />
+                  <b>Nenhum endpoint disponível</b>
+                  <p>Atualize a tela para carregar o catálogo da API.</p>
+                </div>
+              )}
+            </div>
+          </section>
         </section>
       ) : (
         <section className="settings-card api-card">
