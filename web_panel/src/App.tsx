@@ -323,9 +323,8 @@ const navigation: Array<{
   dividerBefore?: boolean;
 }> = [
   { section: "conversations", label: "Conversas", icon: MessageCircle },
-  { section: "internalGroups", label: "Grupos BotAdmin", icon: UsersRound },
-  { section: "broadcasts", label: "Transmissão", icon: RadioTower },
   { section: "profiles", label: "Perfis", icon: ContactRound, dot: true },
+  { section: "internalGroups", label: "Grupos BotAdmin", icon: UsersRound },
   { section: "status", label: "Status", icon: CircleDashed, dot: true },
   { section: "media", label: "Mídias", icon: Image, dot: true },
   {
@@ -343,6 +342,32 @@ const navigation: Array<{
   { section: "api", label: "API REST", icon: Webhook },
   { section: "modules", label: "Módulos", icon: LayoutGrid },
 ];
+
+const dashboardNavigationOrder = new Map(
+  navigation.map((item, index) => [item.section, index]),
+);
+
+const sortDashboardNavigation = (
+  items: typeof navigation,
+  moduleState: ReturnType<typeof usePanelModules>,
+) => {
+  const moduleIds = new Set(PANEL_MODULES.user as readonly string[]);
+  const moduleOrder = new Map(moduleState.modules.map((item) => [item.id, item]));
+  return [...items].sort((left, right) => {
+    const leftIsModule = moduleIds.has(left.section);
+    const rightIsModule = moduleIds.has(right.section);
+    if (leftIsModule !== rightIsModule) return leftIsModule ? 1 : -1;
+    if (leftIsModule && rightIsModule) {
+      const leftState = moduleOrder.get(left.section);
+      const rightState = moduleOrder.get(right.section);
+      return Number(Boolean(rightState?.pinned)) - Number(Boolean(leftState?.pinned))
+        || Number(leftState?.order ?? 999) - Number(rightState?.order ?? 999)
+        || left.label.localeCompare(right.label, "pt-BR");
+    }
+    return (dashboardNavigationOrder.get(left.section) ?? 999)
+      - (dashboardNavigationOrder.get(right.section) ?? 999);
+  });
+};
 
 const sectionMeta: Record<
   Section,
@@ -1699,7 +1724,7 @@ function Rail({
         <Brand compact />
       </button>
       <nav>
-        {navigation.filter(item => moduleState.visible(item.section)).sort((left, right) => moduleState.ordered([left.section, right.section])[0] === left.section ? -1 : 1).map(
+        {sortDashboardNavigation(navigation.filter(item => moduleState.visible(item.section)), moduleState).map(
           ({ section: item, label, icon: Icon, dot, dividerBefore }) => (
             <React.Fragment key={item}>
               {dividerBefore && (
@@ -13889,7 +13914,7 @@ export function DashboardApp() {
           onPointerUp={handleMobileNavPointerEnd}
           onPointerCancel={handleMobileNavPointerEnd}
         >
-          {navigation.filter(item => moduleState.visible(item.section)).sort((left, right) => moduleState.ordered([left.section, right.section])[0] === left.section ? -1 : 1).map(({ section: item, icon: Icon, label }) => (
+          {sortDashboardNavigation(navigation.filter(item => moduleState.visible(item.section)), moduleState).map(({ section: item, icon: Icon, label }) => (
             <button
               type="button"
               key={item}

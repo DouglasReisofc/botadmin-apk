@@ -91,9 +91,22 @@ export const PANEL_MODULE_CATALOG: readonly PanelModuleDefinition[] = [
     image: "/botadmin-landing/module-api.webp",
     route: "api",
     dependencies: [],
-    defaultEnabled: false,
+    // A API REST é a única extensão ativada por padrão; os demais módulos são opt-in.
+    defaultEnabled: true,
     scopes: ["user"],
     requiresFeature: "api",
+    lifecycle: "active",
+  },
+  {
+    id: "broadcasts",
+    title: "Transmissão",
+    description: "Listas, modelos, agendamentos e acompanhamento dos envios.",
+    category: "comunicacao",
+    image: "/botadmin-landing/module-campaigns.webp",
+    route: "broadcasts",
+    dependencies: [],
+    defaultEnabled: false,
+    scopes: ["user"],
     lifecycle: "active",
   },
   {

@@ -792,8 +792,13 @@ img {
 }
 .rail button:not(.rail-brand):hover,
 .rail button.active {
-  color: #1f2c33;
-  background: #e1e6e8;
+  color: #073b2d;
+  background: #d5fae7;
+}
+.rail button.active {
+  color: #052d23;
+  background: #39e89d;
+  box-shadow: 0 0 0 2px #00a88455, 0 0 15px #00a884aa;
 }
 .rail button span {
   display: none;
@@ -9434,6 +9439,9 @@ img {
   .mobile-nav button.active {
     color: #00a884;
     font-weight: 700;
+    border-radius: 14px;
+    background: #d5fae7;
+    box-shadow: inset 0 0 0 1px #00a88455, 0 0 10px #00a88455;
   }
   .mobile-nav button:disabled {
     opacity: 0.35;
@@ -12038,6 +12046,12 @@ img {
   background: var(--surface-hover);
 }
 
+.theme-dark .rail button.active {
+  color: #042d22;
+  background: #39e89d;
+  box-shadow: 0 0 0 2px #00a88488, 0 0 16px #00a884cc;
+}
+
 .theme-dark .notification-notice button {
   color: #8ee6d1;
   border-color: #2a7d5f;
@@ -12134,6 +12148,9 @@ img {
 
 .theme-dark .mobile-nav button.active {
   color: #00a884;
+  background: #164c42;
+  border-radius: 14px;
+  box-shadow: inset 0 0 0 1px #00a88488, 0 0 10px #00a88466;
 }
 
 .theme-dark .avatar {
