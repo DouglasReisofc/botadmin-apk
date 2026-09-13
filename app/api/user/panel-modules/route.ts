@@ -24,7 +24,22 @@ const isSameOrigin = (request: Request): boolean => {
   try {
     const requestUrl = new URL(request.url);
     const originUrl = new URL(origin);
-    return originUrl.protocol === requestUrl.protocol && originUrl.host === requestUrl.host;
+    const forwardedHost = request.headers
+      .get("x-forwarded-host")
+      ?.split(",")[0]
+      ?.trim();
+    const forwardedProto = request.headers
+      .get("x-forwarded-proto")
+      ?.split(",")[0]
+      ?.trim();
+    const effectiveHost = forwardedHost || request.headers.get("host") || requestUrl.host;
+    const effectiveProtocol = forwardedProto
+      ? `${forwardedProto.replace(/:$/u, "")}:`
+      : requestUrl.protocol;
+    return (
+      originUrl.protocol === effectiveProtocol &&
+      originUrl.host.toLowerCase() === effectiveHost.toLowerCase()
+    );
   } catch {
     return false;
   }
