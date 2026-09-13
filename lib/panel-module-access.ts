@@ -92,6 +92,7 @@ const availabilityFor = (
   enabledIds: Set<string>,
   plan: Awaited<ReturnType<typeof getUserPlanStatus>> | null,
   isAdmin: boolean,
+  userId: number,
   globalState?: GlobalPanelModuleState,
 ): Pick<ResolvedPanelModule, "availability" | "canEnable" | "reason"> => {
   if (globalState && !globalState.globalEnabled) {
@@ -103,6 +104,17 @@ const availabilityFor = (
   }
   if (lifecycle === "coming_soon") {
     return { availability: "coming_soon", canEnable: false, reason: "Este módulo estará disponível em breve." };
+  }
+  if (!isAdmin && globalState && globalState.rolloutPercent < 100) {
+    let hash = 2166136261;
+    for (const character of `${userId}:${definition.id}`) {
+      hash ^= character.charCodeAt(0);
+      hash = Math.imul(hash, 16777619);
+    }
+    const bucket = (hash >>> 0) % 100;
+    if (bucket >= globalState.rolloutPercent) {
+      return { availability: "plan_locked", canEnable: false, reason: "Este módulo está em liberação gradual." };
+    }
   }
   const missing = definition.dependencies.filter((dependency) => !enabledIds.has(dependency));
   if (missing.length) {
@@ -146,7 +158,7 @@ export const resolvePanelModules = async (options: {
   return definitions
     .map((definition, index) => {
       const preference = preferences.get(definition.id);
-      const access = availabilityFor(definition, enabledIds, plan, options.isAdmin, globalStates.get(definition.id));
+      const access = availabilityFor(definition, enabledIds, plan, options.isAdmin, options.userId, globalStates.get(definition.id));
       const preferredEnabled = preference
         ? Number(preference.enabled) === 1
         : definition.defaultEnabled;
