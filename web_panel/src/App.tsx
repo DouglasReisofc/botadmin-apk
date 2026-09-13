@@ -13741,7 +13741,7 @@ export function DashboardApp() {
       : threads;
   return (
     <div
-      className={`app-shell ${session.isImpersonated ? "has-impersonation" : ""} ${darkTheme ? "theme-dark" : ""} ${mobileChatOpen ? "chat-open" : ""}`}
+      className={`app-shell ${section === "modules" ? "modules-mode" : ""} ${session.isImpersonated ? "has-impersonation" : ""} ${darkTheme ? "theme-dark" : ""} ${mobileChatOpen ? "chat-open" : ""}`}
       style={
         { "--directory-width": `${directoryWidth}px` } as React.CSSProperties
       }
@@ -13832,7 +13832,7 @@ export function DashboardApp() {
           </div>
         </>
       ) : section === "modules" ? (
-        <PanelModules state={moduleState} items={navigation.filter(item => (PANEL_MODULES.user as readonly string[]).includes(item.section)).map(item => ({ id: item.section, label: item.label, description: sectionMeta[item.section].subtitle, icon: item.icon }))} onOpen={id => { setSection(id as Section); persistSectionInUrl(id as Section); }} />
+        <PanelModules state={moduleState} items={navigation.filter(item => (PANEL_MODULES.user as readonly string[]).includes(item.section)).map(item => ({ id: item.section, label: item.label, description: sectionMeta[item.section].subtitle, icon: item.icon, image: `/botadmin-landing/module-${item.section}.webp` }))} onOpen={id => { setSection(id as Section); persistSectionInUrl(id as Section); }} />
       ) : (
         <ModuleWorkspace
           section={section}
