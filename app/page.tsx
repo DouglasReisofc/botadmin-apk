@@ -455,7 +455,10 @@ const LandingPage = async () => {
   const workflowBullets =
     settings.workflowBullets.length > 0 ? settings.workflowBullets : FALLBACK_WORKFLOW_BULLETS;
 
-  const ctaTitle = settings.ctaTitle ?? FALLBACK_CTA_TITLE;
+  const configuredCtaTitle = settings.ctaTitle ?? FALLBACK_CTA_TITLE;
+  const ctaTitle = /pronto para organizar seus grupos/i.test(configuredCtaTitle)
+    ? "Tenha mais controle sobre cada conversa"
+    : configuredCtaTitle;
   const ctaDescription = settings.ctaDescription ?? FALLBACK_CTA_DESCRIPTION;
   const ctaButton =
     settings.ctaButtonLabel && settings.ctaButtonUrl

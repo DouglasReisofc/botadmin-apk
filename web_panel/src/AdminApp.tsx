@@ -1,4 +1,5 @@
 import {
+  LayoutGrid,
   Activity,
   AlertTriangle,
   Bot,
@@ -50,6 +51,8 @@ import {
   type ReactNode,
 } from "react";
 import { adminApi } from "./api";
+import { PanelModules, usePanelModules } from "./PanelModules";
+import { PANEL_MODULES } from "../../lib/panel-modules";
 import type { JsonRecord, SessionUser } from "./api";
 import {
   AdminAffiliatesWorkspace,
@@ -67,6 +70,7 @@ import {
 } from "./AdminAdvancedWorkspaces";
 
 type AdminSection =
+  | "modules"
   | "dashboard"
   | "support"
   | "users"
@@ -91,6 +95,7 @@ type AdminSection =
 type IconComponent = typeof Headphones;
 
 type AdminRailSection =
+  | "modules"
   | "dashboard"
   | "support"
   | "users"
@@ -135,6 +140,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
   { id: "notificacoes", label: "Notificações", subtitle: "SMTP, modelos e cobranças", icon: Bell },
   { id: "linksuteis", label: "Links úteis", subtitle: "Banners e atalhos oficiais", icon: Link2 },
   { id: "tutoriais", label: "Tutoriais", subtitle: "Materiais de apoio", icon: BookOpen },
+  { id: "modules", label: "Módulos", subtitle: "Organize os atalhos do painel", icon: LayoutGrid },
 ];
 
 const ADMIN_RAIL_NAV: AdminRailItem[] = [
@@ -145,6 +151,7 @@ const ADMIN_RAIL_NAV: AdminRailItem[] = [
   { id: "bot", label: "Bot", icon: Bot, sections: ["botinterage", "mega", "groups"] },
   { id: "campaigns", label: "Campanhas", icon: Megaphone, sections: ["campaigns"] },
   { id: "business", label: "Negócios", icon: CreditCard, sections: ["plans", "partners", "payments", "affiliates"] },
+  { id: "modules", label: "Módulos", icon: LayoutGrid, sections: ["modules"] },
   { id: "settings", label: "Configurações", icon: Settings, sections: ["site", "firebase", "aplicativo", "notificacoes", "linksuteis", "tutoriais", "settings"] },
 ];
 
@@ -1222,7 +1229,9 @@ function SettingsWorkspace({ onToast }: { onToast: (message: string, success?: b
   return <div className="admin-module"><AdminPanelHeader item={ADMIN_NAV[8]} onRefresh={() => void load()} actions={<button type="button" className="admin-button admin-button--ghost" onClick={() => setSmtpTestOpen(true)}><Send size={16} />Testar SMTP</button>} />{loading ? <div className="admin-loading"><Activity className="admin-spin" size={22} />Carregando configurações…</div> : <div className="admin-card-grid">{settingCards.map((card) => { const Icon = card.icon; const data = snapshot[card.key] || {}; const source = (data.config || data.settings || data.instance || data) as JsonRecord; const subscriberCount = Array.isArray(data.subscribers) ? data.subscribers.length : 0; const readOnly = card.key === "push"; return <article className="admin-info-card" key={card.key}><div className="admin-info-card__head"><span className="admin-avatar"><Icon size={18} /></span><div><strong>{card.label}</strong><span>{card.description}</span></div>{readOnly ? <span className="admin-readonly-badge">Somente leitura</span> : card.key === "system" ? <button type="button" className="admin-icon-button" onClick={() => setSystemEditorOpen(true)} aria-label="Gerenciar instância operacional"><Pencil size={16} /></button> : <button type="button" className="admin-icon-button" onClick={() => setEditing(card)} aria-label={`Editar ${card.label}`}><Pencil size={16} /></button>}</div><dl><div><dt>{card.key === "push" ? "Inscritos" : "Status"}</dt><dd>{card.key === "push" ? subscriberCount : <AdminStatusPill value={source.isActive === false || source.enabled === false ? "Desativado" : "Configurado"} />}</dd></div><div><dt>Atualizado</dt><dd>{dateTime(source.updatedAt)}</dd></div></dl></article>; })}</div>}{editing ? <AdminModal title={`Editar ${editing.label}`} subtitle={editing.description} onClose={() => setEditing(null)} wide footer={<><button type="button" className="admin-button admin-button--ghost" onClick={() => setEditing(null)}>Cancelar</button><button type="submit" form="settings-form" className="admin-button admin-button--primary">Salvar</button></>}><form id="settings-form" className="admin-form admin-form--grid" onSubmit={save}>{Object.entries(((snapshot[editing.key] || {}).config || (snapshot[editing.key] || {}).settings || (snapshot[editing.key] || {}).instance || snapshot[editing.key] || {}) as JsonRecord).filter(([key, value]) => !/(secret|token|password|privateKey|accessKey)/i.test(key) && ["object", "function"].indexOf(typeof value) < 0).slice(0, 18).map(([key, value]) => <label key={key}>{key}<input name={key} defaultValue={typeof value === "boolean" ? undefined : String(value ?? "")} type={typeof value === "boolean" ? "checkbox" : "text"} defaultChecked={typeof value === "boolean" ? value : undefined} /></label>)}<p className="admin-form-help"><KeyRound size={15} />Credenciais sensíveis permanecem protegidas; use a área específica de pagamentos para revelação autenticada.</p></form></AdminModal> : null}{systemEditorOpen ? <SystemInstanceEditor initial={snapshot.system || {}} onClose={() => setSystemEditorOpen(false)} onSaved={() => void load()} onToast={onToast} /> : null}{smtpTestOpen ? <AdminModal title="Testar SMTP" subtitle="O servidor enviará uma mensagem real para confirmar a entrega." onClose={() => setSmtpTestOpen(false)} footer={<><button type="button" className="admin-button admin-button--ghost" onClick={() => setSmtpTestOpen(false)}>Cancelar</button><button type="submit" form="smtp-test-form" className="admin-button admin-button--primary">Enviar teste</button></>}><form id="smtp-test-form" className="admin-form" onSubmit={sendSmtpTest}><label>E-mail de destino<input type="email" value={smtpTestEmail} onChange={(event) => setSmtpTestEmail(event.currentTarget.value)} autoFocus required /></label></form></AdminModal> : null}</div>;
 }
 
-function AdminShell({ onLogout }: { onLogout: () => void }) {
+function AdminShell({ onLogout, userId }: { onLogout: () => void; userId: number }) {
+  const moduleState = usePanelModules(userId, "admin");
+  const visibleRail = ADMIN_RAIL_NAV.map(item => ({ ...item, sections: item.sections.filter(id => moduleState.visible(id)) })).filter(item => item.sections.length > 0);
   const [section, setSection] = useState<AdminSection>(sectionFromUrl);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [menuSearch, setMenuSearch] = useState("");
@@ -1247,13 +1256,14 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
     url.searchParams.set("section", next);
     window.history.pushState({}, "", url.toString());
   };
-  const activeRail = ADMIN_RAIL_NAV.find((item) => item.sections.includes(section)) || ADMIN_RAIL_NAV[0];
+  const activeRail = visibleRail.find((item) => item.sections.includes(section)) || visibleRail[0];
   const railMenu = activeRail.sections.map(adminNav);
   const normalizedSearch = menuSearch.trim().toLocaleLowerCase("pt-BR");
   const visibleMenu = normalizedSearch
-    ? ADMIN_NAV.filter((item) => `${item.label} ${item.subtitle}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch))
+    ? ADMIN_NAV.filter((item) => moduleState.visible(item.id) && `${item.label} ${item.subtitle}`.toLocaleLowerCase("pt-BR").includes(normalizedSearch))
     : railMenu;
-  const content = section === "dashboard" ? <AdminDashboardWorkspace nav={adminNav("dashboard")} onToast={onToast} />
+  const content = section === "modules" ? <PanelModules state={moduleState} items={ADMIN_NAV.filter(item => (PANEL_MODULES.admin as readonly string[]).includes(item.id)).map(item => ({ id: item.id, label: item.label, description: item.subtitle, icon: item.icon }))} onOpen={id => changeSection(id as AdminSection)} />
+    : section === "dashboard" ? <AdminDashboardWorkspace nav={adminNav("dashboard")} onToast={onToast} />
     : section === "servers" ? <AdminServersWorkspace nav={adminNav("servers")} onToast={onToast} />
     : section === "mega" ? <AdminMegaWorkspace nav={adminNav("mega")} onToast={onToast} />
     : section === "groups" ? <AdminGroupsWorkspace nav={adminNav("groups")} onToast={onToast} />
@@ -1276,17 +1286,17 @@ function AdminShell({ onLogout }: { onLogout: () => void }) {
   return <div className="admin-app-shell">
     <aside className="admin-rail">
       <div className="admin-rail__brand"><img src="/images/brand/botadmin-logo.webp" alt="BotAdmin" /><span>Bot<span>Admin</span></span></div>
-      <nav>{ADMIN_RAIL_NAV.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={activeRail.id === item.id ? "is-active" : ""} onClick={() => changeSection(item.sections[0])} title={item.label} aria-label={item.label}><Icon size={19} /><span>{item.label}</span></button>; })}</nav>
+      <nav>{visibleRail.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={activeRail.id === item.id ? "is-active" : ""} onClick={() => changeSection(item.sections[0])} title={item.label} aria-label={item.label}><Icon size={19} /><span>{item.label}</span></button>; })}</nav>
       <button type="button" className="admin-rail__logout" onClick={onLogout} title="Sair" aria-label="Sair"><LogOut size={18} /></button>
     </aside>
     <div className="admin-main">
       <header className="admin-mobile-header"><button type="button" className="admin-icon-button" onClick={() => setMobileMenuOpen(true)} aria-label="Abrir menu"><MoreVertical size={21} /></button><div className="admin-mobile-header__brand"><img src="/images/brand/botadmin-logo.webp" alt="BotAdmin" /><strong>Bot<span>Admin</span></strong></div><span className="admin-mobile-header__role">Administrador</span></header>
-      {mobileMenuOpen ? <div className="admin-mobile-drawer-backdrop" role="presentation" onClick={() => setMobileMenuOpen(false)}><aside className="admin-mobile-drawer" onClick={(event) => event.stopPropagation()}><header><strong>Painel administrativo</strong><button type="button" className="admin-icon-button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar"><X size={18} /></button></header>{ADMIN_RAIL_NAV.map((railItem) => <section className="admin-mobile-drawer__group" key={railItem.id}><h2>{railItem.label}</h2>{railItem.sections.map((sectionId) => { const item = adminNav(sectionId); const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? "is-active" : ""} onClick={() => changeSection(item.id)}><Icon size={18} /><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><ChevronRight size={16} /></button>; })}</section>)}<button type="button" className="admin-mobile-drawer__logout" onClick={onLogout}><LogOut size={17} />Sair da conta</button></aside></div> : null}
+      {mobileMenuOpen ? <div className="admin-mobile-drawer-backdrop" role="presentation" onClick={() => setMobileMenuOpen(false)}><aside className="admin-mobile-drawer" onClick={(event) => event.stopPropagation()}><header><strong>Painel administrativo</strong><button type="button" className="admin-icon-button" onClick={() => setMobileMenuOpen(false)} aria-label="Fechar"><X size={18} /></button></header>{visibleRail.map((railItem) => <section className="admin-mobile-drawer__group" key={railItem.id}><h2>{railItem.label}</h2>{railItem.sections.map((sectionId) => { const item = adminNav(sectionId); const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? "is-active" : ""} onClick={() => changeSection(item.id)}><Icon size={18} /><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><ChevronRight size={16} /></button>; })}</section>)}<button type="button" className="admin-mobile-drawer__logout" onClick={onLogout}><LogOut size={17} />Sair da conta</button></aside></div> : null}
       <div className={`admin-workspace-body ${section === "support" ? "is-full-width" : ""}`}>
         {section !== "support" ? <section className="admin-section-pane"><header><div className="admin-section-pane__brand"><img src="/images/brand/botadmin-logo.webp" alt="BotAdmin" /><span>Bot<span>Admin</span></span></div><h2>{activeRail.label}</h2></header><label className="admin-section-search"><Search size={15} /><input value={menuSearch} onChange={(event) => setMenuSearch(event.currentTarget.value)} placeholder="Buscar no painel admin" />{menuSearch ? <button type="button" onClick={() => setMenuSearch("")} aria-label="Limpar busca"><X size={14} /></button> : null}</label><div className="admin-section-list">{visibleMenu.map((item) => { const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? "is-active" : ""} onClick={() => changeSection(item.id)}><span className="admin-section-list__icon"><Icon size={18} /></span><span><strong>{item.label}</strong><small>{item.subtitle}</small></span><ChevronRight size={15} /></button>; })}</div></section> : null}
         <main className="admin-content">{content}</main>
       </div>
-      <nav className="admin-bottom-nav">{["dashboard", "support", "users", "instances", "campaigns"].map((sectionId) => { const item = adminNav(sectionId as AdminSection); const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? "is-active" : ""} onClick={() => changeSection(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}<button type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Mais seções"><MoreVertical size={20} /><span>Mais</span></button></nav>
+      <nav className="admin-bottom-nav">{["dashboard", "support", "users", "instances", "modules"].map((sectionId) => { const item = adminNav(sectionId as AdminSection); const Icon = item.icon; return <button type="button" key={item.id} className={section === item.id ? "is-active" : ""} onClick={() => changeSection(item.id)}><Icon size={19} /><span>{item.label}</span></button>; })}<button type="button" onClick={() => setMobileMenuOpen(true)} aria-label="Mais seções"><MoreVertical size={20} /><span>Mais</span></button></nav>
     </div>
     <Toast message={toast} success={toastSuccess} onClose={() => setToast("")} />
   </div>;
@@ -1303,7 +1313,7 @@ export function AdminApp() {
   if (session === undefined) return <main className="admin-boot"><Activity className="admin-spin" size={26} /><span>Carregando painel administrativo…</span></main>;
   if (!session) return <AdminAccessDenied reason={error || "Faça login para acessar os recursos administrativos."} onLogin={() => window.location.assign(`/sign-in?next=${encodeURIComponent("/dashboard/admin")}`)} />;
   if (session.role !== "admin") return <AdminAccessDenied reason="Sua conta não possui permissão de administrador." onLogin={() => window.location.assign("/dashboard/user")} />;
-  return <AdminShell onLogout={() => void logout()} />;
+  return <AdminShell userId={session.id} onLogout={() => void logout()} />;
 }
 
 async function apiSession(): Promise<SessionUser | null> {

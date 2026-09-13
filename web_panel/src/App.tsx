@@ -1,4 +1,7 @@
 import * as React from "react";
+import { LayoutGrid } from "lucide-react";
+import { PanelModules, usePanelModules } from "./PanelModules";
+import { PANEL_MODULES } from "../../lib/panel-modules";
 import {
   PointerEvent as ReactPointerEvent,
   useCallback,
@@ -120,6 +123,7 @@ const connectedInstance = (value: unknown) => {
 };
 
 type Section =
+  | "modules"
   | "conversations"
   | "internalGroups"
   | "broadcasts"
@@ -187,6 +191,7 @@ type DirectoryAction =
   | "logout";
 
 const sectionAliases: Record<string, Section> = {
+  modules: "modules",
   conversations: "conversations",
   conversas: "conversations",
   internalgroups: "internalGroups",
@@ -336,12 +341,14 @@ const navigation: Array<{
   { section: "affiliates", label: "Afiliados", icon: Tag },
   { section: "payments", label: "Pagamentos", icon: BadgeDollarSign },
   { section: "api", label: "API REST", icon: Webhook },
+  { section: "modules", label: "Módulos", icon: LayoutGrid },
 ];
 
 const sectionMeta: Record<
   Section,
   { title: string; subtitle: string; icon: typeof MessageCircle }
 > = {
+  modules: { title: "Módulos", subtitle: "Organize os atalhos do painel.", icon: LayoutGrid },
   conversations: {
     title: "Conversas",
     subtitle: "Mensagens do WhatsApp e BotAdmin em tempo real.",
@@ -1662,6 +1669,7 @@ const mergeConversationMessages = (
 };
 
 function Rail({
+  moduleState,
   section,
   onSelect,
   user,
@@ -1671,6 +1679,7 @@ function Rail({
   onProfileSwitcher,
   onLogout,
 }: {
+  moduleState: ReturnType<typeof usePanelModules>;
   section: Section;
   onSelect: (section: Section) => void;
   user: SessionUser;
@@ -1690,7 +1699,7 @@ function Rail({
         <Brand compact />
       </button>
       <nav>
-        {navigation.map(
+        {navigation.filter(item => moduleState.visible(item.section)).map(
           ({ section: item, label, icon: Icon, dot, dividerBefore }) => (
             <React.Fragment key={item}>
               {dividerBefore && (
@@ -11498,6 +11507,7 @@ export function DashboardApp() {
     undefined,
   );
   const [instances, setInstances] = useState<BotInstance[]>([]);
+  const moduleState = usePanelModules(session?.id, "user");
   const [selectedInstance, setSelectedInstance] = useState<number | null>(null);
   const [threads, setThreads] = useState<ConversationThread[]>([]);
   const [selected, setSelected] = useState<ConversationThread | null>(null);
@@ -13749,6 +13759,7 @@ export function DashboardApp() {
         </button>
       )}
       <Rail
+        moduleState={moduleState}
         section={section}
         user={session}
         activeInstance={
@@ -13820,6 +13831,8 @@ export function DashboardApp() {
             </ConversationErrorBoundary>
           </div>
         </>
+      ) : section === "modules" ? (
+        <PanelModules state={moduleState} items={navigation.filter(item => (PANEL_MODULES.user as readonly string[]).includes(item.section)).map(item => ({ id: item.section, label: item.label, description: sectionMeta[item.section].subtitle, icon: item.icon }))} onOpen={id => { setSection(id as Section); persistSectionInUrl(id as Section); }} />
       ) : (
         <ModuleWorkspace
           section={section}
@@ -13845,7 +13858,7 @@ export function DashboardApp() {
           onPointerUp={handleMobileNavPointerEnd}
           onPointerCancel={handleMobileNavPointerEnd}
         >
-          {navigation.map(({ section: item, icon: Icon, label }) => (
+          {navigation.filter(item => moduleState.visible(item.section)).map(({ section: item, icon: Icon, label }) => (
             <button
               type="button"
               key={item}
