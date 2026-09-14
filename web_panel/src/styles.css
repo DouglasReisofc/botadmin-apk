@@ -3937,6 +3937,31 @@ img {
   border-radius: 10px;
   background: #fff;
 }
+.profile-pix-code {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface, #f7faf9);
+}
+.profile-pix-code small {
+  color: var(--muted);
+  font-weight: 600;
+}
+.profile-pix-code code {
+  display: block;
+  max-height: 72px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 7px;
+  background: #fff;
+  color: #30434b;
+  font-size: 11px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
 .commerce-workspace {
   min-width: 0;
   overflow: hidden;

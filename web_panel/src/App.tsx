@@ -90,6 +90,38 @@ import { getContactActions, type ContactActionKey } from "./contact-actions";
 
 const textOf = (value: unknown, fallback = "") =>
   value === null || value === undefined ? fallback : String(value);
+const paymentPixCode = (value: JsonRecord | null | undefined): string => {
+  if (!value) return "";
+  const candidates = [
+    value.qrCode,
+    value.qr_code,
+    value.pixCopiaECola,
+    value.pix_copia_e_cola,
+    value.copyPaste,
+    value.copy_paste,
+    value.copiaECola,
+    value.copia_e_cola,
+    (value.pix as JsonRecord | undefined)?.copiaECola,
+    (value.pix as JsonRecord | undefined)?.qrCode,
+  ];
+  return candidates.map((candidate) => textOf(candidate).trim()).find(Boolean) || "";
+};
+const paymentQrDataUrl = (value: JsonRecord | null | undefined): string => {
+  if (!value) return "";
+  const candidates = [
+    value.qrCodeBase64,
+    value.qr_code_base64,
+    value.qrcodeBase64,
+    value.qrcode_base64,
+    value.qrCodeImage,
+    value.qr_code_image,
+    (value.pix as JsonRecord | undefined)?.qrCodeBase64,
+  ];
+  const raw = candidates.map((candidate) => textOf(candidate).trim()).find(Boolean) || "";
+  if (!raw) return "";
+  if (/^data:image\//i.test(raw)) return raw;
+  return `data:image/png;base64,${raw.replace(/^base64,|\s+/gi, "")}`;
+};
 const safeString = (value: unknown, fallback = "") =>
   typeof value === "string"
     ? value
@@ -8336,6 +8368,7 @@ function ProfileRenewModal({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [checkout, setCheckout] = useState<JsonRecord | null>(null);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     void api
       .planMobile()
@@ -8383,6 +8416,18 @@ function ProfileRenewModal({
       checkout?.paymentUrl ||
       "",
   );
+  const pixCode = paymentPixCode(checkout);
+  const qrDataUrl = paymentQrDataUrl(checkout);
+  const copyPix = async () => {
+    if (!pixCode) return;
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError("Não foi possível copiar o Pix. Selecione e copie o código manualmente.");
+    }
+  };
   return (
     <div
       className="modal-backdrop"
@@ -8419,6 +8464,16 @@ function ProfileRenewModal({
               Conclua o pagamento para atualizar a validade do perfil
               automaticamente.
             </p>
+            {qrDataUrl && <img className="profile-payment-qr" src={qrDataUrl} alt="QR Code Pix" />}
+            {pixCode && (
+              <div className="profile-pix-code">
+                <small>Pix copia e cola</small>
+                <code>{pixCode}</code>
+                <button type="button" className="secondary-button" onClick={() => void copyPix()}>
+                  <Copy /> {copied ? "Pix copiado" : "Copiar Pix copia e cola"}
+                </button>
+              </div>
+            )}
             {checkoutUrl && (
               <a
                 className="primary-button"
@@ -10488,6 +10543,7 @@ function ProfileCreateModal({
   const [error, setError] = useState("");
   const [createdInstanceId, setCreatedInstanceId] = useState(0);
   const [checkout, setCheckout] = useState<JsonRecord | null>(null);
+  const [copied, setCopied] = useState(false);
   useEffect(() => {
     Promise.all([api.botServers(), api.planMobile()])
       .then(([serverResult, planResult]) => {
@@ -10540,6 +10596,18 @@ function ProfileCreateModal({
       context: { mode: "instance_creation", instanceId },
     });
     setCheckout((result.checkout || result) as JsonRecord);
+  };
+  const pixCode = paymentPixCode(checkout);
+  const qrDataUrl = paymentQrDataUrl(checkout);
+  const copyPix = async () => {
+    if (!pixCode) return;
+    try {
+      await navigator.clipboard.writeText(pixCode);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      setError("Não foi possível copiar o Pix. Selecione e copie o código manualmente.");
+    }
   };
   const submit = async (event: React.FormEvent) => {
     event.preventDefault();
@@ -10606,23 +10674,21 @@ function ProfileCreateModal({
               Conclua o pagamento para liberar este perfil. A confirmação
               atualizará a validade automaticamente.
             </p>
-            {Boolean(checkout.qrCodeBase64) && (
+            {qrDataUrl && (
               <img
                 className="profile-payment-qr"
-                src={`data:image/png;base64,${textOf(checkout.qrCodeBase64)}`}
+                src={qrDataUrl}
                 alt="QR Code Pix"
               />
             )}
-            {Boolean(checkout.qrCode) && (
-              <button
-                type="button"
-                className="secondary-button"
-                onClick={() =>
-                  void navigator.clipboard.writeText(textOf(checkout.qrCode))
-                }
-              >
-                <Copy /> Copiar Pix copia e cola
-              </button>
+            {pixCode && (
+              <div className="profile-pix-code">
+                <small>Pix copia e cola</small>
+                <code>{pixCode}</code>
+                <button type="button" className="secondary-button" onClick={() => void copyPix()}>
+                  <Copy /> {copied ? "Pix copiado" : "Copiar Pix copia e cola"}
+                </button>
+              </div>
             )}
             {Boolean(
               checkout.ticketUrl || checkout.checkoutUrl || checkout.initPoint,
