@@ -117,6 +117,13 @@ const KWAI_MEDIA_HEADERS: Record<string, string> = {
   referer: "https://www.kwai.com/",
 };
 
+const PINTEREST_MEDIA_HEADERS: Record<string, string> = {
+  accept: "video/mp4,video/*,image/avif,image/webp,image/*;q=0.9,*/*;q=0.8",
+  "accept-language": "pt-BR,pt;q=0.9,en;q=0.8",
+  "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/124 Safari/537.36",
+  referer: "https://www.pinterest.com/",
+};
+
 const MB = 1024 * 1024;
 const DEFAULT_VIDEO_INLINE_LIMIT = 60 * MB;
 const DEFAULT_AUTODOWNLOADER_MAX = 2 * 1024 * MB; // 2 GB
@@ -884,7 +891,9 @@ const fetchPinterestRestResult = async (
 ): Promise<PinterestRestResult | null> => {
   try {
     const data = await fetchJson(
-      `/api/rest/pinterest?url=${encodeURIComponent(link)}&version=v2`,
+      // Sem forcar `version=v2`: quando o endpoint principal de pins fica
+      // indisponivel, a propria rota tenta a pagina publica e o SavePin.
+      `/api/rest/pinterest?url=${encodeURIComponent(link)}`,
       apiKey,
     );
     const result = data?.resultado;
@@ -905,7 +914,7 @@ const fetchPinterestRestResult = async (
       typeof result.pin?.description === "string" ? result.pin.description : null;
     return { title, description, downloads };
   } catch (error) {
-    console.warn("[autodownloader] Pinterest v2 request failed", { error, link });
+    console.warn("[autodownloader] Pinterest resolver request failed", { error, link });
     return null;
   }
 };
@@ -992,20 +1001,46 @@ const sendPinterestDownloads = async (
     filenameParts.push(String(Date.now()));
     const filename = `${filenameParts.filter(Boolean).join("_")}.${extension}`;
 
+    let delivered = false;
+    // CDNs do Pinterest frequentemente recusam que o WhatsApp busque a URL
+    // remotamente. Baixar com Referer e enviar o buffer torna o fluxo
+    // determinístico; a URL remota continua como fallback para outros hosts.
     try {
-      await sendRemoteMedia(client, {
+      const downloaded = await downloadWithHeaders(mediaUrl, PINTEREST_MEDIA_HEADERS);
+      const detectedMime = normalizeContentType(downloaded.mimeType) || mimeType;
+      const detectedKind = inferRemoteMediaKind(mediaUrl, detectedMime, `${format} ${entry.type}`, isVideo);
+      await sendBufferMedia(client, {
         chatId,
-        url: mediaUrl,
-        mediaType: isVideo ? "video" : "image",
-        mimeType,
+        buffer: downloaded.buffer,
+        mediaType: detectedKind === "video" ? "video" : "image",
+        mimeType: detectedKind === "video" ? "video/mp4" : detectedMime,
         filename,
         caption: captionSent ? undefined : caption,
         quoted,
       });
+      delivered = true;
+    } catch (error) {
+      console.warn("[autodownloader] Download binário do Pinterest falhou; usando URL remota", { error, mediaUrl });
+    }
+    if (!delivered) {
+      try {
+        await sendRemoteMedia(client, {
+          chatId,
+          url: mediaUrl,
+          mediaType: isVideo ? "video" : "image",
+          mimeType,
+          filename,
+          caption: captionSent ? undefined : caption,
+          quoted,
+        });
+        delivered = true;
+      } catch (error) {
+        console.warn("[autodownloader] Falha ao enviar Pinterest v2", { error, mediaUrl });
+      }
+    }
+    if (delivered) {
       captionSent = true;
       sent = true;
-    } catch (error) {
-      console.warn("[autodownloader] Falha ao enviar Pinterest v2", { error, mediaUrl });
     }
   }
 
@@ -1846,48 +1881,33 @@ const handlePinterest = async (
     return fallback;
   }
 
-  let sent = false;
-  let captionSent = false;
   const title = scrape.title || "Pinterest";
-
-  for (const [index, entry] of scrapeResults.entries()) {
-    let mediaUrl = entry.downloadLink?.trim();
-    if (!mediaUrl) {
-      continue;
-    }
-    mediaUrl = resolveAbsoluteUrl(mediaUrl);
-    const descriptor = `${entry.format || ""} ${entry.type || ""}`.toLowerCase();
-    const forcedVideo =
-      /\.mp4($|\?)/i.test(mediaUrl) || descriptor.includes("mp4") || descriptor.includes("video");
-    let mimeType = detectMimeFromUrl(mediaUrl, forcedVideo ? "video/mp4" : "image/jpeg");
-    if (!mimeType || mimeType === "application/octet-stream") {
-      mimeType = forcedVideo ? "video/mp4" : "image/jpeg";
-    }
-
-    const mediaType: "video" | "image" =
-      forcedVideo || mimeType.toLowerCase().startsWith("video/") ? "video" : "image";
-    const extension =
-      mime.extension(mimeType) ||
-      (forcedVideo ? "mp4" : descriptor.includes("gif") ? "gif" : "jpg");
-
-    try {
-      await sendRemoteMedia(client, {
-        chatId,
+  const normalizedDownloads: PinterestDownloadEntry[] = scrapeResults
+    .map((entry) => {
+      const mediaUrl = resolveAbsoluteUrl(entry.downloadLink?.trim() || "");
+      if (!mediaUrl) return null;
+      const descriptor = `${entry.format || ""} ${entry.type || ""}`.toLowerCase();
+      const isVideo =
+        /\.mp4($|\?)/i.test(mediaUrl) || descriptor.includes("mp4") || descriptor.includes("video");
+      return {
+        type: isVideo ? "video" : "image",
+        format: typeof entry.format === "string" && entry.format.trim()
+          ? entry.format.trim().toLowerCase()
+          : isVideo
+            ? "mp4"
+            : "jpg",
         url: mediaUrl,
-        mediaType,
-        mimeType,
-        filename: `pinterest_${Date.now()}_${index + 1}.${extension}`,
-        caption: !captionSent ? title : undefined,
-        quoted,
-      });
-      sent = true;
-      captionSent = true;
-    } catch (error) {
-      console.warn("[autodownloader] Falha ao enviar Pinterest", { error, mediaUrl });
-    }
-  }
+        quality: typeof entry.type === "string" && entry.type.trim() ? entry.type.trim() : null,
+      } satisfies PinterestDownloadEntry;
+    })
+    .filter((entry): entry is PinterestDownloadEntry => Boolean(entry));
 
-  return sent;
+  return sendPinterestDownloads(
+    client,
+    chatId,
+    { title, description: null, downloads: normalizedDownloads },
+    quoted,
+  );
 };
 
 const handleThreads = async (

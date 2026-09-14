@@ -16401,20 +16401,14 @@ export const handleMessageUpsert = async (
     settings.commandToggles.autodownloader === true &&
     !isMutedParticipant &&
     !isStickerMedia;
-  // O autodownloader não pode neutralizar o anti-link. Quando as duas
-  // funções estão ativas, o link ainda deve passar pela moderação (e ser
-  // apagado conforme a ação configurada). A exceção só é válida quando não
-  // existe nenhuma proteção de links ativa no grupo.
-  const hasAnyLinkProtection =
-    settings.antilink === true ||
-    settings.commandToggles.antilink === true ||
-    settings.antilinkGroupInvite === true ||
-    settings.commandToggles.antilinkgp === true ||
-    settings.banExtremo === true ||
-    settings.commandToggles.banextremo === true;
+  // Links reconhecidos pelo autodownloader são uma ação explícita do grupo,
+  // não spam de link. Eles precisam chegar ao resolvedor mesmo quando o
+  // antilink geral está ativo; caso contrário um Instagram/Pinterest legítimo
+  // é punido antes que o download possa começar. Convites de grupo continuam
+  // fora desta exceção e seguem a proteção de convites normalmente.
   const isAutoDownloaderModerationExemptLink = (link: string): boolean =>
     canAutoDownloaderConsumeLinks &&
-    !hasAnyLinkProtection &&
+    !isGroupInviteLink(link) &&
     Boolean(findFirstSupportedLink([link]));
   const moderationLinks = links
     .filter((link) => !isDefaultSafeLink(link))
