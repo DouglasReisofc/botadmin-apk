@@ -54,5 +54,14 @@ Two production PostgreSQL connections confirmed SKIP LOCKED excludes a claimed
 settings row and rollback releases it; this test did not modify any records.
 Production group/info confirmed all three recovered groups are open.
 
-Build/deployment results must be checked separately; these tests do not establish
-visual browser validation or the recovery of every event lost during the outage.
+Production build completed successfully. ESLint passed for the changed scheduler
+and its tests. Repository-wide TypeScript checking still reports existing errors
+outside the new scheduler; the configured Next build skips that validation.
+
+Published via blue/green on 2026-09-15: green build `IOiFZ7jhDtQy4qFgRs9vW`,
+blue retained as standby with background jobs disabled. Both slot health checks
+returned 200. Redis confirmed the green process acquired the schedule-dispatcher
+lease at approximately 17:55 UTC. The three recovered markers remained unchanged
+after promotion, with no duplicate execution logged. Durable webhook spool: zero
+pending files at audit time. No claim of browser visual validation or recovery of
+every event lost during the outage is made.
