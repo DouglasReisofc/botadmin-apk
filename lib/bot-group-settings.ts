@@ -3425,7 +3425,7 @@ const mergeHorapgConfig = (
   return merged;
 };
 
-const normalizeScheduleConfigEntry = (
+export const normalizeScheduleConfigEntry = (
   raw: unknown,
   fallback?: BotGroupScheduleConfig,
 ): BotGroupScheduleConfig => {

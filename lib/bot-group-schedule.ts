@@ -52,6 +52,47 @@ const getTimezoneContext = (date: Date, timezone: string): GroupScheduleContext 
   };
 };
 
+export type GroupScheduleAction = {
+  action: "open" | "close";
+  clock: string;
+  context: GroupScheduleContext;
+  overdueMinutes: number;
+  run: boolean;
+};
+
+// Reconcile the latest desired state, not every missed transition. Looking at
+// the previous local calendar day also recovers a missed 23:00 close at 00:10.
+export const getLatestGroupScheduleAction = (
+  config: BotGroupScheduleConfig,
+  date: Date,
+  options: { timezone?: string } = {},
+): GroupScheduleAction | null => {
+  const context = getTimezoneContext(date, options.timezone || config.timezone || HORAPG_DEFAULT_TIMEZONE);
+  const currentMinutes = context.hour * 60 + context.minute;
+  const previousDate = new Date(`${context.dateIso}T12:00:00Z`);
+  previousDate.setUTCDate(previousDate.getUTCDate() - 1);
+  const candidates: GroupScheduleAction[] = [];
+  for (const action of ["open", "close"] as const) {
+    if (!config[`${action}Enabled`]) continue;
+    for (const value of config[`${action}Times`] ?? []) {
+      const clock = normalizeHorapgTimeToken(value);
+      if (!clock) continue;
+      const [hour, minute] = clock.split(":").map(Number);
+      const minutes = hour * 60 + minute;
+      const isYesterday = minutes > currentMinutes;
+      const dateIso = isYesterday ? previousDate.toISOString().slice(0, 10) : context.dateIso;
+      candidates.push({
+        action, clock, context: { dateIso, hour, minute, clock },
+        overdueMinutes: currentMinutes - minutes + (isYesterday ? 1440 : 0),
+        run: config[`${action}SentTimes`]?.[clock] !== dateIso,
+      });
+    }
+  }
+  // If conflicting schedules use the same minute, closing takes precedence.
+  candidates.sort((a, b) => a.overdueMinutes - b.overdueMinutes || (a.action === b.action ? 0 : a.action === "close" ? -1 : 1));
+  return candidates[0] ?? null;
+};
+
 const shouldRunAt = (
   enabled: boolean,
   times: string[],

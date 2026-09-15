@@ -1236,6 +1236,7 @@ export const leaveGroup = async (
 export const getGroupInfo = async <T = unknown>(
   client: WuzapiClient,
   groupJid: string,
+  signal?: AbortSignal,
 ): Promise<T> =>
   requestWuzapi<T>(
     client,
@@ -1243,6 +1244,7 @@ export const getGroupInfo = async <T = unknown>(
     {
       method: "GET",
       expectedStatus: 200,
+      signal,
     },
   );
 
@@ -1338,10 +1340,11 @@ export const setGroupTopic = async (
 
 export const setMessagesAdminsOnly = async (
   client: WuzapiClient,
-  params: { groupJid: string; onlyAdmins: boolean },
+  params: { groupJid: string; onlyAdmins: boolean; signal?: AbortSignal },
 ) => {
   await requestWuzapi(client, "/group/announce", {
     method: "POST",
+    signal: params.signal,
     body: {
       GroupJID: params.groupJid,
       Announce: params.onlyAdmins,
