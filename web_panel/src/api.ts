@@ -1057,6 +1057,13 @@ export const api = {
     ),
   botGroupAds: (groupId: number | string) =>
     request<{ ads?: JsonRecord[] }>(`/api/bot-groups/${groupId}/ads`),
+  uploadAutoResponseMedia: (groupId: number, file: File, mediaType: string) => {
+    const form = new FormData();
+    form.set("file", file);
+    form.set("mediaType", mediaType);
+    // Do not delete the saved attachment before the user saves the draft.
+    return request<{ media: JsonRecord }>(`/api/bot-groups/${groupId}/auto-responses/upload`, { method: "POST", body: form });
+  },
   createBotGroupAd: (groupId: number | string, payload: JsonRecord) =>
     request<{ ad?: JsonRecord; ads?: JsonRecord[] }>(
       `/api/bot-groups/${groupId}/ads`,

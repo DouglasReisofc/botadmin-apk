@@ -1,5 +1,6 @@
 import * as React from "react";
 import { buildAutoResponsePatch } from "./auto-response-config";
+import { AutoResponseContent } from "./AutoResponseContent";
 import { LayoutGrid } from "lucide-react";
 import { PanelModules, usePanelModules } from "./PanelModules";
 import { PANEL_MODULES } from "../../lib/panel-modules";
@@ -7789,6 +7790,7 @@ function BotAdvancedConfigModal({
     ),
   );
   const [responses, setResponses] = useState<BotAdvancedResponseDraft[]>(initialResponses);
+  const [responseUploading, setResponseUploading] = useState(false);
   const [responsesEnabled, setResponsesEnabled] = useState(
     Boolean(recordValue(settings.commandToggles).autoresposta),
   );
@@ -7811,11 +7813,11 @@ function BotAdvancedConfigModal({
       : mode === "menus"
         ? "Edite os textos do menu sem alterar as ativações."
         : mode === "responses"
-          ? "Crie respostas com texto e gatilhos claros."
+          ? "Configure gatilhos, texto, arquivos e botões opcionais."
           : "Configure anúncios, horários e menções do grupo.";
 
   const save = async () => {
-    if (saving) return;
+    if (saving || responseUploading) return;
     setSaving(true);
     setError("");
     try {
@@ -7886,7 +7888,7 @@ function BotAdvancedConfigModal({
             <div className="modal-heading-line"><h2>{title}</h2><InfoTip label={title}>{subtitle} As alterações ficam restritas ao grupo {groupName}.</InfoTip></div>
             <small>{groupName}</small>
           </div>
-          <button type="button" onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button>
+          <button type="button" onClick={onClose} aria-label="Fechar" disabled={saving || responseUploading}><X /></button>
         </header>
         <div className="bot-advanced-scroll">
           {mode === "prefixes" && <div className="bot-advanced-form">
@@ -7897,7 +7899,7 @@ function BotAdvancedConfigModal({
           {mode === "menus" && <div className="bot-advanced-form bot-menu-fields">
             {botMenuTextFields.map(([key, label]) => <label className="quick-label" key={key}>{label}<textarea rows={3} value={menuTexts[key] || ""} onChange={(event) => setMenuTexts((current) => ({ ...current, [key]: event.target.value }))} placeholder="Uma opção por linha" /></label>)}
           </div>}
-          {mode === "responses" && <div className="bot-advanced-form">
+          {mode === "responses" && <fieldset className="bot-advanced-form response-draft-fields" disabled={saving || responseUploading}>
             <label className="settings-toggle compact-config-toggle automation-master-toggle"><span><b>Respostas automáticas</b><small>Uma única ativação para todos os gatilhos, mensagens, mídias e botões.</small></span><input type="checkbox" checked={responsesEnabled} onChange={(event) => setResponsesEnabled(event.target.checked)} /><i /></label>
             <div className="bot-advanced-list-heading"><div><b>Regras ({responses.length}/50)</b><small>{responsesEnabled ? "Ativas quando o robô do grupo estiver ligado." : "Pausadas. As regras salvas serão mantidas."}</small></div><button type="button" className="secondary-button" disabled={responses.length >= 50 || saving} onClick={() => { const id = newBotDraftId("response"); setResponses((current) => [...current, { id, source: {}, triggers: "", responseText: "", matchMode: "equals" }]); setEditingResponse(id); }}><Plus /> Adicionar regra</button></div>
             {responses.length === 0 && <div className="bot-advanced-empty"><MessageCircle /><span>Nenhuma resposta configurada. Adicione a primeira regra.</span></div>}
@@ -7908,11 +7910,10 @@ function BotAdvancedConfigModal({
               <label className="quick-label">Gatilhos<input value={entry.triggers} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, triggers: event.target.value } : item))} placeholder="oi, olá, bom dia" /></label>
               <label className="quick-label">Resposta<textarea rows={3} value={entry.responseText} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, responseText: event.target.value } : item))} placeholder="Mensagem que o robô enviará" /></label>
               <label className="quick-label">Correspondência<select value={entry.matchMode} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, matchMode: event.target.value === "contains" ? "contains" : "equals" } : item))}><option value="equals">Texto exato</option><option value="contains">Contém o texto</option></select></label>
-              {Boolean(entry.source.responseMedia || entry.source.responseVcard || entry.source.responseButtons) && <div className="bot-advanced-preview"><Paperclip /><span>Mídia, contato e botões já cadastrados serão preservados.</span></div>}
-              <details className="response-preview"><summary><Eye /> Ver prévia do texto</summary><div className="response-preview-bubble"><b>BotAdmin</b><p>{entry.responseText || "A resposta usa uma mídia, contato ou botões."}</p></div></details>
+              <AutoResponseContent groupId={groupId} source={entry.source} text={entry.responseText} disabled={saving} onBusy={setResponseUploading} onChange={(patch) => setResponses(current => current.map(item => item.id === entry.id ? { ...item, source: { ...item.source, ...patch } } : item))} />
               </div>}
             </article>)}
-          </div>}
+          </fieldset>}
           {mode === "ads" && <div className="bot-advanced-form">
             <div className="bot-advanced-list-heading"><div><b>Mensagens programadas</b><small>Até 20 anúncios por grupo, com frequência ou horários definidos.</small></div><button type="button" className="secondary-button" disabled={ads.length >= 20} onClick={() => setAds((current) => [...current, { id: newBotDraftId("ad"), source: {}, enabled: true, caption: "", mentionAll: false, scheduleType: "frequency", frequency: "24h", times: "" }])}><Plus /> Adicionar</button></div>
             {ads.length === 0 && <div className="bot-advanced-empty"><Clock3 /><span>Nenhuma mensagem programada neste grupo.</span></div>}
@@ -7926,7 +7927,7 @@ function BotAdvancedConfigModal({
           </div>}
           {error && <div className="form-error">{error}</div>}
         </div>
-        <footer className="activation-config-footer"><button type="button" className="secondary-button" onClick={onClose} disabled={saving}>Cancelar</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving}>{saving ? "Salvando…" : "Salvar configuração"}</button></footer>
+        <footer className="activation-config-footer"><button type="button" className="secondary-button" onClick={onClose} disabled={saving || responseUploading}>Cancelar</button><button type="button" className="primary-button" onClick={() => void save()} disabled={saving || responseUploading}>{responseUploading ? "Enviando mídia…" : saving ? "Salvando…" : "Salvar configuração"}</button></footer>
       </section>
     </div>
   );

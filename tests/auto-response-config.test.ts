@@ -28,3 +28,7 @@ test("preserves match-any rules with media only", () => {
   const patch = buildAutoResponsePatch([{ id: "any", source: { matchAnyMessage: true, responseVcard: { name: "Suporte" } }, triggers: "", responseText: "", matchMode: "equals" }], true);
   assert.equal(patch.autoResponses.length, 1);
 });
+
+test("requires labels when buttons are enabled", () => {
+  assert.throws(() => buildAutoResponsePatch([{ id: "buttons", source: { responseButtons: { type: "button_reply", buttons: [{ id: "1", text: "" }] } }, triggers: "menu", responseText: "", matchMode: "equals" }], true), /botões/);
+});
