@@ -1,4 +1,5 @@
 import * as React from "react";
+import { buildAutoResponsePatch } from "./auto-response-config";
 import { LayoutGrid } from "lucide-react";
 import { PanelModules, usePanelModules } from "./PanelModules";
 import { PANEL_MODULES } from "../../lib/panel-modules";
@@ -7072,7 +7073,6 @@ const groupActivationCategories: Array<{
     id: "attention",
     title: "Atendimento e IA",
     items: [
-      { key: "autoresposta", label: "Auto resposta", description: "Responde gatilhos cadastrados.", icon: MessageCircle },
       { key: "botinterage", label: "BotInterage", description: "A IA conversa dentro do grupo.", icon: Bot },
       { key: "vozbotinterage", label: "IA por voz", description: "Permite respostas em áudio.", icon: Mic },
       { key: "lerimagem", label: "Ler imagem", description: "A IA interpreta imagens recebidas.", icon: Eye },
@@ -7082,6 +7082,7 @@ const groupActivationCategories: Array<{
     id: "messages",
     title: "Mensagens automáticas",
     items: [
+      { key: "autoresposta", label: "Respostas automáticas", description: "Gatilhos, texto, mídia e botões em uma única configuração.", icon: MessageCircle },
       { key: "bemvindo", label: "Boas-vindas", description: "Recebe automaticamente novos membros.", icon: UserPlus },
       { key: "despedida", label: "Saída", description: "Avisa quando um membro deixa o grupo.", icon: LogOut },
       { key: "horapg", label: "HoraPG", description: "Dispara a mídia nos horários configurados.", icon: RadioTower, kind: "horapg" },
@@ -7277,7 +7278,7 @@ const splitConfigLines = (value: string) =>
     .map((item) => item.trim())
     .filter(Boolean);
 
-function GroupActivationConfigModal({
+function StandardGroupActivationConfigModal({
   definition,
   settings,
   groupId,
@@ -7689,6 +7690,17 @@ function GroupActivationConfigModal({
   );
 }
 
+/**
+ * Auto-resposta is intentionally one surface: its switch and its rules must
+ * never diverge. The editor owns the same command toggle that the tile uses.
+ */
+function GroupActivationConfigModal(props: React.ComponentProps<typeof StandardGroupActivationConfigModal>) {
+  if (props.definition.key === "autoresposta") {
+    return <BotAdvancedConfigModal mode="responses" settings={props.settings} groupId={props.groupId} groupName={props.groupName} onClose={props.onClose} onSaved={props.onSaved} />;
+  }
+  return <StandardGroupActivationConfigModal {...props} />;
+}
+
 type BotAdvancedMode = "prefixes" | "menus" | "responses" | "ads";
 type BotAdvancedResponseDraft = {
   id: string;
@@ -7777,6 +7789,10 @@ function BotAdvancedConfigModal({
     ),
   );
   const [responses, setResponses] = useState<BotAdvancedResponseDraft[]>(initialResponses);
+  const [responsesEnabled, setResponsesEnabled] = useState(
+    Boolean(recordValue(settings.commandToggles).autoresposta),
+  );
+  const [editingResponse, setEditingResponse] = useState<string | null>(initialResponses[0]?.id || null);
   const [ads, setAds] = useState<BotAdvancedAdDraft[]>(initialAds);
   const [removedAds, setRemovedAds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
@@ -7826,24 +7842,9 @@ function BotAdvancedConfigModal({
         const result = await api.updateBotGroupSettings(groupId, patch);
         onSaved((result.settings || { ...settings, ...patch }) as JsonRecord);
       } else if (mode === "responses") {
-        const patchResponses = responses
-          .map((entry) => ({
-            ...entry.source,
-            id: entry.id,
-            triggers: Array.from(new Set(splitConfigLines(entry.triggers).map((value) => value.toLowerCase()))).slice(0, 20),
-            responseText: entry.responseText.trim(),
-            matchMode: entry.matchMode,
-            updatedAt: new Date().toISOString(),
-          }))
-          .filter(
-            (entry) =>
-              (Array.isArray(entry.triggers) && entry.triggers.length > 0) &&
-              (String(entry.responseText || "").length > 0 || Boolean(recordValue(entry).responseMedia) || Boolean(recordValue(entry).responseVcard)),
-          )
-          .slice(0, 50);
-        const patch = { autoResponses: patchResponses };
+        const patch = buildAutoResponsePatch(responses, responsesEnabled);
         const result = await api.updateBotGroupSettings(groupId, patch);
-        onSaved((result.settings || { ...settings, ...patch }) as JsonRecord);
+        onSaved((result.settings || { ...settings, ...patch, commandToggles: { ...recordValue(settings.commandToggles), ...patch.commandToggles } }) as JsonRecord);
       } else {
         for (const adId of removedAds) {
           if (!adId.startsWith("ad-")) await api.deleteBotGroupAd(groupId, adId);
@@ -7885,7 +7886,7 @@ function BotAdvancedConfigModal({
             <div className="modal-heading-line"><h2>{title}</h2><InfoTip label={title}>{subtitle} As alterações ficam restritas ao grupo {groupName}.</InfoTip></div>
             <small>{groupName}</small>
           </div>
-          <button type="button" onClick={onClose} aria-label="Fechar"><X /></button>
+          <button type="button" onClick={onClose} aria-label="Fechar" disabled={saving}><X /></button>
         </header>
         <div className="bot-advanced-scroll">
           {mode === "prefixes" && <div className="bot-advanced-form">
@@ -7897,13 +7898,19 @@ function BotAdvancedConfigModal({
             {botMenuTextFields.map(([key, label]) => <label className="quick-label" key={key}>{label}<textarea rows={3} value={menuTexts[key] || ""} onChange={(event) => setMenuTexts((current) => ({ ...current, [key]: event.target.value }))} placeholder="Uma opção por linha" /></label>)}
           </div>}
           {mode === "responses" && <div className="bot-advanced-form">
-            <div className="bot-advanced-list-heading"><div><b>Gatilhos e respostas</b><small>O robô responde quando o texto recebido corresponder à regra.</small></div><button type="button" className="secondary-button" onClick={() => setResponses((current) => [...current, { id: newBotDraftId("response"), source: {}, triggers: "", responseText: "", matchMode: "equals" }])}><Plus /> Adicionar</button></div>
+            <label className="settings-toggle compact-config-toggle automation-master-toggle"><span><b>Respostas automáticas</b><small>Uma única ativação para todos os gatilhos, mensagens, mídias e botões.</small></span><input type="checkbox" checked={responsesEnabled} onChange={(event) => setResponsesEnabled(event.target.checked)} /><i /></label>
+            <div className="bot-advanced-list-heading"><div><b>Regras ({responses.length}/50)</b><small>{responsesEnabled ? "Ativas quando o robô do grupo estiver ligado." : "Pausadas. As regras salvas serão mantidas."}</small></div><button type="button" className="secondary-button" disabled={responses.length >= 50 || saving} onClick={() => { const id = newBotDraftId("response"); setResponses((current) => [...current, { id, source: {}, triggers: "", responseText: "", matchMode: "equals" }]); setEditingResponse(id); }}><Plus /> Adicionar regra</button></div>
             {responses.length === 0 && <div className="bot-advanced-empty"><MessageCircle /><span>Nenhuma resposta configurada. Adicione a primeira regra.</span></div>}
             {responses.map((entry, index) => <article className="bot-advanced-row" key={entry.id}>
-              <div className="bot-advanced-row-heading"><b>Resposta {index + 1}</b><button type="button" className="icon-button" aria-label="Remover resposta" onClick={() => setResponses((current) => current.filter((item) => item.id !== entry.id))}><X /></button></div>
+              <div className="bot-advanced-row-heading"><button type="button" className="response-rule-summary" aria-expanded={editingResponse === entry.id} aria-controls={`response-rule-${entry.id}`} onClick={() => setEditingResponse(editingResponse === entry.id ? null : entry.id)}><MessageCircle /><span><b>{entry.triggers || (entry.source.matchAnyMessage ? "Qualquer mensagem" : `Nova resposta ${index + 1}`)}</b><small>{entry.responseText || "Mídia, contato ou botões"}</small></span><ChevronRight /></button><button type="button" className="icon-button" aria-label={`Remover resposta ${index + 1}`} disabled={saving} onClick={() => setResponses((current) => current.filter((item) => item.id !== entry.id))}><Trash2 /></button></div>
+              {editingResponse === entry.id && <div id={`response-rule-${entry.id}`} className="response-rule-fields">
+              {Boolean(entry.source.matchAnyMessage) && <p className="settings-muted">Esta regra responde a qualquer mensagem. Essa configuração será preservada.</p>}
               <label className="quick-label">Gatilhos<input value={entry.triggers} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, triggers: event.target.value } : item))} placeholder="oi, olá, bom dia" /></label>
               <label className="quick-label">Resposta<textarea rows={3} value={entry.responseText} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, responseText: event.target.value } : item))} placeholder="Mensagem que o robô enviará" /></label>
               <label className="quick-label">Correspondência<select value={entry.matchMode} onChange={(event) => setResponses((current) => current.map((item) => item.id === entry.id ? { ...item, matchMode: event.target.value === "contains" ? "contains" : "equals" } : item))}><option value="equals">Texto exato</option><option value="contains">Contém o texto</option></select></label>
+              {Boolean(entry.source.responseMedia || entry.source.responseVcard || entry.source.responseButtons) && <div className="bot-advanced-preview"><Paperclip /><span>Mídia, contato e botões já cadastrados serão preservados.</span></div>}
+              <details className="response-preview"><summary><Eye /> Ver prévia do texto</summary><div className="response-preview-bubble"><b>BotAdmin</b><p>{entry.responseText || "A resposta usa uma mídia, contato ou botões."}</p></div></details>
+              </div>}
             </article>)}
           </div>}
           {mode === "ads" && <div className="bot-advanced-form">
@@ -7938,16 +7945,14 @@ function BotAdvancedControls({
 }) {
   const [mode, setMode] = useState<BotAdvancedMode | null>(null);
   const prefixes = stringList(settings.commandPrefixes);
-  const autoResponses = Array.isArray(settings.autoResponses) ? settings.autoResponses.length : 0;
   const ads = Array.isArray(settings.ads) ? settings.ads.length : 0;
   return <>
     <section className="bot-advanced-panel">
-      <div className="activation-overview-heading"><div><h3>Controles principais</h3><span>Mesma organização do painel Flutter.</span></div><InfoTip label="Controles principais">Prefixos, menus, respostas automáticas e mensagens programadas têm configuração própria e não ficam misturados nas ativações.</InfoTip></div>
+      <div className="activation-overview-heading"><h3>Configurações gerais</h3><InfoTip label="Configurações gerais">Personalize os comandos, os menus e os envios por horário. Respostas por gatilho ficam em Mensagens automáticas.</InfoTip></div>
       <div className="bot-advanced-grid">
         <button type="button" className="bot-advanced-card" onClick={() => setMode("prefixes")}><Tag /><span><b>Prefixos</b><small>{prefixes.length ? prefixes.slice(0, 4).join(" ") : "/ ! #"}</small></span><ChevronRight /></button>
         <button type="button" className="bot-advanced-card" onClick={() => setMode("menus")}><List /><span><b>Menus do robô</b><small>Editar cards, textos e imagens.</small></span><ChevronRight /></button>
         <button type="button" className="bot-advanced-card" onClick={() => setMode("ads")}><Clock3 /><span><b>Mensagens programadas</b><small>{ads ? `${ads} mensagem(ns) configurada(s).` : "Criar o primeiro ADS do grupo."}</small></span><ChevronRight /></button>
-        <button type="button" className="bot-advanced-card" onClick={() => setMode("responses")}><MessageCircle /><span><b>Respostas automáticas</b><small>{autoResponses ? `${autoResponses} resposta(s) configurada(s).` : "Nenhuma resposta configurada."}</small></span><ChevronRight /></button>
       </div>
     </section>
     {mode && <BotAdvancedConfigModal mode={mode} settings={settings} groupId={groupId} groupName={groupName} onClose={() => setMode(null)} onSaved={onSaved} />}
@@ -8117,13 +8122,11 @@ function BotGroupAutomationModal({
               </div>
               <div className="activation-sections">
                 {groupActivationCategories.map((category) => (
-                <section className="activation-category" key={category.id}>
-                  <div className="activation-category-title">
+                <details className="activation-category activation-category-disclosure" key={category.id} open={category.id === "messages"}>
+                  <summary className="activation-category-title">
                     <h3>{category.title}</h3>
-                    <InfoTip label={category.title}>
-                      Cada função é salva imediatamente e pode ser ligada ou desligada separadamente.
-                    </InfoTip>
-                  </div>
+                    <span>{category.items.filter((definition) => activationEnabled(settings, definition)).length}/{category.items.length} ligadas</span><ChevronRight />
+                  </summary>
                   <div className="activation-grid">
                     {category.items.map((definition) => {
                       const active = activationEnabled(settings, definition);
@@ -8150,7 +8153,8 @@ function BotGroupAutomationModal({
                           </button>
                           <label className="compact-switch">
                             <input
-                              type="checkbox"
+                                type="checkbox"
+                                aria-label={`Ativar ${definition.label}`}
                               checked={active}
                               disabled={saving !== null}
                               onChange={(event) =>
@@ -8163,7 +8167,7 @@ function BotGroupAutomationModal({
                       );
                     })}
                   </div>
-                </section>
+                </details>
                 ))}
               </div>
             </div>
@@ -11373,13 +11377,11 @@ function InternalGroupSettingsModal({
               </div>
               <div className="activation-sections internal-activation-sections">
                 {groupActivationCategories.map((category) => (
-                <section className="activation-category" key={category.id}>
-                  <div className="activation-category-title">
+                <details className="activation-category activation-category-disclosure" key={category.id} open={category.id === "messages"}>
+                  <summary className="activation-category-title">
                     <h3>{category.title}</h3>
-                    <InfoTip label={category.title}>
-                      As ativações são salvas imediatamente e seguem a mesma lógica do painel Flutter.
-                    </InfoTip>
-                  </div>
+                    <span>{category.items.filter((definition) => activationEnabled(botSettings, definition)).length}/{category.items.length} ligadas</span><ChevronRight />
+                  </summary>
                   <div className="activation-grid">
                     {category.items.map((definition) => {
                       const active = activationEnabled(botSettings, definition);
@@ -11407,6 +11409,7 @@ function InternalGroupSettingsModal({
                           <label className="compact-switch">
                             <input
                               type="checkbox"
+                              aria-label={`Ativar ${definition.label}`}
                               checked={active}
                               disabled={saving !== null}
                               onChange={(event) =>
@@ -11419,7 +11422,7 @@ function InternalGroupSettingsModal({
                       );
                     })}
                   </div>
-                </section>
+                </details>
                 ))}
               </div>
             </div>

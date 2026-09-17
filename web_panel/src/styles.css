@@ -10151,6 +10151,7 @@ img {
 .group-automation-scroll {
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 18px;
   scrollbar-gutter: stable;
 }
@@ -10169,7 +10170,7 @@ img {
 }
 .bot-advanced-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
 }
 .bot-advanced-card {
@@ -10205,9 +10206,8 @@ img {
   gap: 3px;
 }
 .bot-advanced-card b {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   font-size: 12px;
 }
 .bot-advanced-card small {
@@ -10227,7 +10227,9 @@ img {
 .bot-advanced-modal {
   width: min(650px, calc(100vw - 28px));
   max-height: min(840px, calc(100dvh - 28px));
+  overflow: hidden;
 }
+.bot-advanced-modal * { min-width: 0; }
 .bot-advanced-modal > header {
   flex: 0 0 auto;
 }
@@ -10240,12 +10242,14 @@ img {
 .bot-advanced-scroll {
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 8px 18px 20px;
 }
 .bot-advanced-form {
   display: grid;
   gap: 3px;
 }
+.automation-master-toggle { margin: 0 0 10px; border-color: #84cfaf; background: #f1fbf6; }
 .bot-advanced-preview {
   min-height: 44px;
   margin: 4px 0 7px;
@@ -10306,6 +10310,18 @@ img {
   color: #34454e;
   font-size: 12px;
 }
+.response-rule-summary { min-width: 0; flex: 1; display: flex; align-items: center; gap: 8px; padding: 0; border: 0; background: transparent; color: inherit; text-align: left; }
+.response-rule-summary > svg { width: 17px; flex: 0 0 auto; color: #008069; }
+.response-rule-summary > span { min-width: 0; flex: 1; display: grid; gap: 2px; }
+.response-rule-summary b, .response-rule-summary small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.response-rule-summary small { color: var(--muted); font-size: 10px; }
+.response-rule-fields { display: grid; gap: 2px; }
+.response-preview { margin: 5px 0 7px; border: 1px solid #e1e7e9; border-radius: 8px; background: #fff; }
+.response-preview summary { display: flex; align-items: center; gap: 6px; padding: 8px 10px; cursor: pointer; color: #087a59; font-size: 11px; font-weight: 700; }
+.response-preview summary svg { width: 15px; }
+.response-preview-bubble { margin: 0 10px 10px; padding: 9px 11px; border-radius: 9px; background: #e8f7ef; color: #22323a; font-size: 12px; }
+.response-preview-bubble b { display: block; color: #087a59; font-size: 11px; }
+.response-preview-bubble p { margin: 4px 0 0; white-space: pre-wrap; }
 .bot-advanced-row .quick-label {
   margin: 8px 0;
 }
@@ -10316,8 +10332,20 @@ img {
 .bot-advanced-form .quick-label select,
 .bot-advanced-form .quick-label textarea {
   box-sizing: border-box;
+  width: 100%;
+  min-height: 42px;
+  padding: 10px 11px;
+  border: 1px solid #cdd7da;
+  border-radius: 8px;
+  font: inherit;
+  font-weight: 400;
   color: #172b33;
   background: #fff;
+}
+.bot-advanced-form .quick-label textarea { resize: vertical; min-height: 90px; }
+.bot-advanced-form .quick-label :is(input, select, textarea):focus-visible {
+  outline: 2px solid #00a884;
+  outline-offset: 1px;
 }
 .bot-advanced-inline-fields {
   display: grid;
@@ -10399,6 +10427,12 @@ img {
   color: #22323a;
   font-size: 14px;
 }
+.activation-category-disclosure > summary { cursor: pointer; list-style: none; }
+.activation-category-disclosure > summary::-webkit-details-marker { display: none; }
+.activation-category-disclosure > summary > span { margin-left: auto; color: var(--muted); font-size: 11px; }
+.activation-category-disclosure > summary > svg { width: 16px; color: var(--muted); transition: transform .16s ease; }
+.activation-category-disclosure[open] > summary > svg { transform: rotate(90deg); }
+.activation-category-disclosure:not([open]) > summary { margin-bottom: 0; }
 .activation-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -10438,9 +10472,8 @@ img {
   gap: 2px;
 }
 .activation-tile b {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: #22323a;
   font-size: 12px;
 }
@@ -10493,6 +10526,7 @@ img {
   max-height: min(860px, calc(100dvh - 30px));
   overflow: hidden;
 }
+.activation-config-modal, .activation-config-modal * { min-width: 0; }
 .activation-config-modal > header {
   flex: 0 0 auto;
 }
@@ -10508,7 +10542,8 @@ img {
 }
 .activation-config-scroll {
   min-height: 0;
-  overflow: auto;
+  overflow-y: auto;
+  overflow-x: hidden;
   padding: 16px 18px 12px;
 }
 .activation-main-toggle {
@@ -11847,6 +11882,12 @@ img {
   color: #e9edef;
   background: #233138;
 }
+.theme-dark .automation-master-toggle { border-color: #2ea37a; background: #17382f; }
+.theme-dark .response-preview { border-color: #40515a; background: #111b21; }
+.theme-dark .response-preview-bubble { color: #e9edef; background: #17382f; }
+.theme-dark .response-rule-summary { color: #e9edef; }
+.theme-dark .activation-category-disclosure > summary > span,
+.theme-dark .activation-category-disclosure > summary > svg { color: #8696a0; }
 .theme-dark .bot-advanced-card:hover,
 .theme-dark .bot-advanced-card:focus-visible {
   border-color: #2ea37a;
@@ -11856,6 +11897,14 @@ img {
 .theme-dark .bot-advanced-row-heading b,
 .theme-dark .bot-advanced-list-heading b {
   color: #e9edef;
+}
+.theme-dark :is(.bot-advanced-modal, .group-automation-modal, .activation-config-modal) h2 {
+  color: #e9edef;
+}
+.theme-dark .response-preview summary,
+.theme-dark .response-rule-summary > svg,
+.theme-dark .response-preview-bubble b {
+  color: #75e4bf;
 }
 .theme-dark .bot-advanced-form .quick-label,
 .theme-dark .bot-advanced-row .quick-label {
@@ -11949,7 +11998,7 @@ img {
     min-height: 69px;
   }
   .bot-advanced-grid {
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr;
   }
   .bot-advanced-card {
     min-height: 75px;
@@ -11963,6 +12012,10 @@ img {
     max-height: calc(100dvh - 20px);
     border-radius: 16px;
   }
+  .bot-advanced-list-heading { align-items: stretch; flex-direction: column; }
+  .bot-advanced-list-heading .secondary-button { width: 100%; justify-content: center; }
+  .bot-advanced-scroll { padding-inline: 12px; }
+  .bot-advanced-row { padding-inline: 10px; }
   .activation-config-modal {
     width: 100%;
     max-height: calc(100dvh - 20px);
