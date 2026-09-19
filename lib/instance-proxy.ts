@@ -374,6 +374,27 @@ export const applyConfiguredProxyToRemote = async (options: {
   const row = await readRow(options.instanceId);
   if (!row) return;
   const enabled = row.enabled === 1;
+  if (!enabled) {
+    // Avoid a redundant /session/proxy call: EasyZap refuses it while a
+    // socket is connected, even when the proxy is already disabled. Still
+    // clear a previously configured remote proxy before a new pairing.
+    const statusResponse = await fetch(
+      `${options.serverBaseUrl.replace(/\/+$/, "")}/session/status`,
+      { headers: { token: options.token }, signal: AbortSignal.timeout(12_000) },
+    );
+    if (!statusResponse.ok) throw new Error(`Não foi possível consultar o proxy da instância (${statusResponse.status}).`);
+    const payload = await statusResponse.json() as Record<string, unknown>;
+    const data = (payload.data && typeof payload.data === "object"
+      ? payload.data : payload) as Record<string, unknown>;
+    const proxyConfig = (data.proxy_config && typeof data.proxy_config === "object"
+      ? data.proxy_config : {}) as Record<string, unknown>;
+    const configuredProxy = proxyConfig.proxy_url ?? data.proxy_url;
+    const remoteProxy = typeof configuredProxy === "string" ? configuredProxy.trim() : "";
+    if (!remoteProxy) return;
+    if (data.connected === true) {
+      throw new Error("A instância está conectada. Desconecte-a antes de remover o proxy.");
+    }
+  }
   const normalized: NormalizedProxy = {
     enabled,
     protocol: ["http", "https", "socks4", "socks4a", "socks5", "socks5h"].includes(row.protocol)
