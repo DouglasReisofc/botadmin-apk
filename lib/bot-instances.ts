@@ -374,6 +374,7 @@ const isAlreadyDisconnectedActionError = (error: unknown): boolean => {
     isDisconnectedSessionError(error) ||
     message.includes("not connected") ||
     message.includes("was not connected") ||
+    message.includes("not logged in") ||
     message.includes("não estava conectado") ||
     message.includes("nao estava conectado")
   );
@@ -2567,7 +2568,9 @@ export const performInstanceAction = async (
       await callInstanceSession(server, instance.token, "/session/disconnect", {
         method,
         body: JSON.stringify({}),
-      }).catch(() => {});
+      }).catch((error) => {
+        if (!isAlreadyDisconnectedActionError(error)) throw error;
+      });
 
       await performConnect();
     };
@@ -2580,6 +2583,17 @@ export const performInstanceAction = async (
       }
       await recreateRemoteInstance(instance);
       await performRestart();
+    }
+    return;
+  }
+
+  if (action === "connect") {
+    try {
+      await performConnect();
+    } catch (error) {
+      if (!shouldRecreateRemoteInstance(error)) throw error;
+      await recreateRemoteInstance(instance);
+      await performConnect();
     }
     return;
   }

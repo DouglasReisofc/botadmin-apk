@@ -25,6 +25,9 @@ const isConnected = (status: unknown) => {
   return value.includes("conect") && !value.includes("desconect");
 };
 
+const isLiveProxyChangeError = (error: unknown) =>
+  error instanceof Error && /cannot set proxy while connected/i.test(error.message);
+
 const proxyInput = (body: Record<string, unknown>) => ({
   enabled: asBoolean(body.enabled),
   proxyUrl: body.proxyUrl ?? body.proxy_url,
@@ -97,7 +100,7 @@ export async function PUT(request: Request, context: Context) {
     const body = await request.json().catch(() => null);
     if (!body || typeof body !== "object") return NextResponse.json({ message: "Payload inválido." }, { status: 400 });
     const config = await saveAndTestInstanceProxy(instanceId, proxyInput(body as Record<string, unknown>));
-    const connected = isConnected(instance.sessionStatus);
+    let connected = isConnected(instance.sessionStatus);
     let applied = false;
     if (connected) {
       // WuzAPI refuses to change a live proxy. Restart the transport only
@@ -107,11 +110,19 @@ export async function PUT(request: Request, context: Context) {
       await performInstanceAction(user.id, instanceId, "restart");
       applied = true;
     } else {
-      await applyConfiguredProxyToRemote({
-        instanceId,
-        serverBaseUrl: instance.serverBaseUrl,
-        token: instance.token,
-      });
+      try {
+        await applyConfiguredProxyToRemote({
+          instanceId,
+          serverBaseUrl: instance.serverBaseUrl,
+          token: instance.token,
+        });
+      } catch (error) {
+        // The persisted status can lag the WhatsApp socket. Retry by cycling
+        // only the transport when the remote reports that it is still live.
+        if (!isLiveProxyChangeError(error)) throw error;
+        await performInstanceAction(user.id, instanceId, "restart");
+        connected = true;
+      }
       applied = true;
     }
     return NextResponse.json({

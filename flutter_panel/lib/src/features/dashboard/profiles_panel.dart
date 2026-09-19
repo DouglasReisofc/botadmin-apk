@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api_client.dart';
+import '../../core/proxy_input_parser.dart';
 import '../../core/wa_theme.dart';
 import '../../models/bot_instance.dart';
 import '../../models/migration_models.dart';
@@ -832,7 +833,10 @@ class _InstanceCardState extends ConsumerState<_InstanceCard> {
         ? const Color(0xFF00A884)
         : (instance.isAwaitingPair ? const Color(0xFFF59E0B) : wa.textMuted);
     final proxy = ref.watch(instanceProxyProvider(instance.id));
-    final proxyValue = proxy.maybeWhen(data: (value) => value.proxy, orElse: () => null);
+    final proxyValue = proxy.maybeWhen(
+      data: (value) => value.proxy,
+      orElse: () => null,
+    );
 
     return DecoratedBox(
       decoration: BoxDecoration(
@@ -927,7 +931,11 @@ class _InstanceCardState extends ConsumerState<_InstanceCard> {
               const SizedBox(height: 7),
               Row(
                 children: [
-                  Icon(Icons.shield_outlined, size: 15, color: const Color(0xFF0EA5E9)),
+                  Icon(
+                    Icons.shield_outlined,
+                    size: 15,
+                    color: const Color(0xFF0EA5E9),
+                  ),
                   const SizedBox(width: 5),
                   Expanded(
                     child: Text(
@@ -989,7 +997,11 @@ class _InstanceCardState extends ConsumerState<_InstanceCard> {
                       ? null
                       : () => openInstanceProxyDialog(context, ref, instance),
                   icon: const Icon(Icons.security_rounded, size: 18),
-                  label: Text(proxyValue?.enabled == true ? 'Editar proxy' : 'Adicionar proxy'),
+                  label: Text(
+                    proxyValue?.enabled == true
+                        ? 'Editar proxy'
+                        : 'Adicionar proxy',
+                  ),
                 ),
                 FilledButton.tonalIcon(
                   onPressed: _busy || widget.onActivate == null
@@ -1783,10 +1795,12 @@ class _InstanceProxyDialog extends ConsumerStatefulWidget {
   final BotInstance instance;
 
   @override
-  ConsumerState<_InstanceProxyDialog> createState() => _InstanceProxyDialogState();
+  ConsumerState<_InstanceProxyDialog> createState() =>
+      _InstanceProxyDialogState();
 }
 
 class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
+  final _importLine = TextEditingController();
   final _host = TextEditingController();
   final _port = TextEditingController();
   final _username = TextEditingController();
@@ -1796,6 +1810,8 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
   bool _loading = true;
   bool _saving = false;
   bool _testing = false;
+  String? _formMessage;
+  bool _testSucceeded = false;
   InstanceProxyBundle? _bundle;
 
   @override
@@ -1806,6 +1822,7 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
 
   @override
   void dispose() {
+    _importLine.dispose();
     _host.dispose();
     _port.dispose();
     _username.dispose();
@@ -1815,45 +1832,94 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
 
   Future<void> _load() async {
     try {
-      final bundle = await ref.read(apiClientProvider).loadInstanceProxy(widget.instance.id);
+      final bundle = await ref
+          .read(apiClientProvider)
+          .loadInstanceProxy(widget.instance.id);
       if (!mounted) return;
       _bundle = bundle;
       _enabled = bundle.proxy.enabled;
-      _protocol = const {'http', 'https', 'socks4', 'socks4a', 'socks5', 'socks5h'}
-              .contains(bundle.proxy.protocol)
+      _protocol =
+          const {
+            'http',
+            'https',
+            'socks4',
+            'socks4a',
+            'socks5',
+            'socks5h',
+          }.contains(bundle.proxy.protocol)
           ? bundle.proxy.protocol
           : 'socks5';
       _host.text = bundle.proxy.host ?? '';
       _port.text = bundle.proxy.port?.toString() ?? '';
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
   Map<String, Object?> _payload() => {
-        'enabled': _enabled,
-        'protocol': _protocol,
-        'host': _host.text.trim(),
-        'port': int.tryParse(_port.text.trim()) ?? 0,
-        'username': _username.text.trim(),
-        'password': _password.text,
-        'preserveUsername': _username.text.trim().isEmpty && (_bundle?.proxy.hasUsername ?? false),
-        'preservePassword': _password.text.isEmpty && (_bundle?.proxy.hasPassword ?? false),
-      };
+    'enabled': _enabled,
+    'protocol': _protocol,
+    'host': _host.text.trim(),
+    'port': int.tryParse(_port.text.trim()) ?? 0,
+    'username': _username.text.trim(),
+    'password': _password.text,
+    'preserveUsername':
+        _username.text.trim().isEmpty && (_bundle?.proxy.hasUsername ?? false),
+    'preservePassword':
+        _password.text.isEmpty && (_bundle?.proxy.hasPassword ?? false),
+  };
+
+  void _importProxy() {
+    try {
+      final parsed = parseProxyInput(_importLine.text, protocol: _protocol);
+      setState(() {
+        _enabled = true;
+        _protocol = parsed.protocol;
+        _host.text = parsed.host;
+        _port.text = parsed.port.toString();
+        _username.text = parsed.username;
+        _password.text = parsed.password;
+        _formMessage = 'Dados importados. Teste a conexão antes de salvar.';
+        _testSucceeded = false;
+      });
+      _importLine.clear();
+    } on FormatException catch (error) {
+      setState(() {
+        _formMessage = error.message;
+        _testSucceeded = false;
+      });
+    }
+  }
 
   Future<void> _test() async {
     if (_testing || _saving) return;
     setState(() => _testing = true);
     try {
-      final result = await ref.read(apiClientProvider).testInstanceProxy(widget.instance.id, _payload());
+      final result = await ref
+          .read(apiClientProvider)
+          .testInstanceProxy(widget.instance.id, _payload());
       if (!mounted) return;
       final check = result['check'];
       final ip = check is Map ? check['resolvedIp']?.toString() : null;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(ip == null ? 'Proxy desativado.' : 'Proxy acessível. IP público: $ip')));
+      setState(() {
+        _testSucceeded = ip != null;
+        _formMessage = ip == null
+            ? 'Proxy desativado: este perfil usará a conexão direta.'
+            : 'Proxy aprovado para WhatsApp. IP de saída: $ip'
+                  '${check['regionName'] == null ? '' : ' · ${check['regionName']}'}'
+                  '${check['latencyMs'] == null ? '' : ' · ${check['latencyMs']} ms'}';
+      });
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      if (mounted)
+        setState(() {
+          _testSucceeded = false;
+          _formMessage = error.toString();
+        });
     } finally {
       if (mounted) setState(() => _testing = false);
     }
@@ -1863,7 +1929,9 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
     if (_saving || _loading) return;
     setState(() => _saving = true);
     try {
-      final bundle = await ref.read(apiClientProvider).saveInstanceProxy(widget.instance.id, _payload());
+      final bundle = await ref
+          .read(apiClientProvider)
+          .saveInstanceProxy(widget.instance.id, _payload());
       if (!mounted) return;
       Navigator.of(context).pop();
       final text = bundle.connected
@@ -1871,7 +1939,10 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
           : 'Proxy salvo e pronto para a próxima conexão.';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
     } catch (error) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(error.toString())));
+      if (mounted)
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(error.toString())));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -1882,7 +1953,7 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
     final wa = WaTheme.of(context);
     final size = MediaQuery.sizeOf(context);
     final policy = _bundle?.policy;
-    final customerCanConfigure = policy?.allowCustomerProxy ?? true;
+    final customerCanConfigure = policy?.allowCustomerProxy ?? false;
     return AlertDialog(
       backgroundColor: wa.panel,
       insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
@@ -1890,77 +1961,267 @@ class _InstanceProxyDialogState extends ConsumerState<_InstanceProxyDialog> {
         children: [
           const Icon(Icons.shield_outlined, color: Color(0xFF0EA5E9)),
           const SizedBox(width: 8),
-          Expanded(child: Text('Proxy da conexão', style: TextStyle(color: wa.textPrimary, fontWeight: FontWeight.w800))),
+          Expanded(
+            child: Text(
+              'Proxy da conexão',
+              style: TextStyle(
+                color: wa.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
         ],
       ),
       content: SizedBox(
         width: size.width > 520 ? 470 : size.width - 58,
         child: _loading
-            ? const SizedBox(height: 120, child: Center(child: CircularProgressIndicator()))
+            ? const SizedBox(
+                height: 120,
+                child: Center(child: CircularProgressIndicator()),
+              )
             : SingleChildScrollView(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Text('A rota fica vinculada somente a este perfil. A senha nunca é exibida novamente.', style: TextStyle(color: wa.textMuted, fontSize: 12.5)),
+                    Text(
+                      'Um proxy exclusivo por perfil. Credenciais ficam protegidas e não são exibidas novamente.',
+                      style: TextStyle(color: wa.textMuted, fontSize: 12.5),
+                    ),
                     if (!customerCanConfigure) ...[
                       const SizedBox(height: 10),
                       Text(
                         policy?.instructions?.trim().isNotEmpty == true
                             ? policy!.instructions!
                             : 'Seu responsável comercial gerencia o proxy deste perfil. Entre em contato para contratar ou alterar a rota.',
-                        style: const TextStyle(color: Color(0xFFF59E0B), fontSize: 12.5, fontWeight: FontWeight.w700),
+                        style: const TextStyle(
+                          color: Color(0xFFF59E0B),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ],
                     const SizedBox(height: 12),
                     SwitchListTile.adaptive(
                       contentPadding: EdgeInsets.zero,
-                      title: Text('Usar proxy', style: TextStyle(color: wa.textPrimary, fontWeight: FontWeight.w700)),
-                      subtitle: Text('Recomendado: proxy fixo e exclusivo por perfil.', style: TextStyle(color: wa.textMuted, fontSize: 12)),
+                      title: Text(
+                        'Usar proxy',
+                        style: TextStyle(
+                          color: wa.textPrimary,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      subtitle: Text(
+                        'Recomendado: proxy fixo e exclusivo por perfil.',
+                        style: TextStyle(color: wa.textMuted, fontSize: 12),
+                      ),
                       value: _enabled,
-                      onChanged: customerCanConfigure ? (value) => setState(() => _enabled = value) : null,
+                      onChanged: customerCanConfigure
+                          ? (value) => setState(() => _enabled = value)
+                          : null,
                     ),
+                    if (customerCanConfigure) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Importar proxy da Geonix ou outro provedor',
+                        style: TextStyle(
+                          color: wa.textPrimary,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      const SizedBox(height: 7),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _importLine,
+                              obscureText: true,
+                              autocorrect: false,
+                              enableSuggestions: false,
+                              decoration: const InputDecoration(
+                                labelText: 'Cole URL ou linha do proxy',
+                                hintText:
+                                    'protocolo://usuario:senha@host:porta',
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: _importProxy,
+                            child: const Text('Importar'),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 5),
+                      Text(
+                        'Aceita URL, host:porta:usuário:senha e exportação Geonix. Os dados só são enviados ao testar ou salvar.',
+                        style: TextStyle(color: wa.textMuted, fontSize: 11.5),
+                      ),
+                    ],
                     DropdownButtonFormField<String>(
                       value: _protocol,
                       decoration: const InputDecoration(labelText: 'Protocolo'),
                       items: const [
-                        DropdownMenuItem(value: 'socks5', child: Text('SOCKS5')),
-                        DropdownMenuItem(value: 'socks5h', child: Text('SOCKS5H (DNS pelo proxy)')),
-                        DropdownMenuItem(value: 'socks4', child: Text('SOCKS4')),
-                        DropdownMenuItem(value: 'socks4a', child: Text('SOCKS4A')),
-                        DropdownMenuItem(value: 'http', child: Text('HTTP / HTTPS')),
-                        DropdownMenuItem(value: 'https', child: Text('HTTPS (túnel seguro)')),
+                        DropdownMenuItem(
+                          value: 'socks5',
+                          child: Text('SOCKS5'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'socks5h',
+                          child: Text('SOCKS5H (DNS pelo proxy)'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'socks4',
+                          child: Text('SOCKS4'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'socks4a',
+                          child: Text('SOCKS4A'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'http',
+                          child: Text('HTTP / HTTPS'),
+                        ),
+                        DropdownMenuItem(
+                          value: 'https',
+                          child: Text('HTTPS (túnel seguro)'),
+                        ),
                       ],
-                      onChanged: customerCanConfigure ? (value) => setState(() => _protocol = value ?? 'socks5') : null,
+                      onChanged: customerCanConfigure
+                          ? (value) =>
+                                setState(() => _protocol = value ?? 'socks5')
+                          : null,
                     ),
                     const SizedBox(height: 10),
-                    Row(children: [
-                      Expanded(child: TextField(controller: _host, enabled: _enabled && customerCanConfigure, decoration: const InputDecoration(labelText: 'Host ou IP'))),
-                      const SizedBox(width: 10),
-                      SizedBox(width: 105, child: TextField(controller: _port, enabled: _enabled && customerCanConfigure, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Porta'))),
-                    ]),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _host,
+                            enabled: _enabled && customerCanConfigure,
+                            decoration: const InputDecoration(
+                              labelText: 'Host ou IP',
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SizedBox(
+                          width: 105,
+                          child: TextField(
+                            controller: _port,
+                            enabled: _enabled && customerCanConfigure,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(
+                              labelText: 'Porta',
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: 10),
-                    TextField(controller: _username, enabled: _enabled && customerCanConfigure, decoration: InputDecoration(labelText: 'Usuário (opcional)', hintText: _bundle?.proxy.hasUsername == true ? 'Já configurado' : null)),
+                    TextField(
+                      controller: _username,
+                      enabled: _enabled && customerCanConfigure,
+                      decoration: InputDecoration(
+                        labelText: 'Usuário (opcional)',
+                        hintText: _bundle?.proxy.hasUsername == true
+                            ? 'Já configurado'
+                            : null,
+                      ),
+                    ),
                     const SizedBox(height: 10),
-                    TextField(controller: _password, enabled: _enabled && customerCanConfigure, obscureText: true, decoration: InputDecoration(labelText: 'Senha (opcional)', hintText: _bundle?.proxy.hasPassword == true ? 'Já configurada' : null)),
+                    TextField(
+                      controller: _password,
+                      enabled: _enabled && customerCanConfigure,
+                      obscureText: true,
+                      decoration: InputDecoration(
+                        labelText: 'Senha (opcional)',
+                        hintText: _bundle?.proxy.hasPassword == true
+                            ? 'Já configurada'
+                            : null,
+                      ),
+                    ),
                     if (policy != null && policy.monthlyPrice > 0) ...[
                       const SizedBox(height: 12),
-                      Text(policy.mode == 'automatic'
-                          ? 'Proxy gerenciado pelo master: R\$ ${policy.monthlyPrice.toStringAsFixed(2)}/mês.'
-                          : 'Venda manual de proxy disponível com ${policy.sellerName ?? 'seu master'}.', style: TextStyle(color: wa.textMuted, fontSize: 12)),
+                      Text(
+                        policy.mode == 'automatic'
+                            ? 'Proxy gerenciado pelo master: R\$ ${policy.monthlyPrice.toStringAsFixed(2)}/mês.'
+                            : 'Venda manual de proxy disponível com ${policy.sellerName ?? 'seu master'}.',
+                        style: TextStyle(color: wa.textMuted, fontSize: 12),
+                      ),
                     ],
                     if (_bundle?.proxy.resolvedIp != null) ...[
                       const SizedBox(height: 12),
-                      Text('IP conectado: ${_bundle!.proxy.resolvedIp} · ${_bundle!.proxy.countryName ?? ''}${_bundle!.proxy.regionName == null ? '' : ' · ${_bundle!.proxy.regionName}'}', style: TextStyle(color: const Color(0xFF0EA5E9), fontSize: 12.5, fontWeight: FontWeight.w700)),
+                      Text(
+                        'IP conectado: ${_bundle!.proxy.resolvedIp} · ${_bundle!.proxy.countryName ?? ''}${_bundle!.proxy.regionName == null ? '' : ' · ${_bundle!.proxy.regionName}'}',
+                        style: TextStyle(
+                          color: const Color(0xFF0EA5E9),
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ],
+                    if (_formMessage != null) ...[
+                      const SizedBox(height: 12),
+                      Text(
+                        _formMessage!,
+                        style: TextStyle(
+                          color: _testSucceeded
+                              ? const Color(0xFF008069)
+                              : wa.textPrimary,
+                          fontSize: 12.5,
+                          fontWeight: _testSucceeded
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                    if (_bundle?.proxy.lastError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Última falha: ${_bundle!.proxy.lastError}',
+                        style: const TextStyle(
+                          color: Color(0xFFDC2626),
+                          fontSize: 12,
+                        ),
+                      ),
                     ],
                   ],
                 ),
               ),
       ),
       actions: [
-        TextButton(onPressed: _saving ? null : () => Navigator.of(context).pop(), child: const Text('Cancelar')),
-        OutlinedButton.icon(onPressed: _testing || _saving || _loading || !customerCanConfigure ? null : _test, icon: _testing ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.network_check_rounded, size: 17), label: const Text('Testar')),
-        FilledButton.icon(onPressed: _saving || _loading || !customerCanConfigure ? null : _save, icon: _saving ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.save_rounded, size: 17), label: const Text('Salvar')),
+        TextButton(
+          onPressed: _saving ? null : () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        OutlinedButton.icon(
+          onPressed: _testing || _saving || _loading || !customerCanConfigure
+              ? null
+              : _test,
+          icon: _testing
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.network_check_rounded, size: 17),
+          label: const Text('Testar'),
+        ),
+        FilledButton.icon(
+          onPressed: _saving || _loading || !customerCanConfigure
+              ? null
+              : _save,
+          icon: _saving
+              ? const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.save_rounded, size: 17),
+          label: const Text('Salvar'),
+        ),
       ],
     );
   }

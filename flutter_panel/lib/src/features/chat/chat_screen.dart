@@ -1079,7 +1079,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       unawaited(() async {
         // An event received during a request may not be in its snapshot.
         // Wait for that request, then fetch the trailing update as well.
-        final pending = _latestRefreshInFlight[ConversationCache.threadKey(thread)];
+        final pending =
+            _latestRefreshInFlight[ConversationCache.threadKey(thread)];
         if (pending != null) await pending;
         if (!mounted || !_isCurrentThread(thread)) return;
         await _refreshLatestMessages(thread, scrollToLatest: _isNearLatest());
@@ -14810,8 +14811,7 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                   },
             icon: const Icon(Icons.refresh_rounded),
           ),
-          if (widget.canDraw &&
-              widget.onAddMember != null)
+          if (widget.canDraw && widget.onAddMember != null)
             IconButton(
               tooltip: 'Adicionar membro',
               onPressed: _busy ? null : _addMember,
@@ -14880,7 +14880,11 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
 
   Future<void> _addMember() async {
     if (widget.members.isEmpty) {
-      if (mounted) showErrorToast(context, 'Não foi possível carregar os membros do grupo.');
+      if (mounted)
+        showErrorToast(
+          context,
+          'Não foi possível carregar os membros do grupo.',
+        );
       return;
     }
     final member = await showDialog<_MentionCandidate>(
@@ -15989,7 +15993,7 @@ class _NoChatSelected extends StatelessWidget {
                   const _BusinessIllustration(),
                   SizedBox(height: 26),
                   Text(
-                    'WhatsApp Business Web',
+                    'BotAdmin Web',
                     style: TextStyle(
                       fontSize: 32,
                       height: 1,
