@@ -1054,12 +1054,50 @@ class _DetailPane extends StatelessWidget {
     if (loading) {
       return const Center(child: CircularProgressIndicator(strokeWidth: 2.4));
     }
-    if (detail == null || list == null)
-      return const Center(
-        child: Text(
-          'Selecione uma lista para abrir a conversa de transmissão.',
+    if (detail == null || list == null) {
+      return ColoredBox(
+        color: wa.isDark ? wa.contentBg : Colors.white,
+        child: LayoutBuilder(
+          builder: (context, constraints) => Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 440),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Image.asset(
+                      'assets/brand/broadcast-empty-editorial.png',
+                      width: constraints.maxWidth < 440
+                          ? constraints.maxWidth - 48
+                          : 390,
+                      cacheWidth: 900,
+                      fit: BoxFit.contain,
+                    ),
+                    const SizedBox(height: 20),
+                    Text(
+                      'Uma mensagem, vários contatos',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: wa.textPrimary,
+                        fontSize: 23,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 9),
+                    Text(
+                      'Escolha uma lista para preparar, programar e acompanhar seus envios.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: wa.textMuted, fontSize: 15),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
         ),
       );
+    }
     return LayoutBuilder(
       builder: (context, constraints) {
         final compact = constraints.maxWidth < 640;

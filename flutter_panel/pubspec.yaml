@@ -81,6 +81,8 @@ flutter:
     - assets/brand/botadmin-logo.png
     - assets/brand/botadmin-logo.webp
     - assets/brand/messages-empty-logo.png
+    - assets/brand/broadcast-empty-editorial.png
+    - assets/brand/conversations-empty-editorial.png
     - assets/brand/botadmin-robot.json
 
   fonts:

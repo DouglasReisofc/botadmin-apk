@@ -15977,7 +15977,7 @@ class _NoChatSelected extends StatelessWidget {
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
     return ColoredBox(
-      color: wa.contentBg,
+      color: wa.isDark ? wa.contentBg : Colors.white,
       child: Stack(
         children: [
           Center(
@@ -15987,7 +15987,7 @@ class _NoChatSelected extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const _BusinessIllustration(),
-                  SizedBox(height: 42),
+                  SizedBox(height: 26),
                   Text(
                     'WhatsApp Business Web',
                     style: TextStyle(
@@ -16445,9 +16445,10 @@ class _BusinessIllustration extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Image.network(
-      '/images/brand/messages-empty-logo-v2.png?v=ca02fi-20260712',
-      width: 300,
+    return Image.asset(
+      'assets/brand/conversations-empty-editorial.png',
+      width: 340,
+      cacheWidth: 800,
       fit: BoxFit.contain,
       errorBuilder: (context, error, stackTrace) => Icon(
         Icons.storefront_rounded,
