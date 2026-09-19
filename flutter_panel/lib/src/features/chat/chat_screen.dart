@@ -1308,7 +1308,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                         controller: _messagesScrollController,
                         padding: padding,
                         scrollCacheExtent: ScrollCacheExtent.pixels(
-                          constraints.maxHeight * 1.25,
+                          // Web groups can contain hundreds of media-heavy
+                          // rows. Keep a smaller render-ahead window there so
+                          // the browser does not build several screens that
+                          // are not visible. Native keeps the larger buffer
+                          // for touch scrolling and playback continuity.
+                          constraints.maxHeight * (kIsWeb ? 0.65 : 1.25),
                         ),
                         // Players em reprodução solicitam keep-alive. Assim o
                         // áudio/vídeo não reinicia quando o balão sai da tela.
