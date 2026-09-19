@@ -308,7 +308,7 @@ const persistSectionInUrl = (section: Section) => {
 const API_ORIGIN = "https://botadmin.shop";
 const DIRECTORY_PAGE_SIZE = 40;
 const brandLogo = `${API_ORIGIN}/images/brand/botadmin-logo.webp`;
-const emptyLogo = `${API_ORIGIN}/images/brand/messages-empty-logo.png`;
+const emptyLogo = `${API_ORIGIN}/images/brand/conversations-empty-editorial.png`;
 const normalizePublicLink = (value: string) => {
   try {
     const url = new URL(value, API_ORIGIN);
@@ -4353,8 +4353,8 @@ function Chat({
     return (
       <main className="chat empty-pane">
         <img src={emptyLogo} alt="" />
-        <h1>WhatsApp Business Web</h1>
-        <p>Amplie, organize e gerencie sua conta comercial.</p>
+        <h1>Suas conversas, no mesmo lugar</h1>
+        <p>Escolha uma conversa para acompanhar mensagens e grupos em tempo real.</p>
         <div>
           <LockKeyhole size={14} /> Suas mensagens pessoais são protegidas com a
           criptografia de ponta a ponta.

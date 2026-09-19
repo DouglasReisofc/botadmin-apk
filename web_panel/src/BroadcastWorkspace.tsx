@@ -3884,9 +3884,13 @@ export default function BroadcastWorkspace({ selectedInstance }: Props) {
             </div>
           ) : !detail ? (
             <div className="broadcast-welcome">
-              <RadioTower />
-              <b>Selecione uma lista</b>
-              <p>As mensagens e programações aparecerão aqui.</p>
+              <img
+                src="/images/brand/broadcast-empty-editorial.png"
+                alt=""
+                aria-hidden="true"
+              />
+              <b>Uma mensagem, vários contatos</b>
+              <p>Escolha uma lista para preparar, programar e acompanhar seus envios.</p>
             </div>
           ) : (
             <>
