@@ -103,6 +103,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   bool _mentionAll = false;
   final Map<String, _MentionCandidate> _selectedMentions = {};
   List<_MentionCandidate> _mentionCandidates = const [];
+  List<ChatMessage>? _reactionSource;
+  List<ChatMessage> _reactionRows = const [];
   bool _restrictMemberPrivateChat = false;
   String? _internalGroupWallpaperUrl;
   Uint8List? _internalGroupWallpaperBytes;
@@ -1068,10 +1070,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   void _scheduleRealtimeRefresh(ConversationThread thread) {
-    _realtimeRefreshDebounce?.cancel();
+    // Bound latency during busy groups: restarting the timer for every event
+    // used to postpone the refresh indefinitely while messages kept arriving.
+    if (_realtimeRefreshDebounce?.isActive == true) return;
     _realtimeRefreshDebounce = Timer(const Duration(milliseconds: 180), () {
+      _realtimeRefreshDebounce = null;
       if (!mounted || !_isCurrentThread(thread)) return;
       unawaited(() async {
+        // An event received during a request may not be in its snapshot.
+        // Wait for that request, then fetch the trailing update as well.
+        final pending = _latestRefreshInFlight[ConversationCache.threadKey(thread)];
+        if (pending != null) await pending;
+        if (!mounted || !_isCurrentThread(thread)) return;
         await _refreshLatestMessages(thread, scrollToLatest: _isNearLatest());
         if (!mounted || !_isCurrentThread(thread)) return;
         await _markCurrentThreadRead(thread);
@@ -1290,6 +1300,10 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                           !queryActive &&
                           (_olderMessagesLoading || _hasMoreMessages);
                       final loaderOffset = showOlderLoader ? 1 : 0;
+                      final mentionTargets = {
+                        for (final candidate in _mentionCandidates)
+                          candidate.label: candidate.jid,
+                      };
                       return ListView.builder(
                         controller: _messagesScrollController,
                         padding: padding,
@@ -1321,10 +1335,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             message: message,
                             viewportWidth: messageViewportWidth,
                             onOpenContact: widget.onOpenContact,
-                            mentionTargets: {
-                              for (final candidate in _mentionCandidates)
-                                candidate.label: candidate.jid,
-                            },
+                            mentionTargets: mentionTargets,
                             onOpenMention: _openMentionConversation,
                             onOpenParticipantConversation:
                                 _openMentionConversation,
@@ -1828,6 +1839,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   List<ChatMessage> _messagesWithAttachedReactions(List<ChatMessage> items) {
+    // Message snapshots are replaced, never mutated. Composer/recording updates
+    // can reuse the derived history instead of joining all reactions again.
+    if (identical(items, _reactionSource)) return _reactionRows;
+    final result = _attachReactions(items);
+    _reactionSource = items;
+    _reactionRows = result;
+    return result;
+  }
+
+  List<ChatMessage> _attachReactions(List<ChatMessage> items) {
     final reactionsByTarget = <String, List<ChatReaction>>{};
     final visibleMessages = <ChatMessage>[];
 
