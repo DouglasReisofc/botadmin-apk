@@ -2076,11 +2076,7 @@ class _ContentForSection extends ConsumerWidget {
                     )
             : null,
       ),
-      DashboardSection.profiles => ProfileConnectionPanel(
-        onActivate: (instance) {
-          ref.read(selectedInstanceIdProvider.notifier).select(instance.id);
-        },
-      ),
+      DashboardSection.profiles => const ProfileConnectionPanel(),
       DashboardSection.status => StatusPanel(
         activeInstanceId: ref.watch(selectedInstanceIdProvider),
       ),
@@ -2913,12 +2909,13 @@ Future<void> _openDesktopCategoryMenu(
       Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
   if (button == null || overlay == null) return;
   final topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
-  final position = RelativeRect.fromLTRB(
+  final anchor = Rect.fromLTWH(
     topLeft.dx + button.size.width + 4,
     topLeft.dy,
-    0,
-    0,
+    1,
+    button.size.height,
   );
+  final position = RelativeRect.fromRect(anchor, Offset.zero & overlay.size);
   final destination = await showMenu<_CategoryDestination>(
     context: context,
     position: position,
@@ -8617,13 +8614,7 @@ class _MobileShell extends ConsumerWidget {
                   )?.id,
                   onCreateProfile: () => _startProfileCreation(ref),
                 ),
-                DashboardSection.profiles => ProfileConnectionPanel(
-                  onActivate: (instance) {
-                    ref
-                        .read(selectedInstanceIdProvider.notifier)
-                        .select(instance.id);
-                  },
-                ),
+                DashboardSection.profiles => const ProfileConnectionPanel(),
                 DashboardSection.status => StatusPanel(
                   activeInstanceId: ref.watch(selectedInstanceIdProvider),
                 ),

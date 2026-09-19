@@ -19851,9 +19851,7 @@ class MediaPanel extends ConsumerWidget {
 }
 
 class ProfileConnectionPanel extends ConsumerStatefulWidget {
-  const ProfileConnectionPanel({super.key, this.onActivate});
-
-  final ValueChanged<BotInstance>? onActivate;
+  const ProfileConnectionPanel({super.key});
 
   @override
   ConsumerState<ProfileConnectionPanel> createState() =>
@@ -19889,7 +19887,7 @@ class _ProfileConnectionPanelState
             title: 'Perfis WhatsApp',
             subtitle:
                 'Crie um perfil, conecte o número por QR/código e gerencie os grupos nele.',
-            child: ProfilesInstancesPanel(onActivate: widget.onActivate),
+            child: const ProfilesInstancesPanel(),
           ),
         ],
       ),

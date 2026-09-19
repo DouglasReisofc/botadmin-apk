@@ -524,9 +524,7 @@ class _RenewProfileSheetState extends ConsumerState<_RenewProfileSheet> {
 }
 
 class ProfilesInstancesPanel extends ConsumerWidget {
-  const ProfilesInstancesPanel({super.key, this.onActivate});
-
-  final ValueChanged<BotInstance>? onActivate;
+  const ProfilesInstancesPanel({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -613,10 +611,7 @@ class ProfilesInstancesPanel extends ConsumerWidget {
               ...list.map(
                 (instance) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: _InstanceCard(
-                    instance: instance,
-                    onActivate: onActivate,
-                  ),
+                  child: _InstanceCard(instance: instance),
                 ),
               ),
           ],
@@ -627,10 +622,9 @@ class ProfilesInstancesPanel extends ConsumerWidget {
 }
 
 class _InstanceCard extends ConsumerStatefulWidget {
-  const _InstanceCard({required this.instance, this.onActivate});
+  const _InstanceCard({required this.instance});
 
   final BotInstance instance;
-  final ValueChanged<BotInstance>? onActivate;
 
   @override
   ConsumerState<_InstanceCard> createState() => _InstanceCardState();
@@ -1002,13 +996,6 @@ class _InstanceCardState extends ConsumerState<_InstanceCard> {
                         ? 'Editar proxy'
                         : 'Adicionar proxy',
                   ),
-                ),
-                FilledButton.tonalIcon(
-                  onPressed: _busy || widget.onActivate == null
-                      ? null
-                      : () => widget.onActivate!(instance),
-                  icon: const Icon(Icons.bolt_rounded, size: 18),
-                  label: const Text('Ativar'),
                 ),
               ],
             ),
