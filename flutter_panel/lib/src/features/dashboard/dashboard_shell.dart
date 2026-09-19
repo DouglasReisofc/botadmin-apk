@@ -2708,6 +2708,268 @@ class _ThreadMenuRow extends StatelessWidget {
   }
 }
 
+enum _DashboardNavigationCategory {
+  chats,
+  automation,
+  outreach,
+  business,
+  connections,
+  settings,
+}
+
+class _CategoryDestination {
+  const _CategoryDestination({
+    required this.label,
+    required this.icon,
+    this.section,
+    this.action,
+  });
+
+  final String label;
+  final IconData icon;
+  final DashboardSection? section;
+  final String? action;
+}
+
+_DashboardNavigationCategory _navigationCategoryFor(DashboardSection section) {
+  return switch (section) {
+    DashboardSection.conversations ||
+    DashboardSection.internalGroups ||
+    DashboardSection.channels ||
+    DashboardSection.communities ||
+    DashboardSection.calls ||
+    DashboardSection.groups => _DashboardNavigationCategory.chats,
+    DashboardSection.tools => _DashboardNavigationCategory.automation,
+    DashboardSection.broadcasts ||
+    DashboardSection.status ||
+    DashboardSection.media ||
+    DashboardSection.campaigns => _DashboardNavigationCategory.outreach,
+    DashboardSection.raffles ||
+    DashboardSection.store ||
+    DashboardSection.affiliates ||
+    DashboardSection.payments => _DashboardNavigationCategory.business,
+    DashboardSection.profiles ||
+    DashboardSection.apiRest ||
+    DashboardSection.webhooks => _DashboardNavigationCategory.connections,
+    DashboardSection.settings => _DashboardNavigationCategory.settings,
+  };
+}
+
+List<_CategoryDestination> _destinationsFor(
+  _DashboardNavigationCategory category,
+) {
+  return switch (category) {
+    _DashboardNavigationCategory.chats => const [
+      _CategoryDestination(
+        label: 'Conversas',
+        icon: Icons.chat_outlined,
+        section: DashboardSection.conversations,
+      ),
+      _CategoryDestination(
+        label: 'Grupos BotAdmin',
+        icon: Icons.forum_outlined,
+        section: DashboardSection.internalGroups,
+      ),
+      _CategoryDestination(
+        label: 'Chamadas',
+        icon: Icons.call_outlined,
+        section: DashboardSection.calls,
+      ),
+    ],
+    _DashboardNavigationCategory.automation => const [
+      _CategoryDestination(
+        label: 'Robô dos grupos',
+        icon: Icons.smart_toy_outlined,
+        action: 'group_robot',
+      ),
+      _CategoryDestination(
+        label: 'Fluxos',
+        icon: Icons.account_tree_outlined,
+        section: DashboardSection.tools,
+      ),
+    ],
+    _DashboardNavigationCategory.outreach => const [
+      _CategoryDestination(
+        label: 'Transmissões',
+        icon: Icons.cell_tower_outlined,
+        section: DashboardSection.broadcasts,
+      ),
+      _CategoryDestination(
+        label: 'Status',
+        icon: Icons.trip_origin_rounded,
+        section: DashboardSection.status,
+      ),
+      _CategoryDestination(
+        label: 'Mídias persistentes',
+        icon: Icons.perm_media_outlined,
+        section: DashboardSection.media,
+      ),
+    ],
+    _DashboardNavigationCategory.business => const [
+      _CategoryDestination(
+        label: 'Rifas e sorteios',
+        icon: Icons.confirmation_number_outlined,
+        section: DashboardSection.raffles,
+      ),
+      _CategoryDestination(
+        label: 'Store',
+        icon: Icons.storefront_outlined,
+        section: DashboardSection.store,
+      ),
+      _CategoryDestination(
+        label: 'Afiliados',
+        icon: Icons.sell_outlined,
+        section: DashboardSection.affiliates,
+      ),
+      _CategoryDestination(
+        label: 'Pagamentos',
+        icon: Icons.payments_outlined,
+        section: DashboardSection.payments,
+      ),
+    ],
+    _DashboardNavigationCategory.connections => const [
+      _CategoryDestination(
+        label: 'Perfis WhatsApp',
+        icon: Icons.qr_code_scanner_rounded,
+        section: DashboardSection.profiles,
+      ),
+      _CategoryDestination(
+        label: 'API REST',
+        icon: Icons.api_outlined,
+        section: DashboardSection.apiRest,
+      ),
+    ],
+    _DashboardNavigationCategory.settings => const [
+      _CategoryDestination(
+        label: 'Configurações',
+        icon: Icons.settings_outlined,
+        section: DashboardSection.settings,
+      ),
+    ],
+  };
+}
+
+void _activateCategoryDestination(
+  BuildContext context,
+  WidgetRef ref,
+  _CategoryDestination destination,
+) {
+  if (destination.action == 'group_robot') {
+    ref
+        .read(conversationListFilterProvider.notifier)
+        .select(ConversationListFilter.groups);
+    ref
+        .read(dashboardSectionProvider.notifier)
+        .select(DashboardSection.conversations);
+    showSuccessToast(
+      context,
+      'Selecione um grupo e toque no botão do robô para ativar ou configurar.',
+    );
+    return;
+  }
+  final section = destination.section;
+  if (section == null) return;
+  if (section == DashboardSection.internalGroups) {
+    ref
+        .read(conversationListFilterProvider.notifier)
+        .select(ConversationListFilter.internalGroups);
+  }
+  ref.read(dashboardSectionProvider.notifier).select(section);
+}
+
+class _RailCategoryButton extends ConsumerWidget {
+  const _RailCategoryButton({
+    required this.selected,
+    required this.icon,
+    required this.tooltip,
+    required this.category,
+  });
+
+  final bool selected;
+  final IconData icon;
+  final String tooltip;
+  final _DashboardNavigationCategory category;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    return Builder(
+      builder: (buttonContext) => _RailButton(
+        selected: selected,
+        icon: icon,
+        tooltip: tooltip,
+        onPressed: () => _openDesktopCategoryMenu(buttonContext, ref, category),
+      ),
+    );
+  }
+}
+
+Future<void> _openDesktopCategoryMenu(
+  BuildContext context,
+  WidgetRef ref,
+  _DashboardNavigationCategory category,
+) async {
+  final button = context.findRenderObject() as RenderBox?;
+  final overlay =
+      Navigator.of(context).overlay?.context.findRenderObject() as RenderBox?;
+  if (button == null || overlay == null) return;
+  final topLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+  final position = RelativeRect.fromLTRB(
+    topLeft.dx + button.size.width + 4,
+    topLeft.dy,
+    0,
+    0,
+  );
+  final destination = await showMenu<_CategoryDestination>(
+    context: context,
+    position: position,
+    elevation: 12,
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+    constraints: const BoxConstraints(minWidth: 238, maxWidth: 286),
+    items: [
+      PopupMenuItem<_CategoryDestination>(
+        enabled: false,
+        height: 38,
+        child: Text(
+          _categoryLabel(category),
+          style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900),
+        ),
+      ),
+      for (final item in _destinationsFor(category))
+        PopupMenuItem<_CategoryDestination>(
+          value: item,
+          height: 48,
+          child: Row(
+            children: [
+              Icon(item.icon, size: 20),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  item.label,
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 18),
+            ],
+          ),
+        ),
+    ],
+  );
+  if (destination != null && context.mounted) {
+    _activateCategoryDestination(context, ref, destination);
+  }
+}
+
+String _categoryLabel(_DashboardNavigationCategory category) {
+  return switch (category) {
+    _DashboardNavigationCategory.chats => 'CONVERSAS',
+    _DashboardNavigationCategory.automation => 'AUTOMAÇÃO',
+    _DashboardNavigationCategory.outreach => 'DIVULGAÇÃO',
+    _DashboardNavigationCategory.business => 'NEGÓCIOS',
+    _DashboardNavigationCategory.connections => 'CONEXÕES',
+    _DashboardNavigationCategory.settings => 'CONFIGURAÇÕES',
+  };
+}
+
 class _MainRail extends ConsumerWidget {
   const _MainRail({
     required this.userName,
@@ -2729,7 +2991,7 @@ class _MainRail extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final wa = WaTheme.of(context);
     final isPartner = (partnerRole ?? '').isNotEmpty;
-    final storeButtonKey = GlobalKey();
+    final activeCategory = _navigationCategoryFor(section);
     return Container(
       width: 64,
       decoration: BoxDecoration(
@@ -2741,7 +3003,7 @@ class _MainRail extends ConsumerWidget {
           SizedBox(height: 8),
           if (!isPartner) ...[
             _RailButton(
-              selected: section == DashboardSection.conversations,
+              selected: activeCategory == _DashboardNavigationCategory.chats,
               icon: Icons.mark_unread_chat_alt_rounded,
               badge: unreadCount > 0 ? _shortCount(unreadCount) : null,
               tooltip: 'Conversas',
@@ -2749,122 +3011,42 @@ class _MainRail extends ConsumerWidget {
                   .read(dashboardSectionProvider.notifier)
                   .select(DashboardSection.conversations),
             ),
-            _RailButton(
-              selected: section == DashboardSection.internalGroups,
-              icon: Icons.forum_rounded,
-              tooltip: 'Grupos BotAdmin',
-              onPressed: () {
-                ref
-                    .read(conversationListFilterProvider.notifier)
-                    .select(ConversationListFilter.internalGroups);
-                ref
-                    .read(dashboardSectionProvider.notifier)
-                    .select(DashboardSection.internalGroups);
-              },
+            _RailCategoryButton(
+              selected:
+                  activeCategory == _DashboardNavigationCategory.automation,
+              icon: Icons.smart_toy_outlined,
+              tooltip: 'Automação',
+              category: _DashboardNavigationCategory.automation,
             ),
-            _RailButton(
-              selected: section == DashboardSection.broadcasts,
-              icon: Icons.cell_tower_rounded,
-              tooltip: 'Transmissões',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.broadcasts),
+            _RailCategoryButton(
+              selected: activeCategory == _DashboardNavigationCategory.outreach,
+              icon: Icons.campaign_outlined,
+              tooltip: 'Divulgação',
+              category: _DashboardNavigationCategory.outreach,
             ),
-            _RailButton(
-              selected: section == DashboardSection.profiles,
-              icon: Icons.qr_code_scanner_rounded,
-              dot: true,
-              tooltip: 'Perfis e conexao',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.profiles),
-            ),
-            _RailButton(
-              selected: section == DashboardSection.status,
-              icon: Icons.trip_origin_rounded,
-              dot: true,
-              tooltip: 'Status',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.status),
-            ),
-            _RailButton(
-              selected: section == DashboardSection.media,
-              icon: Icons.perm_media_outlined,
-              dot: true,
-              tooltip: 'Mídias persistentes',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.media),
-            ),
-            SizedBox(height: 14),
-            const _RailDivider(),
-            SizedBox(height: 14),
-            _RailButton(
-              selected: section == DashboardSection.calls,
-              icon: Icons.call_outlined,
-              dot: true,
-              tooltip: 'Chamadas',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.calls),
-            ),
-            _RailButton(
-              selected: section == DashboardSection.tools,
-              icon: Icons.account_tree_outlined,
-              dot: true,
-              tooltip: 'Fluxos',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.tools),
-            ),
-            _RailButton(
-              selected: section == DashboardSection.raffles,
-              icon: Icons.confirmation_number_outlined,
-              tooltip: 'Rifas',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.raffles),
-            ),
-            _RailButton(
-              key: storeButtonKey,
-              selected: section == DashboardSection.store,
+            _RailCategoryButton(
+              selected: activeCategory == _DashboardNavigationCategory.business,
               icon: Icons.storefront_outlined,
-              tooltip: 'Store',
-              onPressed: () => _openStorePanePicker(
-                context,
-                ref,
-                mobile: false,
-                anchorContext: storeButtonKey.currentContext,
-              ),
+              tooltip: 'Negócios',
+              category: _DashboardNavigationCategory.business,
+            ),
+            _RailCategoryButton(
+              selected:
+                  activeCategory == _DashboardNavigationCategory.connections,
+              icon: Icons.hub_outlined,
+              tooltip: 'Conexões',
+              category: _DashboardNavigationCategory.connections,
             ),
           ],
-          _RailButton(
-            selected: section == DashboardSection.affiliates,
-            icon: isPartner ? Icons.handshake_outlined : Icons.sell_outlined,
-            tooltip: isPartner ? 'Parceiros' : 'Afiliados',
-            onPressed: () => ref
-                .read(dashboardSectionProvider.notifier)
-                .select(DashboardSection.affiliates),
-          ),
-          if (!isPartner) ...[
+          if (isPartner)
             _RailButton(
-              selected: section == DashboardSection.payments,
-              icon: Icons.payments_outlined,
-              tooltip: 'Pagamentos',
+              selected: section == DashboardSection.affiliates,
+              icon: Icons.handshake_outlined,
+              tooltip: 'Parceiros',
               onPressed: () => ref
                   .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.payments),
+                  .select(DashboardSection.affiliates),
             ),
-            _RailButton(
-              selected: section == DashboardSection.apiRest,
-              icon: Icons.api_outlined,
-              tooltip: 'API REST',
-              onPressed: () => ref
-                  .read(dashboardSectionProvider.notifier)
-                  .select(DashboardSection.apiRest),
-            ),
-          ],
           const Spacer(),
           if (!isPartner)
             _RailButton(
@@ -2929,11 +3111,9 @@ class _RailButton extends StatelessWidget {
               child: IconButton(
                 style: IconButton.styleFrom(
                   backgroundColor: selected
-                      ? (wa.isDark
-                            ? const Color(0xFF2A3942)
-                            : const Color(0xFFE7E8E9))
+                      ? wa.accentSoft
                       : Colors.transparent,
-                  foregroundColor: selected ? wa.textPrimary : wa.icon,
+                  foregroundColor: selected ? wa.accent : wa.icon,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(21),
                   ),
@@ -8884,21 +9064,12 @@ bool _isPrivateConversationThread(ConversationThread thread) {
       (thread.isContact || chatType == null || chatType == 'private');
 }
 
-const List<DashboardSection> _kMobileBottomTabs = [
-  DashboardSection.conversations,
-  DashboardSection.internalGroups,
-  DashboardSection.broadcasts,
-  DashboardSection.profiles,
-  DashboardSection.status,
-  DashboardSection.media,
-  DashboardSection.calls,
-  DashboardSection.tools,
-  DashboardSection.raffles,
-  DashboardSection.store,
-  DashboardSection.affiliates,
-  DashboardSection.payments,
-  DashboardSection.apiRest,
-  DashboardSection.settings,
+const List<_DashboardNavigationCategory> _kMobileCategories = [
+  _DashboardNavigationCategory.chats,
+  _DashboardNavigationCategory.automation,
+  _DashboardNavigationCategory.outreach,
+  _DashboardNavigationCategory.business,
+  _DashboardNavigationCategory.connections,
 ];
 
 class _MobileSectionBar extends ConsumerStatefulWidget {
@@ -8911,14 +9082,6 @@ class _MobileSectionBar extends ConsumerStatefulWidget {
 }
 
 class _MobileSectionBarState extends ConsumerState<_MobileSectionBar> {
-  final ScrollController _controller = ScrollController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
@@ -8927,10 +9090,8 @@ class _MobileSectionBarState extends ConsumerState<_MobileSectionBar> {
         .value
         ?.user
         .partnerRole;
-    final tabs = (partnerRole ?? '').isNotEmpty
-        ? const <DashboardSection>[DashboardSection.affiliates]
-        : _kMobileBottomTabs;
-    final activeTab = _mobileBottomTabFor(widget.section);
+    final isPartner = (partnerRole ?? '').isNotEmpty;
+    final activeCategory = _navigationCategoryFor(widget.section);
 
     return Material(
       color: wa.panel,
@@ -8943,85 +9104,42 @@ class _MobileSectionBarState extends ConsumerState<_MobileSectionBar> {
           ),
           child: Row(
             children: [
-              if ((partnerRole ?? '').isEmpty)
-                _MobileNavArrow(
-                  icon: Icons.keyboard_arrow_left_rounded,
-                  onTap: () => _scrollBy(-260),
-                ),
               Expanded(
-                child: ScrollConfiguration(
-                  behavior: const MaterialScrollBehavior().copyWith(
-                    dragDevices: {
-                      PointerDeviceKind.touch,
-                      PointerDeviceKind.mouse,
-                      PointerDeviceKind.trackpad,
-                    },
-                  ),
-                  child: ListView.separated(
-                    controller: _controller,
-                    scrollDirection: Axis.horizontal,
-                    physics: const BouncingScrollPhysics(),
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    itemCount: tabs.length,
-                    separatorBuilder: (_, _) => const SizedBox(width: 2),
-                    itemBuilder: (context, index) {
-                      final entry = tabs[index];
-                      final item = (partnerRole ?? '').isNotEmpty
-                          ? const _MobileNavData(
-                              Icons.handshake_outlined,
-                              'Parceiros',
-                            )
-                          : _mobileNavData(entry);
-                      return SizedBox(
-                        width: 82,
-                        child: _MobileNavItem(
-                          selected: activeTab == entry,
-                          icon: item.icon,
-                          label: item.label,
-                          onTap: () {
-                            if (entry == DashboardSection.store) {
-                              unawaited(
-                                _openStorePanePicker(
-                                  context,
-                                  ref,
-                                  mobile: true,
-                                ),
-                              );
-                              return;
-                            }
-                            ref
-                                .read(dashboardSectionProvider.notifier)
-                                .select(entry);
-                          },
-                        ),
-                      );
-                    },
-                  ),
-                ),
+                child: isPartner
+                    ? Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: 104,
+                            child: _MobileNavItem(
+                              selected: true,
+                              icon: Icons.handshake_outlined,
+                              label: 'Parceiros',
+                              onTap: () => ref
+                                  .read(dashboardSectionProvider.notifier)
+                                  .select(DashboardSection.affiliates),
+                            ),
+                          ),
+                        ],
+                      )
+                    : Row(
+                        children: [
+                          for (final category in _kMobileCategories)
+                            Expanded(
+                              child: _MobileNavItem(
+                                selected: activeCategory == category,
+                                icon: _mobileCategoryData(category).icon,
+                                label: _mobileCategoryData(category).label,
+                                onTap: () =>
+                                    _openMobileCategory(context, ref, category),
+                              ),
+                            ),
+                        ],
+                      ),
               ),
-              if ((partnerRole ?? '').isEmpty)
-                _MobileNavArrow(
-                  icon: Icons.keyboard_arrow_right_rounded,
-                  onTap: () => _scrollBy(260),
-                ),
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  void _scrollBy(double delta) {
-    if (!_controller.hasClients) return;
-    final target = (_controller.offset + delta).clamp(
-      _controller.position.minScrollExtent,
-      _controller.position.maxScrollExtent,
-    );
-    unawaited(
-      _controller.animateTo(
-        target,
-        duration: const Duration(milliseconds: 220),
-        curve: Curves.easeOutCubic,
       ),
     );
   }
@@ -9113,32 +9231,6 @@ Future<void> _openStorePanePicker(
   ref.read(dashboardSectionProvider.notifier).select(DashboardSection.store);
 }
 
-DashboardSection _mobileBottomTabFor(DashboardSection section) {
-  if (_kMobileBottomTabs.contains(section)) return section;
-  return DashboardSection.tools;
-}
-
-class _MobileNavArrow extends StatelessWidget {
-  const _MobileNavArrow({required this.icon, required this.onTap});
-
-  final IconData icon;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final wa = WaTheme.of(context);
-    return SizedBox(
-      width: 34,
-      child: IconButton(
-        padding: EdgeInsets.zero,
-        icon: Icon(icon, color: wa.icon),
-        onPressed: onTap,
-        tooltip: 'Mais opções',
-      ),
-    );
-  }
-}
-
 class _MobileNavData {
   const _MobileNavData(this.icon, this.label);
 
@@ -9146,82 +9238,87 @@ class _MobileNavData {
   final String label;
 }
 
-_MobileNavData _mobileNavData(DashboardSection section) {
-  return switch (section) {
-    DashboardSection.conversations => const _MobileNavData(
+_MobileNavData _mobileCategoryData(_DashboardNavigationCategory category) {
+  return switch (category) {
+    _DashboardNavigationCategory.chats => const _MobileNavData(
       Icons.chat_rounded,
       'Conversas',
     ),
-    DashboardSection.internalGroups => const _MobileNavData(
-      Icons.forum_rounded,
-      'Grupos BotAdmin',
+    _DashboardNavigationCategory.automation => const _MobileNavData(
+      Icons.smart_toy_outlined,
+      'Automação',
     ),
-    DashboardSection.broadcasts => const _MobileNavData(
-      Icons.cell_tower_rounded,
-      'Transmissão',
-    ),
-    DashboardSection.profiles => const _MobileNavData(
-      Icons.qr_code_scanner_rounded,
-      'Perfis',
-    ),
-    DashboardSection.status => const _MobileNavData(
-      Icons.trip_origin_rounded,
-      'Status',
-    ),
-    DashboardSection.media => const _MobileNavData(
-      Icons.perm_media_outlined,
-      'Mídias',
-    ),
-    DashboardSection.channels => const _MobileNavData(
+    _DashboardNavigationCategory.outreach => const _MobileNavData(
       Icons.campaign_outlined,
-      'Canais',
+      'Divulgação',
     ),
-    DashboardSection.communities => const _MobileNavData(
-      Icons.groups_2_outlined,
-      'Comunidades',
-    ),
-    DashboardSection.calls => const _MobileNavData(
-      Icons.call_rounded,
-      'Chamadas',
-    ),
-    DashboardSection.groups => const _MobileNavData(
-      Icons.groups_rounded,
-      'Grupos',
-    ),
-    DashboardSection.tools => const _MobileNavData(
-      Icons.account_tree_outlined,
-      'Fluxos',
-    ),
-    DashboardSection.raffles => const _MobileNavData(
-      Icons.confirmation_number_outlined,
-      'Rifas',
-    ),
-    DashboardSection.store => const _MobileNavData(
+    _DashboardNavigationCategory.business => const _MobileNavData(
       Icons.storefront_outlined,
-      'Store',
+      'Negócios',
     ),
-    DashboardSection.campaigns => const _MobileNavData(
-      Icons.outbox_outlined,
-      'Autodivulgador',
-    ),
-    DashboardSection.affiliates => const _MobileNavData(
-      Icons.sell_outlined,
-      'Afiliados',
-    ),
-    DashboardSection.payments => const _MobileNavData(
-      Icons.payments_outlined,
-      'Pagamentos',
-    ),
-    DashboardSection.apiRest => const _MobileNavData(Icons.api_outlined, 'API'),
-    DashboardSection.webhooks => const _MobileNavData(
-      Icons.api_outlined,
-      'API',
-    ),
-    DashboardSection.settings => const _MobileNavData(
-      Icons.settings_outlined,
-      'Configurações',
+    _DashboardNavigationCategory.connections ||
+    _DashboardNavigationCategory.settings => const _MobileNavData(
+      Icons.grid_view_rounded,
+      'Mais',
     ),
   };
+}
+
+Future<void> _openMobileCategory(
+  BuildContext context,
+  WidgetRef ref,
+  _DashboardNavigationCategory category,
+) async {
+  if (category == _DashboardNavigationCategory.chats) {
+    ref
+        .read(dashboardSectionProvider.notifier)
+        .select(DashboardSection.conversations);
+    return;
+  }
+  final destinations = <_CategoryDestination>[
+    ..._destinationsFor(category),
+    if (category == _DashboardNavigationCategory.connections)
+      ..._destinationsFor(_DashboardNavigationCategory.settings),
+  ];
+  final destination = await showBotAdminBottomSheet<_CategoryDestination>(
+    context: context,
+    useSafeArea: true,
+    showDragHandle: true,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(22)),
+    ),
+    builder: (sheetContext) => Padding(
+      padding: const EdgeInsets.fromLTRB(12, 0, 12, 18),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            title: Text(
+              _categoryLabel(category),
+              style: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            subtitle: const Text('Escolha o que deseja gerenciar.'),
+          ),
+          for (final item in destinations)
+            ListTile(
+              leading: CircleAvatar(
+                backgroundColor: WaTheme.of(sheetContext).accentSoft,
+                child: Icon(item.icon, color: WaTheme.of(sheetContext).accent),
+              ),
+              title: Text(
+                item.label,
+                style: const TextStyle(fontWeight: FontWeight.w700),
+              ),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(sheetContext).pop(item),
+            ),
+        ],
+      ),
+    ),
+  );
+  if (destination != null && context.mounted) {
+    _activateCategoryDestination(context, ref, destination);
+  }
 }
 
 class _MobileNavItem extends StatelessWidget {

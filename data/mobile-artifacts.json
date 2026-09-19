@@ -1,0 +1,17 @@
+{
+  "preferredAndroidMode": "file",
+  "android": {
+    "platform": "android",
+    "type": "apk",
+    "fileName": "app-release.apk",
+    "url": "/downloads/android/app-release.apk",
+    "sizeBytes": 89842883,
+    "updatedAt": "2026-09-19T20:15:20.000Z",
+    "buildType": "release",
+    "versionName": "0.1.296",
+    "versionCode": 302
+  },
+  "preferredIosMode": "file",
+  "preferredWindowsMode": "file",
+  "details": "APK Flutter nativo 0.1.296 (302): navegação principal organizada por categorias, mantendo intacto o robô dentro das conversas."
+}
