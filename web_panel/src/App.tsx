@@ -1,6 +1,7 @@
 import * as React from "react";
 import { buildAutoResponsePatch } from "./auto-response-config";
 import { AutoResponseContent } from "./AutoResponseContent";
+import { AutomationDirectory } from "./AutomationDirectory";
 import { LayoutGrid } from "lucide-react";
 import { PanelModules, usePanelModules } from "./PanelModules";
 import { PANEL_MODULES } from "../../lib/panel-modules";
@@ -7948,14 +7949,17 @@ function BotAdvancedControls({
   const prefixes = stringList(settings.commandPrefixes);
   const ads = Array.isArray(settings.ads) ? settings.ads.length : 0;
   return <>
-    <section className="bot-advanced-panel">
-      <div className="activation-overview-heading"><h3>Configurações gerais</h3><InfoTip label="Configurações gerais">Personalize os comandos, os menus e os envios por horário. Respostas por gatilho ficam em Mensagens automáticas.</InfoTip></div>
+    <details className="bot-advanced-panel panel-disclosure">
+      <summary><span><b>Mais ajustes técnicos</b><small>Prefixos, menus e mensagens programadas</small></span><ChevronRight /></summary>
+      <div className="bot-advanced-panel-content">
+        <div className="activation-overview-heading"><h3>Configurações gerais</h3><InfoTip label="Configurações gerais">Personalize os comandos, os menus e os envios por horário. Respostas por gatilho ficam em Mensagens automáticas.</InfoTip></div>
       <div className="bot-advanced-grid">
         <button type="button" className="bot-advanced-card" onClick={() => setMode("prefixes")}><Tag /><span><b>Prefixos</b><small>{prefixes.length ? prefixes.slice(0, 4).join(" ") : "/ ! #"}</small></span><ChevronRight /></button>
         <button type="button" className="bot-advanced-card" onClick={() => setMode("menus")}><List /><span><b>Menus do robô</b><small>Editar cards, textos e imagens.</small></span><ChevronRight /></button>
         <button type="button" className="bot-advanced-card" onClick={() => setMode("ads")}><Clock3 /><span><b>Mensagens programadas</b><small>{ads ? `${ads} mensagem(ns) configurada(s).` : "Criar o primeiro ADS do grupo."}</small></span><ChevronRight /></button>
       </div>
-    </section>
+      </div>
+    </details>
     {mode && <BotAdvancedConfigModal mode={mode} settings={settings} groupId={groupId} groupName={groupName} onClose={() => setMode(null)} onSaved={onSaved} />}
   </>;
 }
@@ -8112,67 +8116,12 @@ function BotGroupAutomationModal({
               <i />
             </label>
           </section>
-          {settings && <BotAdvancedControls settings={settings} groupId={groupId} groupName={moduleItemTitle("groups", group)} onSaved={(next) => setSettings(next)} />}
           {loading ? (
             <div className="settings-loading"><RefreshCw className="spin" /> Carregando ativações…</div>
           ) : settings ? (
-            <div>
-              <div className="activation-overview-heading">
-                <h3>Ativações do robô</h3>
-                <span>Escolha quais recursos ficam ligados neste grupo.</span>
-              </div>
-              <div className="activation-sections">
-                {groupActivationCategories.map((category) => (
-                <details className="activation-category activation-category-disclosure" key={category.id} open={category.id === "messages"}>
-                  <summary className="activation-category-title">
-                    <h3>{category.title}</h3>
-                    <span>{category.items.filter((definition) => activationEnabled(settings, definition)).length}/{category.items.length} ligadas</span><ChevronRight />
-                  </summary>
-                  <div className="activation-grid">
-                    {category.items.map((definition) => {
-                      const active = activationEnabled(settings, definition);
-                      const Icon = definition.icon;
-                      return (
-                        <div
-                          className={`activation-tile ${active ? "is-active" : ""}`}
-                          key={definition.key}
-                        >
-                          <Icon />
-                          <span>
-                            <b>{definition.label}</b>
-                            <strong>{active ? "Ligado" : "Desligado"}</strong>
-                            <small>{definition.description}</small>
-                          </span>
-                          <button
-                            type="button"
-                            className="activation-config-button"
-                            title={`Configurar ${definition.label}`}
-                            aria-label={`Configurar ${definition.label}`}
-                            onClick={() => setConfiguring(definition)}
-                          >
-                            <Settings />
-                          </button>
-                          <label className="compact-switch">
-                            <input
-                                type="checkbox"
-                                aria-label={`Ativar ${definition.label}`}
-                              checked={active}
-                              disabled={saving !== null}
-                              onChange={(event) =>
-                                void saveActivation(definition, event.target.checked)
-                              }
-                            />
-                            <i />
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-                ))}
-              </div>
-            </div>
+            <AutomationDirectory categories={groupActivationCategories} isActive={item => activationEnabled(settings, item)} busy={saving !== null} botEnabled={botEnabled} onConfigure={setConfiguring} onToggle={(item, enabled) => void saveActivation(item, enabled)} />
           ) : null}
+          {settings && <BotAdvancedControls settings={settings} groupId={groupId} groupName={moduleItemTitle("groups", group)} onSaved={(next) => setSettings(next)} />}
           {error && <div className="form-error">{error}</div>}
         </div>
       </section>
@@ -11243,7 +11192,6 @@ function InternalGroupSettingsModal({
               <i />
             </label>
           </section>
-          {botSettings && <BotAdvancedControls settings={botSettings} groupId={Number(group?.botGroupId || 0)} groupName={thread.title} onSaved={(next) => setBotSettings(next)} />}
           <form className="quick-form" onSubmit={saveText}>
             <label>
               Nome do grupo
@@ -11370,64 +11318,8 @@ function InternalGroupSettingsModal({
               )}
             </div>
           </section>
-          {botSettings && (
-            <div>
-              <div className="activation-overview-heading">
-                <h3>Ativações do robô</h3>
-                <span>Recursos sincronizados com o BotAdmin.</span>
-              </div>
-              <div className="activation-sections internal-activation-sections">
-                {groupActivationCategories.map((category) => (
-                <details className="activation-category activation-category-disclosure" key={category.id} open={category.id === "messages"}>
-                  <summary className="activation-category-title">
-                    <h3>{category.title}</h3>
-                    <span>{category.items.filter((definition) => activationEnabled(botSettings, definition)).length}/{category.items.length} ligadas</span><ChevronRight />
-                  </summary>
-                  <div className="activation-grid">
-                    {category.items.map((definition) => {
-                      const active = activationEnabled(botSettings, definition);
-                      const Icon = definition.icon;
-                      return (
-                        <div
-                          className={`activation-tile ${active ? "is-active" : ""}`}
-                          key={definition.key}
-                        >
-                          <Icon />
-                          <span>
-                            <b>{definition.label}</b>
-                            <strong>{active ? "Ligado" : "Desligado"}</strong>
-                            <small>{definition.description}</small>
-                          </span>
-                          <button
-                            type="button"
-                            className="activation-config-button"
-                            title={`Configurar ${definition.label}`}
-                            aria-label={`Configurar ${definition.label}`}
-                            onClick={() => setConfiguring(definition)}
-                          >
-                            <Settings />
-                          </button>
-                          <label className="compact-switch">
-                            <input
-                              type="checkbox"
-                              aria-label={`Ativar ${definition.label}`}
-                              checked={active}
-                              disabled={saving !== null}
-                              onChange={(event) =>
-                                void saveCommand(definition, event.target.checked)
-                              }
-                            />
-                            <i />
-                          </label>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </details>
-                ))}
-              </div>
-            </div>
-          )}
+          {botSettings && <AutomationDirectory categories={groupActivationCategories} isActive={item => activationEnabled(botSettings, item)} busy={saving !== null} botEnabled={valueFor("botEnabled")} onConfigure={setConfiguring} onToggle={(item, enabled) => void saveCommand(item, enabled)} />}
+          {botSettings && <BotAdvancedControls settings={botSettings} groupId={Number(group?.botGroupId || 0)} groupName={thread.title} onSaved={(next) => setBotSettings(next)} />}
           {Boolean(group?.botGroupId) && !botSettings && !error && (
             <div className="settings-loading">
               <RefreshCw className="spin" /> Carregando ativações…
