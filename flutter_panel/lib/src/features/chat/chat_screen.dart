@@ -1335,7 +1335,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                             );
                           }
                           final message = visible[visible.length - index - 1];
-                          final bubble = _MessageBubble(
+                          final bubble = ConversationMessageBubble(
                             thread: thread,
                             group: widget.group,
                             message: message,
@@ -1408,7 +1408,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             ),
           ),
           if (thread.canCompose)
-            _Composer(
+            ConversationComposer(
               controller: _text,
               mentionAll: _mentionAll,
               mentionSuggestions: _visibleMentionSuggestions(),
@@ -1963,78 +1963,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   Future<void> _openComposerPicker(ConversationThread thread) async {
-    final result = await showGeneralDialog<_ComposerPickerResult>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Fechar emojis, GIFs e figurinhas',
-      barrierColor: Colors.transparent,
-      transitionDuration: const Duration(milliseconds: 130),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        final screen = MediaQuery.sizeOf(context);
-        final isCompact = screen.width < 760;
-        final panelWidth = isCompact
-            ? screen.width - 16
-            : math.min(680.0, screen.width - 28);
-        final panelHeight = math.min(
-          isCompact ? screen.height * 0.72 : 560.0,
-          screen.height - 110,
-        );
-        final left = isCompact
-            ? 8.0
-            : math
-                  .min(screen.width - panelWidth - 12, 640.0)
-                  .clamp(12.0, screen.width)
-                  .toDouble();
-        return SafeArea(
-          child: Stack(
-            children: [
-              Positioned.fill(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => Navigator.of(context).pop(),
-                ),
-              ),
-              Positioned(
-                left: left,
-                bottom: isCompact ? 74 : 82,
-                width: panelWidth,
-                height: panelHeight,
-                child: Material(
-                  color: Colors.transparent,
-                  child: _UnifiedComposerPicker(
-                    api: ref.read(apiClientProvider),
-                    panelHeight: panelHeight,
-                    onEmojiSelected: (emoji) {
-                      Navigator.of(
-                        context,
-                      ).pop(_ComposerPickerResult.emoji(emoji));
-                    },
-                    onGiphySelected: (item) {
-                      Navigator.of(
-                        context,
-                      ).pop(_ComposerPickerResult.giphy(item));
-                    },
-                  ),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        final curved = CurvedAnimation(
-          parent: animation,
-          curve: Curves.easeOutCubic,
-        );
-        return FadeTransition(
-          opacity: curved,
-          child: ScaleTransition(
-            alignment: Alignment.bottomLeft,
-            scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
-            child: child,
-          ),
-        );
-      },
+    final result = await showConversationComposerPicker(
+      context,
+      ref.read(apiClientProvider),
     );
     if (!mounted || result == null) return;
     if (result.emoji != null) {
@@ -6634,8 +6565,10 @@ class _SwipeReplyBubbleState extends State<_SwipeReplyBubble> {
   }
 }
 
-class _MessageBubble extends StatelessWidget {
-  const _MessageBubble({
+class ConversationMessageBubble extends StatelessWidget {
+  const ConversationMessageBubble({
+    super.key,
+    this.enableActions = true,
     required this.thread,
     required this.message,
     required this.viewportWidth,
@@ -6651,6 +6584,7 @@ class _MessageBubble extends StatelessWidget {
     required this.onToggleDeletedReveal,
   });
 
+  final bool enableActions;
   final ConversationThread thread;
   final ChatMessage message;
   final double viewportWidth;
@@ -6922,45 +6856,53 @@ class _MessageBubble extends StatelessWidget {
             ),
     );
 
-    final bubbleWithActions = _BubbleWithHoverActions(
-      compactStickerOnly: compactStickerOnly,
-      bubble: bubble,
-      message: message,
-      onRunMessageAction: (action, data) =>
-          onRunMessageAction(message, action, data),
-      onToggleDeletedReveal: (reveal) => onToggleDeletedReveal(message, reveal),
-      canDelete:
-          message.fromMe ||
-          (thread.isInternalGroup && thread.instanceIsAdmin == true),
-      canEdit: thread.isInternalGroup && message.fromMe && !message.isDeleted,
-      canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,
-      canRevealDeleted:
-          !thread.isInternalGroup || message.canRevealDeletedContent,
-      onOpenReceiptDetails:
-          (message.fromMe ||
-              (thread.isInternalGroup && thread.instanceIsAdmin == true))
-          ? onOpenReceiptDetails
-          : null,
-      actionsButton: _MessageActionsButton(
-        message: message,
-        canDelete:
-            message.fromMe ||
-            (thread.isInternalGroup && thread.instanceIsAdmin == true),
-        canEdit: thread.isInternalGroup && message.fromMe && !message.isDeleted,
-        canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,
-        canRevealDeleted:
-            !thread.isInternalGroup || message.canRevealDeletedContent,
-        onOpenReceiptDetails:
-            (message.fromMe ||
-                (thread.isInternalGroup && thread.instanceIsAdmin == true))
-            ? onOpenReceiptDetails
-            : null,
-        onRunMessageAction: (action, data) =>
-            onRunMessageAction(message, action, data),
-        onToggleDeletedReveal: (reveal) =>
-            onToggleDeletedReveal(message, reveal),
-      ),
-    );
+    final bubbleWithActions = !enableActions
+        ? bubble
+        : _BubbleWithHoverActions(
+            compactStickerOnly: compactStickerOnly,
+            bubble: bubble,
+            message: message,
+            onRunMessageAction: (action, data) =>
+                onRunMessageAction(message, action, data),
+            onToggleDeletedReveal: (reveal) =>
+                onToggleDeletedReveal(message, reveal),
+            canDelete:
+                message.fromMe ||
+                (thread.isInternalGroup && thread.instanceIsAdmin == true),
+            canEdit:
+                thread.isInternalGroup && message.fromMe && !message.isDeleted,
+            canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,
+            canRevealDeleted:
+                !thread.isInternalGroup || message.canRevealDeletedContent,
+            onOpenReceiptDetails:
+                (message.fromMe ||
+                    (thread.isInternalGroup && thread.instanceIsAdmin == true))
+                ? onOpenReceiptDetails
+                : null,
+            actionsButton: _MessageActionsButton(
+              message: message,
+              canDelete:
+                  message.fromMe ||
+                  (thread.isInternalGroup && thread.instanceIsAdmin == true),
+              canEdit:
+                  thread.isInternalGroup &&
+                  message.fromMe &&
+                  !message.isDeleted,
+              canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,
+              canRevealDeleted:
+                  !thread.isInternalGroup || message.canRevealDeletedContent,
+              onOpenReceiptDetails:
+                  (message.fromMe ||
+                      (thread.isInternalGroup &&
+                          thread.instanceIsAdmin == true))
+                  ? onOpenReceiptDetails
+                  : null,
+              onRunMessageAction: (action, data) =>
+                  onRunMessageAction(message, action, data),
+              onToggleDeletedReveal: (reveal) =>
+                  onToggleDeletedReveal(message, reveal),
+            ),
+          );
 
     // WhatsApp: chip de reações sobre a borda inferior do balão.
     // Entrada (esquerda) → canto inferior direito; saída (direita) → canto inferior esquerdo.
@@ -6983,7 +6925,7 @@ class _MessageBubble extends StatelessWidget {
 
     final swipeable = _SwipeReplyBubble(
       onReply: onReply,
-      enabled: !message.isReaction,
+      enabled: enableActions && !message.isReaction,
       child: stackedBubble,
     );
 
@@ -13239,22 +13181,99 @@ Future<void> _downloadUrlFromViewer(BuildContext context, String url) async {
   }
 }
 
+Future<ComposerPickerResult?> showConversationComposerPicker(
+  BuildContext context,
+  BotAdminApiClient api,
+) async {
+  return await showGeneralDialog<ComposerPickerResult>(
+    context: context,
+    barrierDismissible: true,
+    barrierLabel: 'Fechar emojis, GIFs e figurinhas',
+    barrierColor: Colors.transparent,
+    transitionDuration: const Duration(milliseconds: 130),
+    pageBuilder: (context, animation, secondaryAnimation) {
+      final screen = MediaQuery.sizeOf(context);
+      final isCompact = screen.width < 760;
+      final panelWidth = isCompact
+          ? screen.width - 16
+          : math.min(680.0, screen.width - 28);
+      final panelHeight = math.min(
+        isCompact ? screen.height * 0.72 : 560.0,
+        screen.height - 110,
+      );
+      final left = isCompact
+          ? 8.0
+          : math
+                .min(screen.width - panelWidth - 12, 640.0)
+                .clamp(12.0, screen.width)
+                .toDouble();
+      return SafeArea(
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => Navigator.of(context).pop(),
+              ),
+            ),
+            Positioned(
+              left: left,
+              bottom: isCompact ? 74 : 82,
+              width: panelWidth,
+              height: panelHeight,
+              child: Material(
+                color: Colors.transparent,
+                child: UnifiedComposerPicker(
+                  api: api,
+                  panelHeight: panelHeight,
+                  onEmojiSelected: (emoji) {
+                    Navigator.of(
+                      context,
+                    ).pop(ComposerPickerResult.emoji(emoji));
+                  },
+                  onGiphySelected: (item) {
+                    Navigator.of(context).pop(ComposerPickerResult.giphy(item));
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    },
+    transitionBuilder: (context, animation, secondaryAnimation, child) {
+      final curved = CurvedAnimation(
+        parent: animation,
+        curve: Curves.easeOutCubic,
+      );
+      return FadeTransition(
+        opacity: curved,
+        child: ScaleTransition(
+          alignment: Alignment.bottomLeft,
+          scale: Tween<double>(begin: 0.98, end: 1).animate(curved),
+          child: child,
+        ),
+      );
+    },
+  );
+}
+
 enum _ComposerPickerTab { emoji, gif, sticker }
 
-class _ComposerPickerResult {
-  const _ComposerPickerResult._({this.emoji, this.giphy});
+class ComposerPickerResult {
+  const ComposerPickerResult._({this.emoji, this.giphy});
 
-  const _ComposerPickerResult.emoji(String value) : this._(emoji: value);
+  const ComposerPickerResult.emoji(String value) : this._(emoji: value);
 
-  const _ComposerPickerResult.giphy(GiphyMediaItem value)
-    : this._(giphy: value);
+  const ComposerPickerResult.giphy(GiphyMediaItem value) : this._(giphy: value);
 
   final String? emoji;
   final GiphyMediaItem? giphy;
 }
 
-class _UnifiedComposerPicker extends StatefulWidget {
-  const _UnifiedComposerPicker({
+class UnifiedComposerPicker extends StatefulWidget {
+  const UnifiedComposerPicker({
+    super.key,
     required this.api,
     required this.panelHeight,
     required this.onEmojiSelected,
@@ -13267,10 +13286,10 @@ class _UnifiedComposerPicker extends StatefulWidget {
   final ValueChanged<GiphyMediaItem> onGiphySelected;
 
   @override
-  State<_UnifiedComposerPicker> createState() => _UnifiedComposerPickerState();
+  State<UnifiedComposerPicker> createState() => _UnifiedComposerPickerState();
 }
 
-class _UnifiedComposerPickerState extends State<_UnifiedComposerPicker> {
+class _UnifiedComposerPickerState extends State<UnifiedComposerPicker> {
   final _search = TextEditingController();
   final _giphyScroll = ScrollController();
   Timer? _debounce;
@@ -14134,8 +14153,9 @@ class _MentionSuggestions extends StatelessWidget {
   }
 }
 
-class _Composer extends StatelessWidget {
-  const _Composer({
+class ConversationComposer extends StatelessWidget {
+  ConversationComposer({
+    super.key,
     required this.controller,
     required this.mentionAll,
     this.mentionSuggestions = const [],
@@ -14198,7 +14218,7 @@ class _Composer extends StatelessWidget {
   final VoidCallback? onClearButtons;
   final ChatMessage? replyTo;
   final VoidCallback? onClearReply;
-  static final _plusKey = GlobalKey();
+  final _plusKey = GlobalKey();
 
   @override
   Widget build(BuildContext context) {

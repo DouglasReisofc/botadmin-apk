@@ -48,6 +48,10 @@ bool _isAuthenticatedMediaEndpoint(String url) {
   // those as public URLs used to make native builds resolve them to a
   // `file://` URI or receive an unauthenticated 401.
   if (trimmed.startsWith('/api/') || trimmed.startsWith('api/')) return true;
+  final path = Uri.tryParse(trimmed)?.path ?? '';
+  if (path.startsWith('/api/support/media/') ||
+      path.startsWith('/api/admin/support/media/') ||
+      path.startsWith('/uploads/support/')) return true;
   return (value.contains('/whatsapp-conversations/') &&
           value.contains('/media')) ||
       (value.contains('/internal-groups/') && value.contains('/media/'));

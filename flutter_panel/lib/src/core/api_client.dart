@@ -951,7 +951,7 @@ class BotAdminApiClient {
           return thread;
         }
       }
-      return threads.isEmpty ? null : threads.first;
+      return null;
     } catch (_) {
       // WhatsApp conversations must still load if support is temporarily down.
       return null;
@@ -4742,12 +4742,30 @@ class DashboardSnapshot {
   const DashboardSnapshot({
     required this.instances,
     required this.groups,
-    required this.threads,
-  });
+    required List<ConversationThread> threads,
+  }) : _threads = threads;
 
   final List<BotInstance> instances;
   final List<BotGroup> groups;
-  final List<ConversationThread> threads;
+  final List<ConversationThread> _threads;
+
+  // Support belongs to the conversation directory, including old disk caches
+  // and temporary support API failures. Opening a menu must not create its UI.
+  List<ConversationThread> get threads => _threads.any((item) => item.isSupport)
+      ? _threads
+      : [
+          ..._threads,
+          ConversationThread(
+            instanceId: 0,
+            chatJid: '__admin__',
+            title: 'Suporte BotAdmin',
+            lastMessage: 'Converse com o administrador',
+            lastActivity: DateTime.fromMillisecondsSinceEpoch(0),
+            unreadCount: 0,
+            chatType: 'support',
+            canSendMessages: true,
+          ),
+        ];
 }
 
 Map<String, dynamic> _botInstanceCacheJson(BotInstance value) => {

@@ -247,6 +247,7 @@ export const getOrCreateSupportThread = async (
 };
 
 export type SupportMessage = {
+  deliveryState?: "sent" | "delivered" | "read";
   id: number;
   threadId: number;
   userId: number;
@@ -262,6 +263,7 @@ export type SupportMessage = {
 };
 
 export type SerializedSupportMessage = {
+  deliveryState?: "sent" | "delivered" | "read";
   id: number;
   direction: "inbound" | "outbound";
   messageType: string;
@@ -299,6 +301,7 @@ export type SupportThreadSummary = SerializedSupportThread & {
 };
 
 type SupportMessageRow = RowDataPacket & {
+  delivery_state?: "sent" | "delivered" | "read";
   id: number;
   thread_id: number;
   user_id: number;
@@ -314,6 +317,7 @@ type SupportMessageRow = RowDataPacket & {
 };
 
 const mapMessageRow = (row: SupportMessageRow): SupportMessage => ({
+  deliveryState: row.delivery_state ?? "sent",
   id: Number(row.id),
   threadId: Number(row.thread_id),
   userId: Number(row.user_id),
@@ -374,6 +378,7 @@ const extractMediaFromPayload = (payload: unknown) => {
 };
 
 export const serializeSupportMessage = (message: SupportMessage): SerializedSupportMessage => ({
+  deliveryState: message.deliveryState ?? "sent",
   id: message.id,
   direction: message.direction,
   messageType: message.messageType,
@@ -499,7 +504,7 @@ export const recordSupportMessage = async (options: {
     nextCustomerName ||
     nextProfileName ||
     (isAdminThread
-      ? thread.displayWhatsappId || thread.whatsappId
+      ? thread.whatsappId
       : thread.whatsappId);
 
   const updatedThread: SupportThread = {
@@ -840,7 +845,7 @@ export const getSupportThreadByWhatsapp = async (
   await ensureSupportTables();
   const db = getDb();
   const { canonical: normalizedWhatsappId } = await resolveCanonicalWhatsappId(whatsappId);
-  const [rows] = await db.query<SupportMessageRow[]>(
+  const [rows] = await db.query<SupportThreadRow[]>(
     `SELECT * FROM user_support_threads WHERE user_id = ? AND whatsapp_id = ? LIMIT 1`,
     [userId, normalizedWhatsappId],
   );
@@ -855,7 +860,14 @@ export const getSupportThreadByWhatsapp = async (
 export const getSupportMessages = async (threadId: number) => {
   const db = getDb();
   const [rows] = await db.query<SupportMessageRow[]>(
-    `SELECT * FROM user_support_messages WHERE thread_id = ? ORDER BY created_at ASC`,
+    `SELECT messages.*,
+      CASE WHEN threads.whatsapp_id = '__admin__' AND messages.timestamp <=
+        CASE WHEN messages.sender_role IN ('admin', 'system')
+          THEN threads.user_last_read_at ELSE threads.admin_last_read_at END
+        THEN 'read' ELSE 'sent' END AS delivery_state
+      FROM user_support_messages AS messages
+      INNER JOIN user_support_threads AS threads ON threads.id = messages.thread_id
+      WHERE messages.thread_id = ? ORDER BY messages.created_at ASC, messages.id ASC`,
     [threadId],
   );
 
@@ -958,13 +970,7 @@ export const markSupportReminderSent = async (
 export const getMinutesLeftIn24hWindow = async (userId: number, whatsappId: string) => {
   const { canonical: normalizedWhatsappId } = await resolveCanonicalWhatsappId(whatsappId);
   await ensureCustomerTable();
-  const customer = await findCustomerByPhoneForUser(userId, normalizedWhatsappId);
-  if (customer?.lastInteraction) {
-    const last = new Date(customer.lastInteraction).getTime();
-    const diff = Date.now() - last;
-    const minutesLeft = Math.max(0, Math.floor((DAY_IN_MS - diff) / 60000));
-    return { within24h: minutesLeft > 0, minutesLeft } as const;
-  }
+  // The legacy customer store no longer persists interaction timestamps.
 
   await ensureSupportTables();
   const db = getDb();

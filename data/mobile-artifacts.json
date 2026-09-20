@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 89957703,
-    "updatedAt": "2026-09-20T05:00:00.000Z",
+    "sizeBytes": 89859191,
+    "updatedAt": "2026-09-20T13:03:30.000Z",
     "buildType": "release",
-    "versionName": "0.1.303",
-    "versionCode": 309
+    "versionName": "0.1.304",
+    "versionCode": 310
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.303 (309): atendimento admin com layout WhatsApp e compositor completo para emoji, GIF, figurinha, mídia e áudio."
+  "details": "APK Flutter nativo 0.1.304 (310): atendimento admin e usuário reutilizam os componentes da conversa normal; áudio corrigido, ticks de leitura reais e suporte sempre na lista de conversas."
 }

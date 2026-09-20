@@ -4,7 +4,6 @@ import 'dart:typed_data';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
@@ -14,8 +13,7 @@ import '../../core/wa_theme.dart';
 import '../../core/voice_recorder.dart';
 import '../../models/admin_support.dart';
 import '../../models/conversation_thread.dart';
-import '../chat/emoji_catalog.dart';
-import '../chat/media_players.dart';
+import '../chat/chat_screen.dart';
 
 class UserSupportChatScreen extends ConsumerStatefulWidget {
   const UserSupportChatScreen({
@@ -23,8 +21,12 @@ class UserSupportChatScreen extends ConsumerStatefulWidget {
     required this.thread,
     this.leading,
     this.onConversationChanged,
+    this.adminEntry,
+    this.header,
   });
 
+  final AdminSupportThreadEntry? adminEntry;
+  final Widget? header;
   final ConversationThread thread;
   final Widget? leading;
   final VoidCallback? onConversationChanged;
@@ -49,6 +51,10 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
   bool _recordingBusy = false;
   DateTime? _recordingStartedAt;
   int _generation = 0;
+  Duration _recordingDuration = Duration.zero;
+  Timer? _recordingTimer;
+  bool _voiceHeld = false;
+  bool _voiceCancelled = false;
 
   @override
   void initState() {
@@ -64,6 +70,7 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _pollTimer?.cancel();
+    _recordingTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     unawaited(_voiceRecorder.dispose());
@@ -92,109 +99,113 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
       color: wa.chatBg,
       child: Column(
         children: [
-          Container(
-            height: compact ? 58 : 62,
-            padding: EdgeInsets.only(
-              left: widget.leading == null ? 12 : 0,
-              right: 8,
-            ),
-            decoration: BoxDecoration(
-              color: wa.headerBg,
-              border: Border(bottom: BorderSide(color: wa.divider)),
-            ),
-            child: Row(
-              children: [
-                ?widget.leading,
-                SizedBox.square(
-                  dimension: compact ? 38 : 42,
-                  child: ClipOval(
-                    child: supportAvatarUrl == null
-                        ? ColoredBox(
-                            color: wa.accentSoft,
-                            child: Icon(
-                              Icons.support_agent_rounded,
-                              color: wa.accent,
-                            ),
-                          )
-                        : BotAdminCachedImage(
-                            imageUrl: supportAvatarUrl,
-                            fit: BoxFit.cover,
-                            errorWidget: (_, _, _) => ColoredBox(
-                              color: wa.accentSoft,
-                              child: Icon(
-                                Icons.support_agent_rounded,
-                                color: wa.accent,
-                              ),
-                            ),
-                          ),
-                  ),
+          widget.header ??
+              Container(
+                height: compact ? 58 : 62,
+                padding: EdgeInsets.only(
+                  left: widget.leading == null ? 12 : 0,
+                  right: 8,
                 ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
+                decoration: BoxDecoration(
+                  color: wa.headerBg,
+                  border: Border(bottom: BorderSide(color: wa.divider)),
+                ),
+                child: Row(
+                  children: [
+                    ?widget.leading,
+                    SizedBox.square(
+                      dimension: compact ? 38 : 42,
+                      child: ClipOval(
+                        child: supportAvatarUrl == null
+                            ? ColoredBox(
+                                color: wa.accentSoft,
+                                child: Icon(
+                                  Icons.support_agent_rounded,
+                                  color: wa.accent,
+                                ),
+                              )
+                            : BotAdminCachedImage(
+                                imageUrl: supportAvatarUrl,
+                                fit: BoxFit.cover,
+                                errorWidget: (_, _, _) => ColoredBox(
+                                  color: wa.accentSoft,
+                                  child: Icon(
+                                    Icons.support_agent_rounded,
+                                    color: wa.accent,
+                                  ),
+                                ),
+                              ),
+                      ),
+                    ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Flexible(
-                            child: Text(
-                              supportName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: wa.textPrimary,
-                                fontSize: 16.5,
-                                fontWeight: FontWeight.w700,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  supportName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: wa.textPrimary,
+                                    fontSize: 16.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
                               ),
-                            ),
+                              const SizedBox(width: 7),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 6,
+                                  vertical: 3,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: wa.accentSoft,
+                                  borderRadius: BorderRadius.circular(5),
+                                ),
+                                child: Text(
+                                  supportRole,
+                                  style: TextStyle(
+                                    color: wa.accent,
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 7),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 6,
-                              vertical: 3,
-                            ),
-                            decoration: BoxDecoration(
-                              color: wa.accentSoft,
-                              borderRadius: BorderRadius.circular(5),
-                            ),
-                            child: Text(
-                              supportRole,
-                              style: TextStyle(
-                                color: wa.accent,
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w800,
-                              ),
+                          const SizedBox(height: 2),
+                          Text(
+                            'Conversa direta com $supportName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: wa.textMuted,
+                              fontSize: 12.5,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'Conversa direta com $supportName',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: wa.textMuted, fontSize: 12.5),
-                      ),
-                    ],
-                  ),
+                    ),
+                    IconButton(
+                      tooltip: 'Atualizar suporte',
+                      onPressed: _refreshing
+                          ? null
+                          : () => _loadConversation(scrollToBottom: true),
+                      icon: _refreshing
+                          ? const SizedBox.square(
+                              dimension: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.refresh_rounded),
+                    ),
+                  ],
                 ),
-                IconButton(
-                  tooltip: 'Atualizar suporte',
-                  onPressed: _refreshing
-                      ? null
-                      : () => _loadConversation(scrollToBottom: true),
-                  icon: _refreshing
-                      ? const SizedBox.square(
-                          dimension: 18,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.refresh_rounded),
-                ),
-              ],
-            ),
-          ),
+              ),
           Expanded(
             child: ColoredBox(
               color: wa.chatWallpaper,
@@ -276,105 +287,62 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
         ),
       );
     }
-    return ListView.builder(
-      controller: _scrollController,
-      padding: EdgeInsets.fromLTRB(
-        MediaQuery.sizeOf(context).width < 720 ? 12 : 48,
-        18,
-        MediaQuery.sizeOf(context).width < 720 ? 12 : 48,
-        22,
+    return LayoutBuilder(
+      builder: (context, constraints) => ListView.builder(
+        controller: _scrollController,
+        padding: EdgeInsets.fromLTRB(
+          MediaQuery.sizeOf(context).width < 720 ? 12 : 48,
+          18,
+          MediaQuery.sizeOf(context).width < 720 ? 12 : 48,
+          22,
+        ),
+        itemCount: messages.length,
+        itemBuilder: (context, index) => ConversationMessageBubble(
+          thread: widget.thread,
+          message: messages[index].toChatMessage(
+            forAdmin: widget.adminEntry != null,
+            isAdminThread: _conversation?.thread.isAdminThread ?? true,
+            incomingName: widget.thread.title,
+          ),
+          viewportWidth: constraints.maxWidth,
+          enableActions: false,
+          onReply: () {},
+          onRunMessageAction: (_, _, _) async {},
+          onToggleDeletedReveal: (_, _) async {},
+        ),
       ),
-      itemCount: messages.length,
-      itemBuilder: (context, index) =>
-          _UserSupportMessageBubble(message: messages[index]),
     );
   }
 
-  Widget _buildComposer(BuildContext context) {
-    final wa = WaTheme.of(context);
-    return Container(
-      color: wa.composerBg,
-      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          IconButton(
-            tooltip: 'Emojis',
-            onPressed: _sending ? null : _openEmojiPicker,
-            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
-            icon: const Icon(Icons.emoji_emotions_outlined),
-          ),
-          IconButton(
-            tooltip: 'GIFs e figurinhas',
-            onPressed: _sending ? null : _openGiphyPicker,
-            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
-            icon: const Icon(Icons.gif_box_outlined),
-          ),
-          IconButton(
-            tooltip: 'Anexar mídia ou documento',
-            onPressed: _sending ? null : _pickAndSendMedia,
-            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
-            icon: const Icon(Icons.attach_file_rounded),
-          ),
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              minLines: 1,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              onSubmitted: (_) => unawaited(_sendText()),
-              decoration: InputDecoration(
-                hintText: 'Digite sua dúvida para o suporte',
-                fillColor: wa.inputFill,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(24),
-                  borderSide: BorderSide.none,
-                ),
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          IconButton(
-            tooltip: _recording ? 'Parar e enviar áudio' : 'Gravar áudio',
-            onPressed: _sending || _recordingBusy
-                ? null
-                : (_recording ? _stopAndSendVoice : _startVoiceRecording),
-            constraints: const BoxConstraints.tightFor(width: 40, height: 42),
-            style: IconButton.styleFrom(
-              backgroundColor: _recording ? Colors.redAccent : wa.inputFill,
-              foregroundColor: _recording ? Colors.white : wa.textPrimary,
-            ),
-            icon: _recordingBusy
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    _recording ? Icons.stop_rounded : Icons.mic_none_rounded,
-                  ),
-          ),
-          const SizedBox(width: 4),
-          IconButton.filled(
-            tooltip: 'Enviar',
-            onPressed: _sending ? null : () => unawaited(_sendText()),
-            style: IconButton.styleFrom(
-              backgroundColor: wa.accent,
-              foregroundColor: Colors.white,
-            ),
-            icon: _sending
-                ? const SizedBox.square(
-                    dimension: 18,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: Colors.white,
-                    ),
-                  )
-                : const Icon(Icons.send_rounded),
-          ),
-        ],
-      ),
-    );
-  }
+  Widget _buildComposer(BuildContext context) => ConversationComposer(
+    controller: _messageController,
+    onSend: _sendText,
+    onEmoji: _openComposerPicker,
+    onAttach: _pickAndSendMedia,
+    mentionAll: false,
+    mentionSuggestions: const [],
+    buttonsEnabled: false,
+    buttons: const [],
+    botEnabled: false,
+    showBotButton: false,
+    showStoreButton: false,
+    internalGroup: false,
+    voiceRecording: _recording,
+    voiceRecordingBusy: _recordingBusy || _sending,
+    voiceDuration: _recordingDuration,
+    voiceViewOnce: false,
+    onStore: () {},
+    showSweepstakeButton: false,
+    onSweepstake: () {},
+    onBot: () {},
+    onVoiceStart: _startVoiceRecording,
+    onVoiceStop: _stopAndSendVoice,
+    onCancelVoice: _cancelVoiceRecording,
+    onVoiceViewOnceChanged: null,
+    onMentionAllChanged: null,
+    onEditButtons: null,
+    onClearButtons: null,
+  );
 
   Future<void> _loadConversation({
     bool silent = false,
@@ -389,19 +357,31 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
       });
     }
     try {
-      final payload = await ref
-          .read(apiClientProvider)
-          .loadUserSupportConversation(whatsappId: widget.thread.chatJid);
+      final api = ref.read(apiClientProvider);
+      final admin = widget.adminEntry;
+      final payload = admin == null
+          ? await api.loadUserSupportConversation(
+              whatsappId: widget.thread.chatJid,
+            )
+          : await api.loadAdminSupportConversation(
+              userId: admin.user.id,
+              whatsappId: widget.thread.chatJid,
+            );
       if (!mounted || generation != _generation) return;
       final previousCount = _conversation?.messages.length ?? 0;
+      final wasNearBottom = !_scrollController.hasClients ||
+          _scrollController.position.extentAfter < 120;
       setState(() {
         _conversation = payload;
         _loading = false;
         _refreshing = false;
         _error = null;
       });
-      if (scrollToBottom || payload.messages.length > previousCount) {
+      if (scrollToBottom || (payload.messages.length > previousCount && wasNearBottom)) {
         _scheduleScrollToBottom();
+      }
+      if (payload.messages.length != previousCount) {
+        widget.onConversationChanged?.call();
       }
     } catch (error) {
       if (!mounted || generation != _generation) return;
@@ -418,9 +398,20 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
     if (text.isEmpty || _sending) return;
     setState(() => _sending = true);
     try {
-      await ref
-          .read(apiClientProvider)
-          .sendUserSupportText(whatsappId: widget.thread.chatJid, text: text);
+      final api = ref.read(apiClientProvider);
+      final admin = widget.adminEntry;
+      if (admin == null) {
+        await api.sendUserSupportText(
+          whatsappId: widget.thread.chatJid,
+          text: text,
+        );
+      } else {
+        await api.sendAdminSupportText(
+          userId: admin.user.id,
+          whatsappId: widget.thread.chatJid,
+          text: text,
+        );
+      }
       _messageController.clear();
       await _loadConversation(silent: true, scrollToBottom: true);
       widget.onConversationChanged?.call();
@@ -431,21 +422,42 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
     }
   }
 
-  Future<void> _openEmojiPicker() async {
-    final emoji = await showEmojiPickerSheet(context);
-    if (!mounted || emoji == null || emoji.isEmpty) return;
-    final value = _messageController.value;
-    final start = value.selection.isValid
-        ? value.selection.start
-        : value.text.length;
-    final end = value.selection.isValid
-        ? value.selection.end
-        : value.text.length;
-    final text = value.text.replaceRange(start, end, emoji);
-    _messageController.value = TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: start + emoji.length),
+  Future<void> _openComposerPicker() async {
+    final result = await showConversationComposerPicker(
+      context,
+      ref.read(apiClientProvider),
     );
+    if (!mounted || result == null) return;
+    if (result.emoji != null) {
+      final value = _messageController.value;
+      final start = value.selection.isValid
+          ? value.selection.start
+          : value.text.length;
+      final end = value.selection.isValid
+          ? value.selection.end
+          : value.text.length;
+      final text = value.text.replaceRange(start, end, result.emoji!);
+      _messageController.value = TextEditingValue(
+        text: text,
+        selection: TextSelection.collapsed(
+          offset: start + result.emoji!.length,
+        ),
+      );
+      return;
+    }
+    final item = result.giphy;
+    if (item == null) return;
+    try {
+      final media = await ref.read(apiClientProvider).downloadGiphyMedia(item);
+      await _sendSupportMedia(
+        bytes: media.bytes,
+        fileName: item.fileNameForMimeType(media.mimeType),
+        mimeType: media.mimeType,
+        mediaType: item.isSticker ? 'sticker' : 'image',
+      );
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    }
   }
 
   Future<void> _pickAndSendMedia() async {
@@ -489,13 +501,27 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
 
   Future<void> _startVoiceRecording() async {
     if (_recording || _recordingBusy) return;
+    _voiceHeld = true;
+    _voiceCancelled = false;
     setState(() => _recordingBusy = true);
     try {
       await _voiceRecorder.start();
-      if (!mounted) return;
+      if (!mounted || _voiceCancelled || !_voiceHeld) {
+        await _voiceRecorder.cancel();
+        return;
+      }
       setState(() {
         _recording = true;
         _recordingStartedAt = DateTime.now();
+        _recordingDuration = Duration.zero;
+      });
+      _recordingTimer = Timer.periodic(const Duration(milliseconds: 250), (_) {
+        if (mounted && _recordingStartedAt != null)
+          setState(
+            () => _recordingDuration = DateTime.now().difference(
+              _recordingStartedAt!,
+            ),
+          );
       });
     } catch (error) {
       if (mounted) showErrorToast(context, error);
@@ -505,7 +531,9 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
   }
 
   Future<void> _stopAndSendVoice() async {
+    _voiceHeld = false;
     if (!_recording || _recordingBusy) return;
+    _recordingTimer?.cancel();
     final started = _recordingStartedAt;
     setState(() {
       _recordingBusy = true;
@@ -537,6 +565,21 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
     }
   }
 
+  Future<void> _cancelVoiceRecording() async {
+    _voiceHeld = false;
+    _voiceCancelled = true;
+    if (_recordingBusy && !_recording) return;
+    _recordingTimer?.cancel();
+    await _voiceRecorder.cancel();
+    if (mounted)
+      setState(() {
+        _recording = false;
+        _recordingBusy = false;
+        _recordingStartedAt = null;
+        _recordingDuration = Duration.zero;
+      });
+  }
+
   Future<void> _sendSupportMedia({
     required Uint8List bytes,
     required String fileName,
@@ -547,16 +590,28 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
     if (_sending) return;
     setState(() => _sending = true);
     try {
-      await ref
-          .read(apiClientProvider)
-          .sendUserSupportMedia(
-            whatsappId: widget.thread.chatJid,
-            bytes: bytes,
-            fileName: fileName,
-            mimeType: mimeType,
-            mediaType: mediaType,
-            caption: caption,
-          );
+      final api = ref.read(apiClientProvider);
+      final admin = widget.adminEntry;
+      if (admin == null) {
+        await api.sendUserSupportMedia(
+          whatsappId: widget.thread.chatJid,
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mimeType,
+          mediaType: mediaType,
+          caption: caption,
+        );
+      } else {
+        await api.sendAdminSupportMedia(
+          userId: admin.user.id,
+          whatsappId: widget.thread.chatJid,
+          bytes: bytes,
+          fileName: fileName,
+          mimeType: mimeType,
+          mediaType: mediaType,
+          caption: caption,
+        );
+      }
       _messageController.clear();
       await _loadConversation(silent: true, scrollToBottom: true);
       widget.onConversationChanged?.call();
@@ -564,26 +619,6 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
       if (mounted) showErrorToast(context, error);
     } finally {
       if (mounted) setState(() => _sending = false);
-    }
-  }
-
-  Future<void> _openGiphyPicker() async {
-    final api = ref.read(apiClientProvider);
-    final selected = await showDialog<GiphyMediaItem>(
-      context: context,
-      builder: (_) => _SupportGiphyPicker(api: api),
-    );
-    if (selected == null || !mounted) return;
-    try {
-      final media = await api.downloadGiphyMedia(selected);
-      await _sendSupportMedia(
-        bytes: media.bytes,
-        fileName: selected.fileNameForMimeType(media.mimeType),
-        mimeType: media.mimeType,
-        mediaType: selected.isSticker ? 'sticker' : 'image',
-      );
-    } catch (error) {
-      if (mounted) showErrorToast(context, error);
     }
   }
 
@@ -598,284 +633,6 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
     });
   }
 }
-
-class _UserSupportMessageBubble extends StatelessWidget {
-  const _UserSupportMessageBubble({required this.message});
-
-  final AdminSupportMessage message;
-
-  @override
-  Widget build(BuildContext context) {
-    final wa = WaTheme.of(context);
-    final own = message.senderRole == 'user';
-    final text = message.text?.trim() ?? '';
-    return Align(
-      alignment: own ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
-        constraints: const BoxConstraints(maxWidth: 520),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.fromLTRB(11, 8, 11, 6),
-        decoration: BoxDecoration(
-          color: own ? wa.bubbleOut : wa.bubbleIn,
-          borderRadius: BorderRadius.circular(9),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.06),
-              blurRadius: 2,
-              offset: const Offset(0, 1),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            if (message.media != null)
-              _UserSupportMediaPreview(media: message.media!),
-            if (text.isNotEmpty) ...[
-              if (message.media != null) const SizedBox(height: 6),
-              Text(text, style: TextStyle(color: wa.bubbleText, fontSize: 15)),
-            ],
-            const SizedBox(height: 4),
-            Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                _supportTime(message.timestamp),
-                style: TextStyle(color: wa.bubbleMeta, fontSize: 11),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _SupportGiphyPicker extends StatefulWidget {
-  const _SupportGiphyPicker({required this.api});
-
-  final BotAdminApiClient api;
-
-  @override
-  State<_SupportGiphyPicker> createState() => _SupportGiphyPickerState();
-}
-
-class _SupportGiphyPickerState extends State<_SupportGiphyPicker> {
-  final _searchController = TextEditingController();
-  String _type = 'gifs';
-  late Future<List<GiphyMediaItem>> _items;
-
-  @override
-  void initState() {
-    super.initState();
-    _items = widget.api.searchGiphy(type: _type, limit: 24);
-  }
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  void _load() {
-    setState(() {
-      _items = widget.api.searchGiphy(
-        query: _searchController.text.trim(),
-        type: _type,
-        limit: 24,
-      );
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
-    return AlertDialog(
-      title: const Text('GIFs e figurinhas'),
-      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-      content: SizedBox(
-        width: size.width < 500 ? size.width - 64 : 420,
-        height: size.height < 600 ? size.height * 0.55 : 430,
-        child: Column(
-          children: [
-            Row(
-              children: [
-                ChoiceChip(
-                  label: const Text('GIFs'),
-                  selected: _type == 'gifs',
-                  onSelected: (_) {
-                    _type = 'gifs';
-                    _load();
-                  },
-                ),
-                const SizedBox(width: 8),
-                ChoiceChip(
-                  label: const Text('Figurinhas'),
-                  selected: _type == 'stickers',
-                  onSelected: (_) {
-                    _type = 'stickers';
-                    _load();
-                  },
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _searchController,
-              onSubmitted: (_) => _load(),
-              decoration: InputDecoration(
-                hintText: 'Pesquisar',
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: IconButton(
-                  tooltip: 'Buscar',
-                  onPressed: _load,
-                  icon: const Icon(Icons.arrow_forward_rounded),
-                ),
-              ),
-            ),
-            const SizedBox(height: 10),
-            Expanded(
-              child: FutureBuilder<List<GiphyMediaItem>>(
-                future: _items,
-                builder: (context, snapshot) {
-                  if (snapshot.connectionState != ConnectionState.done) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  if (snapshot.hasError) {
-                    return Center(
-                      child: TextButton.icon(
-                        onPressed: _load,
-                        icon: const Icon(Icons.refresh_rounded),
-                        label: const Text('Tentar novamente'),
-                      ),
-                    );
-                  }
-                  final items = snapshot.data ?? const <GiphyMediaItem>[];
-                  if (items.isEmpty) {
-                    return const Center(child: Text('Nada encontrado.'));
-                  }
-                  return GridView.builder(
-                    gridDelegate:
-                        const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 3,
-                          crossAxisSpacing: 8,
-                          mainAxisSpacing: 8,
-                        ),
-                    itemCount: items.length,
-                    itemBuilder: (_, index) => InkWell(
-                      onTap: () => Navigator.of(context).pop(items[index]),
-                      child: BotAdminCachedImage(
-                        imageUrl: items[index].previewUrl,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, _, _) =>
-                            const Icon(Icons.broken_image_outlined),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _UserSupportMediaPreview extends StatelessWidget {
-  const _UserSupportMediaPreview({required this.media});
-
-  final AdminSupportMedia media;
-
-  @override
-  Widget build(BuildContext context) {
-    final wa = WaTheme.of(context);
-    final url = _supportMediaUrl(media);
-    if (url != null &&
-        (media.mediaType == 'image' || media.mediaType == 'sticker')) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: BotAdminCachedImage(
-          imageUrl: url,
-          width: 300,
-          height: media.mediaType == 'sticker' ? 160 : 210,
-          fit: BoxFit.cover,
-          errorWidget: (_, _, _) => _fileCard(wa),
-        ),
-      );
-    }
-    if (url != null && media.mediaType == 'audio') {
-      return InlineAudioPlayer(
-        url: url,
-        title: media.filename ?? 'Áudio',
-        mimeType: media.mimeType,
-        compact: true,
-      );
-    }
-    if (url != null && media.mediaType == 'video') {
-      return InlineVideoPlayer(
-        url: url,
-        title: media.filename,
-        mimeType: media.mimeType,
-      );
-    }
-    return _fileCard(wa);
-  }
-
-  Widget _fileCard(WaTheme wa) {
-    return Container(
-      width: 290,
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: wa.searchBg,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        children: [
-          Icon(_supportMediaIcon(media.mediaType), color: wa.accent),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              media.filename ?? media.caption ?? 'Mídia do suporte',
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(color: wa.textPrimary),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String? _supportMediaUrl(AdminSupportMedia media) {
-  var raw = media.mediaUrl?.trim() ?? '';
-  if (raw.isEmpty && media.mediaId?.trim().isNotEmpty == true) {
-    raw = '/api/support/media/${Uri.encodeComponent(media.mediaId!.trim())}';
-  }
-  if (raw.isEmpty) return null;
-  final parsed = Uri.tryParse(raw);
-  if (parsed != null && parsed.hasScheme) return raw;
-  final base = Uri.tryParse(AppConfig.apiBaseUrl);
-  if (base == null || !base.hasScheme) return null;
-  return base.resolve(raw.startsWith('/') ? raw : '/$raw').toString();
-}
-
-String? _supportAbsoluteUrl(String? value) {
-  final raw = value?.trim() ?? '';
-  if (raw.isEmpty) return null;
-  final parsed = Uri.tryParse(raw);
-  if (parsed != null && parsed.hasScheme) return raw;
-  final base = Uri.tryParse(AppConfig.apiBaseUrl);
-  if (base == null || !base.hasScheme) return null;
-  return base.resolve(raw.startsWith('/') ? raw : '/$raw').toString();
-}
-
-IconData _supportMediaIcon(String type) => switch (type) {
-  'video' => Icons.play_circle_outline_rounded,
-  'audio' => Icons.graphic_eq_rounded,
-  'document' => Icons.description_outlined,
-  _ => Icons.image_outlined,
-};
 
 String _supportGuessMime(String fileName) {
   final name = fileName.toLowerCase();
@@ -900,8 +657,12 @@ String _supportMediaType(String mimeType) {
   return 'document';
 }
 
-String _supportTime(String raw) {
-  final parsed = DateTime.tryParse(raw);
-  if (parsed == null) return '';
-  return DateFormat('HH:mm', 'pt_BR').format(parsed.toLocal());
+String? _supportAbsoluteUrl(String? value) {
+  final raw = value?.trim() ?? '';
+  if (raw.isEmpty) return null;
+  final parsed = Uri.tryParse(raw);
+  if (parsed != null && parsed.hasScheme) return raw;
+  final base = Uri.tryParse(AppConfig.apiBaseUrl);
+  if (base == null || !base.hasScheme) return null;
+  return base.resolve(raw.startsWith('/') ? raw : '/$raw').toString();
 }

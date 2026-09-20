@@ -14,6 +14,24 @@ const UPLOAD_ROOTS = [UPLOADS_STORAGE_ROOT, ARCHIVE_UPLOAD_ROOT].filter(Boolean)
 const getMimeType = (filePath: string) => {
   const extension = path.extname(filePath).toLowerCase();
   switch (extension) {
+    case ".m4a":
+    case ".mp4a":
+      return "audio/mp4";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".ogg":
+    case ".opus":
+      return "audio/ogg";
+    case ".aac":
+      return "audio/aac";
+    case ".wav":
+      return "audio/wav";
+    case ".webm":
+      return "video/webm";
+    case ".mp4":
+      return "video/mp4";
+    case ".mov":
+      return "video/quicktime";
     case ".apk":
       return "application/vnd.android.package-archive";
     case ".ipa":
@@ -108,11 +126,11 @@ const getCacheControl = (filePath: string) => {
 
 const buildHeaders = (filePath: string, size: number, lastModified: Date, contentType?: string) => {
   const headers = new Headers();
-  headers.set("Content-Type", contentType || getMimeType(filePath));
+  headers.set("Content-Type", contentType && contentType !== "application/octet-stream" ? contentType : getMimeType(filePath));
   headers.set("Content-Length", size.toString());
   headers.set("Cache-Control", getCacheControl(filePath));
   headers.set("Last-Modified", lastModified.toUTCString());
-  headers.set("Accept-Ranges", "none");
+  headers.set("Accept-Ranges", "bytes");
   const ext = path.extname(filePath).toLowerCase();
   const attachmentExts = new Set([".apk", ".ipa", ".msi", ".exe", ".zip"]);
   const disposition = attachmentExts.has(ext) ?
@@ -136,9 +154,27 @@ const ensureValidPath = (relativePath: string) => {
   }
 };
 
-const toWebStream = (filePath: string) => {
-  const nodeStream = createReadStream(filePath);
+const toWebStream = (filePath: string, range?: { start: number; end: number }) => {
+  const nodeStream = createReadStream(filePath, range);
   return Readable.toWeb(nodeStream) as unknown as ReadableStream;
+};
+
+// Media decoders seek with single byte ranges, including suffix/open ranges.
+const byteRange = (request: Request, size: number, headers: Headers) => {
+  const value = request.headers.get("range");
+  if (!value) return null;
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value.trim());
+  if (!match || (!match[1] && !match[2])) return null;
+  const start = match[1] ? Number(match[1]) : Math.max(0, size - Number(match[2]));
+  const end = match[1] && match[2] ? Math.min(Number(match[2]), size - 1) : size - 1;
+  if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end) || start > end || start >= size) {
+    headers.set("Content-Range", `bytes */${size}`);
+    headers.set("Content-Length", "0");
+    return false;
+  }
+  headers.set("Content-Range", `bytes ${start}-${end}/${size}`);
+  headers.set("Content-Length", String(end - start + 1));
+  return { start, end };
 };
 
 export async function GET(
@@ -166,8 +202,10 @@ export async function GET(
 
     if (file) {
       const headers = buildHeaders(file.absolutePath, file.stats.size, file.stats.mtime);
-      const body = toWebStream(file.absolutePath);
-      return new Response(body, { headers });
+      const range = byteRange(_request, file.stats.size, headers);
+      if (range === false) return new Response(null, { status: 416, headers });
+      const body = toWebStream(file.absolutePath, range ?? undefined);
+      return new Response(body, { status: range ? 206 : 200, headers });
     }
 
     const object = await getR2UploadObject(relativePath);
@@ -181,7 +219,10 @@ export async function GET(
       object.lastModified ?? new Date(),
       object.contentType,
     );
-    return new Response(new Uint8Array(object.buffer), { headers });
+    const range = byteRange(_request, object.size, headers);
+    if (range === false) return new Response(null, { status: 416, headers });
+    const bytes = new Uint8Array(object.buffer);
+    return new Response(range ? bytes.slice(range.start, range.end + 1) : bytes, { status: range ? 206 : 200, headers });
   } catch (error) {
     console.error("Failed to serve upload", error);
     return NextResponse.json({ message: "Erro ao carregar arquivo." }, { status: 500 });

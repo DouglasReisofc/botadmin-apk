@@ -1,3 +1,5 @@
+import 'chat_message.dart';
+
 class AdminSupportUser {
   const AdminSupportUser({
     required this.id,
@@ -178,6 +180,7 @@ class AdminSupportMessage {
     this.text,
     this.senderUserId,
     this.media,
+    this.deliveryState = MessageDeliveryState.sent,
   });
 
   final int id;
@@ -188,6 +191,40 @@ class AdminSupportMessage {
   final String? text;
   final int? senderUserId;
   final AdminSupportMedia? media;
+  final MessageDeliveryState deliveryState;
+
+  ChatMessage toChatMessage({
+    required bool forAdmin,
+    required bool isAdminThread,
+    required String incomingName,
+  }) {
+    final own = forAdmin
+        ? isOutboundForAdmin(isAdminThread: isAdminThread)
+        : senderRole == 'user';
+    final attachment = media;
+    final url = attachment?.mediaUrl?.trim().isNotEmpty == true
+        ? attachment!.mediaUrl
+        : attachment?.mediaId?.isNotEmpty == true
+        ? '/api/${forAdmin ? 'admin/' : ''}support/media/${Uri.encodeComponent(attachment!.mediaId!)}'
+        : null;
+    return ChatMessage(
+      id: 'support-$id',
+      remoteId: 'support-$id',
+      text: text ?? '',
+      timestamp:
+          DateTime.tryParse(timestamp) ??
+          DateTime.fromMillisecondsSinceEpoch(0),
+      fromMe: own,
+      senderName: own ? 'Você' : incomingName,
+      messageType: attachment?.mediaType ?? messageType,
+      mediaUrl: url,
+      mediaMimeType: attachment?.mimeType,
+      mediaFileName: attachment?.filename,
+      mediaCaption: attachment?.caption,
+      isAnimatedMedia: attachment?.mimeType == 'image/gif',
+      deliveryState: own ? deliveryState : null,
+    );
+  }
 
   /// `direction` is stored from the account owner's perspective. In the
   /// internal admin thread a user's message is also `outbound`.
@@ -209,6 +246,11 @@ class AdminSupportMessage {
           ? null
           : _asInt(json['senderUserId']),
       senderRole: json['senderRole']?.toString() ?? 'contact',
+      deliveryState: switch (json['deliveryState']) {
+        'read' => MessageDeliveryState.read,
+        'delivered' => MessageDeliveryState.delivered,
+        _ => MessageDeliveryState.sent,
+      },
       media: mediaJson is Map
           ? AdminSupportMedia.fromJson(mediaJson.cast<String, dynamic>())
           : null,
