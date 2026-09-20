@@ -609,6 +609,25 @@ class BotAdminApiClient {
     }
   }
 
+  /// Forces an authoritative dashboard refresh.  Unlike
+  /// [loadDashboardSnapshot], this never returns the memory/disk snapshot
+  /// first, which is important for dialogs that must show newly discovered
+  /// WhatsApp groups immediately.
+  Future<DashboardSnapshot> refreshDashboardSnapshot({
+    bool syncDirectory = true,
+    Duration syncTimeout = const Duration(seconds: 20),
+  }) async {
+    final snapshot = await _loadDashboardSnapshotNetwork(
+      syncDirectory: syncDirectory,
+      syncTimeout: syncTimeout,
+    );
+    final merged = _mergeDashboardSnapshots(_lastDashboardSnapshot, snapshot);
+    _lastDashboardSnapshot = merged;
+    _applyNativeRealtimeEvents();
+    await _writeDashboardDiskSnapshot(merged);
+    return merged;
+  }
+
   void _refreshDashboardInBackground({
     required bool syncDirectory,
     required Duration syncTimeout,
@@ -1312,6 +1331,33 @@ class BotAdminApiClient {
     final json = await postFormData(
       '/api/support/messages',
       FormData.fromMap({'to': whatsappId, 'mode': 'text', 'text': text}),
+    );
+    return AdminSupportMessage.fromJson(_map(json['message']));
+  }
+
+  Future<AdminSupportMessage> sendUserSupportMedia({
+    String whatsappId = '__admin__',
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+    String mediaType = 'document',
+    String caption = '',
+  }) async {
+    final json = await postFormData(
+      '/api/support/messages',
+      FormData.fromMap({
+        'to': whatsappId,
+        'mode': 'media',
+        'mediaType': mediaType,
+        if (caption.trim().isNotEmpty) 'caption': caption.trim(),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+          contentType: DioMediaType.parse(
+            mimeType.trim().isEmpty ? 'application/octet-stream' : mimeType,
+          ),
+        ),
+      }),
     );
     return AdminSupportMessage.fromJson(_map(json['message']));
   }

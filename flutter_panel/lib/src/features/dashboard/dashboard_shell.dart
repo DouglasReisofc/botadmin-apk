@@ -2877,35 +2877,21 @@ Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
     return;
   }
 
-  final groups =
-      data.groups
-          .where(
-            (group) =>
-                !group.isInternalGroup &&
-                (group.instanceId == null ||
-                    group.instanceId == activeInstance.id),
-          )
-          .where((group) {
-            if (group.instanceId == activeInstance.id) return true;
-            final key = _normalizeConversationJidKey(group.remoteJid);
-            return data.threads.any(
-              (thread) =>
-                  thread.instanceId == activeInstance.id &&
-                  thread.isGroup &&
-                  _normalizeConversationJidKey(thread.chatJid) == key,
-            );
-          })
-          .toList(growable: false)
-        ..sort(
-          (left, right) =>
-              left.name.toLowerCase().compareTo(right.name.toLowerCase()),
-        );
+  List<BotGroup> groupsFor(DashboardSnapshot snapshot) =>
+      _groupRobotGroupsForInstance(snapshot, activeInstance.id);
 
   final group = await showDialog<BotGroup>(
     context: context,
     builder: (dialogContext) => _GroupRobotPickerDialog(
       profileName: activeInstance.name,
-      groups: groups,
+      groups: groupsFor(data),
+      onRefresh: () async {
+        final fresh = await ref
+            .read(apiClientProvider)
+            .refreshDashboardSnapshot();
+        if (context.mounted) ref.invalidate(dashboardSnapshotProvider);
+        return groupsFor(fresh);
+      },
     ),
   );
   if (group == null || !context.mounted) return;
@@ -2952,14 +2938,71 @@ Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
   await _openGroupBotSettingsPanel(rootNavigator.context, group);
 }
 
+List<BotGroup> _groupRobotGroupsForInstance(
+  DashboardSnapshot data,
+  int instanceId,
+) {
+  final byJid = <String, BotGroup>{};
+  for (final group in data.groups) {
+    if (group.isInternalGroup ||
+        (group.instanceId != null && group.instanceId != instanceId)) {
+      continue;
+    }
+    final key = _normalizeConversationJidKey(group.remoteJid);
+    if (key.isEmpty) continue;
+    if (group.instanceId == null &&
+        !data.threads.any(
+          (thread) =>
+              thread.instanceId == instanceId &&
+              thread.isGroup &&
+              _normalizeConversationJidKey(thread.chatJid) == key,
+        )) {
+      continue;
+    }
+    byJid[key] = group;
+  }
+  // Directory sync can discover a recent group as a conversation before the
+  // groups endpoint has returned the linked record. Keep linked records only
+  // (the settings endpoint needs a real BotAdmin group id), but use the fresh
+  // thread title/avatar while it is being hydrated.
+  for (final thread in data.threads) {
+    if (thread.instanceId != instanceId ||
+        !thread.isGroup ||
+        thread.isInternalGroup ||
+        thread.linkedGroupId == null ||
+        thread.linkedGroupId! <= 0) {
+      continue;
+    }
+    final key = _normalizeConversationJidKey(thread.chatJid);
+    if (key.isEmpty || byJid.containsKey(key)) continue;
+    byJid[key] = BotGroup(
+      id: thread.linkedGroupId!,
+      name: thread.title.trim().isEmpty ? 'Grupo' : thread.title.trim(),
+      remoteJid: thread.chatJid,
+      botEnabled: thread.internalBotEnabled == true,
+      instanceId: instanceId,
+      description: thread.groupDescription,
+      avatarUrl: thread.avatarUrl,
+    );
+  }
+  final groups = byJid.values.toList(growable: false);
+  groups.sort(
+    (left, right) =>
+        left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+  );
+  return groups;
+}
+
 class _GroupRobotPickerDialog extends StatefulWidget {
   const _GroupRobotPickerDialog({
     required this.profileName,
     required this.groups,
+    required this.onRefresh,
   });
 
   final String profileName;
   final List<BotGroup> groups;
+  final Future<List<BotGroup>> Function() onRefresh;
 
   @override
   State<_GroupRobotPickerDialog> createState() =>
@@ -2969,6 +3012,18 @@ class _GroupRobotPickerDialog extends StatefulWidget {
 class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
   final _searchController = TextEditingController();
   String _query = '';
+  late List<BotGroup> _groups;
+  bool _refreshing = false;
+  String? _refreshError;
+
+  @override
+  void initState() {
+    super.initState();
+    _groups = List<BotGroup>.of(widget.groups);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_refreshGroups());
+    });
+  }
 
   @override
   void dispose() {
@@ -2976,13 +3031,31 @@ class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
     super.dispose();
   }
 
+  Future<void> _refreshGroups() async {
+    if (_refreshing) return;
+    setState(() {
+      _refreshing = true;
+      _refreshError = null;
+    });
+    try {
+      final groups = await widget.onRefresh();
+      if (!mounted) return;
+      setState(() => _groups = groups);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _refreshError = error.toString());
+    } finally {
+      if (mounted) setState(() => _refreshing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
     final query = _query.trim().toLowerCase();
     final visibleGroups = query.isEmpty
-        ? widget.groups
-        : widget.groups
+        ? _groups
+        : _groups
               .where((group) => group.name.toLowerCase().contains(query))
               .toList(growable: false);
     final size = MediaQuery.sizeOf(context);
@@ -3031,6 +3104,16 @@ class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
                     ),
                   ),
                   IconButton(
+                    tooltip: 'Atualizar grupos',
+                    onPressed: _refreshing ? null : _refreshGroups,
+                    icon: _refreshing
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.refresh_rounded),
+                  ),
+                  IconButton(
                     tooltip: 'Fechar',
                     onPressed: () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
@@ -3049,6 +3132,14 @@ class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
                 ),
               ),
             ),
+            if (_refreshError != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
+                child: Text(
+                  'Não foi possível atualizar agora. Toque em atualizar para tentar novamente.',
+                  style: TextStyle(color: wa.textMuted, fontSize: 12),
+                ),
+              ),
             Divider(height: 1, color: wa.divider),
             Expanded(
               child: visibleGroups.isEmpty
@@ -3056,8 +3147,8 @@ class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
                       child: Padding(
                         padding: const EdgeInsets.all(28),
                         child: Text(
-                          widget.groups.isEmpty
-                              ? 'Nenhum grupo encontrado neste perfil.'
+                          _groups.isEmpty
+                              ? 'Nenhum grupo encontrado neste perfil. Toque em atualizar para buscar os grupos recentes.'
                               : 'Nenhum grupo corresponde à pesquisa.',
                           textAlign: TextAlign.center,
                           style: TextStyle(color: wa.textMuted),

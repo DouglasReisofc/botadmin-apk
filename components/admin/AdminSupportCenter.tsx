@@ -1780,7 +1780,9 @@ const AdminSupportCenter = ({ embedded = false }: AdminSupportCenterProps = {}) 
                 ) : (
                   conversation.messages.map((message) => {
                     const isTeamMessage =
-                      message.senderRole === "admin" || message.senderRole === "system";
+                      message.direction === "outbound" ||
+                      message.senderRole === "admin" ||
+                      message.senderRole === "system";
                     const mediaPreview = renderSupportMedia(message.media ?? null, isTeamMessage);
                     return (
                       <div

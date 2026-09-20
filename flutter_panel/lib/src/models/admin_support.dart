@@ -189,7 +189,10 @@ class AdminSupportMessage {
   final int? senderUserId;
   final AdminSupportMedia? media;
 
-  bool get isOutbound => direction == 'outbound' || senderRole == 'admin';
+  bool get isOutbound =>
+      direction == 'outbound' ||
+      senderRole == 'admin' ||
+      senderRole == 'system';
 
   factory AdminSupportMessage.fromJson(Map<String, dynamic> json) {
     final mediaJson = json['media'];
