@@ -17,6 +17,7 @@ import '../../core/app_ready.dart';
 import '../../core/auth_redirect.dart';
 import '../../core/botadmin_cached_image.dart';
 import '../../core/browser_notifications.dart';
+import '../../core/native_message_notifications.dart';
 import '../../core/theme_controller.dart';
 import '../../core/top_toast.dart';
 import '../../core/wa_theme.dart';
@@ -929,6 +930,8 @@ class _AdminNotificationHostState
   bool _seeded = false;
   bool _polling = false;
   AudioPlayer? _ttsPlayer;
+  Map<String, dynamic>? _realtimeSettings;
+  DateTime _settingsLoadedAt = DateTime.fromMillisecondsSinceEpoch(0);
 
   @override
   void initState() {
@@ -953,6 +956,20 @@ class _AdminNotificationHostState
     _polling = true;
     try {
       final api = ref.read(apiClientProvider);
+      if (DateTime.now().difference(_settingsLoadedAt) > const Duration(minutes: 1)) {
+        final payload = await api.loadAdminRealtimeNotificationSettings();
+        final raw = payload['settings'];
+        if (raw is Map) _realtimeSettings = Map<String, dynamic>.from(raw);
+        _settingsLoadedAt = DateTime.now();
+      }
+      final settings = _realtimeSettings ?? const <String, dynamic>{};
+      final salesNotifications = settings['salesNotificationsEnabled'] != false;
+      final salesTts = settings['salesTtsEnabled'] != false;
+      final supportNotifications = settings['supportNotificationsEnabled'] != false;
+      final supportTts = settings['supportTtsEnabled'] != false;
+      final voice = settings['speechVoice']?.toString().trim().isNotEmpty == true
+          ? settings['speechVoice'].toString().trim()
+          : 'ludmilla';
       final threads = await api.loadAdminSupportThreads();
       for (final entry in threads) {
         final stamp = entry.thread.lastMessageAt?.trim();
@@ -969,8 +986,14 @@ class _AdminNotificationHostState
             : entry.displayName.trim();
         final preview = (entry.thread.lastMessagePreview ?? '').trim();
         final detail = preview.isEmpty ? 'enviou uma nova mensagem' : preview;
-        final spoken = 'Nova mensagem de suporte de $sender: $detail';
-        if (mounted) {
+        final supportTemplate = settings['supportTemplate']?.toString().trim();
+        final spoken = _applyAdminTemplate(
+          supportTemplate?.isNotEmpty == true
+              ? supportTemplate!
+              : '{{customer_name}} disse: {{message}}',
+          {'customer_name': sender, 'message': detail, 'message_type': 'text'},
+        );
+        if (supportNotifications && mounted) {
           showSuccessToast(
             context,
             'Suporte: $sender enviou uma nova mensagem.',
@@ -980,8 +1003,13 @@ class _AdminNotificationHostState
             body: '$sender: $detail',
             tag: 'botadmin-admin-support-${entry.key}-$stamp',
           );
+          await NativeMessageNotifications.showAdminAlert(
+            title: 'Nova mensagem no suporte',
+            body: '$sender: $detail',
+            tag: 'support-${entry.key}',
+          );
         }
-        unawaited(_speak(spoken));
+        if (supportTts) unawaited(_speak(spoken, voice: voice));
       }
 
       final sales = await api.getJson(
@@ -1002,18 +1030,27 @@ class _AdminNotificationHostState
               ? raw['planName'].toString().trim()
               : 'um plano';
           final amount = raw['amount']?.toString().trim() ?? '';
-          final text = amount.isEmpty
-              ? '$customer realizou uma compra do plano $plan.'
-              : '$customer realizou uma compra do plano $plan no valor de $amount.';
-          if (mounted) {
+          final salesTemplate = settings['salesTemplate']?.toString().trim();
+          final text = _applyAdminTemplate(
+            salesTemplate?.isNotEmpty == true
+                ? salesTemplate!
+                : '{{customer_name}} realizou uma compra do plano {{plan_name}} no valor de {{amount}}.',
+            {'customer_name': customer, 'plan_name': plan, 'amount': amount},
+          );
+          if (salesNotifications && mounted) {
             showSuccessToast(context, 'Nova venda: $customer · $plan');
             await BrowserNotifications.show(
               title: 'Nova venda no painel',
               body: text,
               tag: 'botadmin-admin-sale-${raw['id']}',
             );
+            await NativeMessageNotifications.showAdminAlert(
+              title: 'Nova venda no painel',
+              body: text,
+              tag: 'sale-${raw['id']}',
+            );
           }
-          unawaited(_speak(text));
+          if (salesTts) unawaited(_speak(text, voice: voice));
         }
       }
       _lastSaleId = latestId > _lastSaleId ? latestId : _lastSaleId;
@@ -1025,14 +1062,14 @@ class _AdminNotificationHostState
     }
   }
 
-  Future<void> _speak(String text) async {
+  Future<void> _speak(String text, {String voice = 'ludmilla'}) async {
     if (text.trim().isEmpty) return;
     try {
       final base = Uri.tryParse(AppConfig.apiBaseUrl);
       if (base == null || !base.hasScheme) return;
       final uri = base
           .resolve('/api/tts')
-          .replace(queryParameters: {'texto': text, 'voz': 'ludmilla'});
+          .replace(queryParameters: {'texto': text, 'voz': voice});
       final player = _ttsPlayer ??= AudioPlayer();
       await player.setUrl(uri.toString());
       await player.play();
@@ -1043,6 +1080,13 @@ class _AdminNotificationHostState
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+String _applyAdminTemplate(String template, Map<String, String> values) {
+  return template.replaceAllMapped(
+    RegExp(r'{{\s*([a-zA-Z0-9_]+)\s*}}'),
+    (match) => values[match.group(1)] ?? '',
+  ).trim();
 }
 
 void _handleAdminBack(BuildContext context, WidgetRef ref) {
@@ -1670,12 +1714,6 @@ class _SupportThreadTile extends StatelessWidget {
                     const SizedBox(height: 5),
                     Row(
                       children: [
-                        _StatusDot(
-                          color: entry.thread.isOpen
-                              ? const Color(0xFF00A884)
-                              : wa.textMuted,
-                        ),
-                        const SizedBox(width: 6),
                         Expanded(
                           child: Text(
                             entry.subtitle,
@@ -1687,6 +1725,28 @@ class _SupportThreadTile extends StatelessWidget {
                             ),
                           ),
                         ),
+                        if (entry.thread.unreadCount > 0) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            constraints: const BoxConstraints(minWidth: 22),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                            decoration: BoxDecoration(
+                              color: wa.accent,
+                              borderRadius: BorderRadius.circular(999),
+                            ),
+                            child: Text(
+                              entry.thread.unreadCount > 99
+                                  ? '99+'
+                                  : '${entry.thread.unreadCount}',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
                       ],
                     ),
                   ],
@@ -3127,6 +3187,128 @@ class _AdminPaymentsWorkspaceState
     }
   }
 
+  Future<void> _openRealtimeNotificationSettings() async {
+    try {
+      final payload = await ref.read(apiClientProvider).loadAdminRealtimeNotificationSettings();
+      final raw = payload['settings'];
+      final settings = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
+      if (!mounted) return;
+      final salesTemplate = TextEditingController(
+        text: settings['salesTemplate']?.toString() ?? '{{customer_name}} realizou uma compra do plano {{plan_name}} no valor de {{amount}}.',
+      );
+      final supportTemplate = TextEditingController(
+        text: settings['supportTemplate']?.toString() ?? '{{customer_name}} disse: {{message}}',
+      );
+      var salesNotifications = settings['salesNotificationsEnabled'] != false;
+      var salesTts = settings['salesTtsEnabled'] != false;
+      var supportNotifications = settings['supportNotificationsEnabled'] != false;
+      var supportTts = settings['supportTtsEnabled'] != false;
+      var voice = settings['speechVoice']?.toString().trim().isNotEmpty == true
+          ? settings['speechVoice'].toString().trim()
+          : 'ludmilla';
+      final voiceController = TextEditingController(text: voice);
+      final saved = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            title: const Text('Avisos do painel admin'),
+            content: SizedBox(
+              width: 620,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text('Controle os alertas persistentes do celular, navegador e a narração TTS.'),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notificar novas vendas'),
+                      value: salesNotifications,
+                      onChanged: (value) => setState(() => salesNotifications = value),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Narrar vendas com TTS'),
+                      value: salesTts,
+                      onChanged: (value) => setState(() => salesTts = value),
+                    ),
+                    TextField(
+                      controller: salesTemplate,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Modelo de venda',
+                        helperText: 'Variáveis: {{customer_name}}, {{plan_name}}, {{amount}}',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Notificar novas mensagens de suporte'),
+                      value: supportNotifications,
+                      onChanged: (value) => setState(() => supportNotifications = value),
+                    ),
+                    SwitchListTile.adaptive(
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('Narrar suporte com TTS'),
+                      value: supportTts,
+                      onChanged: (value) => setState(() => supportTts = value),
+                    ),
+                    TextField(
+                      controller: supportTemplate,
+                      maxLines: 2,
+                      decoration: const InputDecoration(
+                        labelText: 'Modelo de suporte',
+                        helperText: 'Padrão: {{customer_name}} disse: {{message}}',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: voiceController,
+                      onChanged: (value) => voice = value.trim(),
+                      decoration: const InputDecoration(
+                        labelText: 'Voz TTS',
+                        hintText: 'ludmilla',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancelar')),
+              FilledButton(
+                onPressed: () async {
+                  try {
+                    await ref.read(apiClientProvider).saveAdminRealtimeNotificationSettings({
+                      'salesNotificationsEnabled': salesNotifications,
+                      'salesTtsEnabled': salesTts,
+                      'supportNotificationsEnabled': supportNotifications,
+                      'supportTtsEnabled': supportTts,
+                      'speechVoice': voice.isEmpty ? 'ludmilla' : voice,
+                      'salesTemplate': salesTemplate.text,
+                      'supportTemplate': supportTemplate.text,
+                    });
+                    if (dialogContext.mounted) Navigator.pop(dialogContext, true);
+                  } catch (error) {
+                    if (dialogContext.mounted) showErrorToast(dialogContext, error);
+                  }
+                },
+                child: const Text('Salvar'),
+              ),
+            ],
+          ),
+        ),
+      );
+      salesTemplate.dispose();
+      supportTemplate.dispose();
+      voiceController.dispose();
+      if (saved == true && mounted) showSuccessToast(context, 'Avisos do admin atualizados.');
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
@@ -3162,10 +3344,22 @@ class _AdminPaymentsWorkspaceState
                   const SizedBox(height: 8),
                   Align(
                     alignment: Alignment.centerRight,
-                    child: OutlinedButton.icon(
-                      onPressed: _simulateSale,
-                      icon: const Icon(Icons.volume_up_outlined, size: 18),
-                      label: const Text('Testar aviso de venda'),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: _openRealtimeNotificationSettings,
+                          icon: const Icon(Icons.notifications_active_outlined, size: 18),
+                          label: const Text('Configurar avisos'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: _simulateSale,
+                          icon: const Icon(Icons.volume_up_outlined, size: 18),
+                          label: const Text('Testar aviso de venda'),
+                        ),
+                      ],
                     ),
                   ),
                 ],

@@ -57,6 +57,26 @@ type NotificationAudioSettings = {
   planTemplate: string;
 };
 
+type AdminRealtimeNotificationSettings = {
+  salesNotificationsEnabled: boolean;
+  salesTtsEnabled: boolean;
+  supportNotificationsEnabled: boolean;
+  supportTtsEnabled: boolean;
+  speechVoice: string;
+  salesTemplate: string;
+  supportTemplate: string;
+};
+
+const DEFAULT_ADMIN_REALTIME_SETTINGS: AdminRealtimeNotificationSettings = {
+  salesNotificationsEnabled: true,
+  salesTtsEnabled: true,
+  supportNotificationsEnabled: true,
+  supportTtsEnabled: true,
+  speechVoice: "ludmilla",
+  salesTemplate: "{{customer_name}} realizou uma compra do plano {{plan_name}} no valor de {{amount}}.",
+  supportTemplate: "{{customer_name}} disse: {{message}}",
+};
+
 type ListenerAuthState = {
   status: "unknown" | "authenticated" | "unauthenticated";
   role: string | null;
@@ -132,6 +152,7 @@ const SupportNotificationListener = () => {
     role: null,
     userId: null,
   });
+  const adminRealtimeRef = useRef<AdminRealtimeNotificationSettings>(DEFAULT_ADMIN_REALTIME_SETTINGS);
   const authCheckTimerRef = useRef<number | null>(null);
   const audioPermissionRef = useRef(false);
 
@@ -404,6 +425,35 @@ const SupportNotificationListener = () => {
       } catch (error) {
         if (DEBUG_NOTIFICATIONS) {
           try { console.debug("[notifications] Falha ao sincronizar configurações de áudio do usuário", error); } catch {}
+        }
+      }
+    };
+
+    const syncAdminRealtimeSettings = async () => {
+      if (authStateRef.current.role !== "admin") return;
+      try {
+        const response = await fetch("/api/admin/realtime-notifications", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => null);
+        const raw = payload?.settings ?? {};
+        adminRealtimeRef.current = {
+          salesNotificationsEnabled: raw.salesNotificationsEnabled !== false,
+          salesTtsEnabled: raw.salesTtsEnabled !== false,
+          supportNotificationsEnabled: raw.supportNotificationsEnabled !== false,
+          supportTtsEnabled: raw.supportTtsEnabled !== false,
+          speechVoice: typeof raw.speechVoice === "string" && raw.speechVoice.trim() ? raw.speechVoice.trim() : "ludmilla",
+          salesTemplate: typeof raw.salesTemplate === "string" && raw.salesTemplate.trim() ? raw.salesTemplate.trim() : DEFAULT_ADMIN_REALTIME_SETTINGS.salesTemplate,
+          supportTemplate: typeof raw.supportTemplate === "string" && raw.supportTemplate.trim() ? raw.supportTemplate.trim() : DEFAULT_ADMIN_REALTIME_SETTINGS.supportTemplate,
+        };
+        if (authStateRef.current.role === "admin") {
+          applyAudioSettings({ ...audioSettingsRef.current, speechVoice: adminRealtimeRef.current.speechVoice });
+        }
+      } catch (error) {
+        if (DEBUG_NOTIFICATIONS) {
+          try { console.debug("[notifications] Falha ao sincronizar avisos do admin", error); } catch {}
         }
       }
     };
@@ -1791,7 +1841,9 @@ const SupportNotificationListener = () => {
             const queue = buildSupportAudioQueue(payload.whatsappId, payload.message.messageType);
             const [primary, ...fallbacks] = queue;
             // Sempre reproduz o som adequado; dentro da conversa será support-reply.mp3
-            void playOneShotWithFallback(primary ?? null, fallbacks);
+            if (current !== "admin" || adminRealtimeRef.current.supportNotificationsEnabled) {
+              void playOneShotWithFallback(primary ?? null, fallbacks);
+            }
 
             // Não criar notificação/unread quando a conversa estiver aberta
             if (!conversationActive && current !== "admin") {
@@ -1807,15 +1859,25 @@ const SupportNotificationListener = () => {
                 : payload.message.messageType === "audio"
                   ? "enviou um áudio"
                   : "enviou uma nova mensagem";
-              enqueueSpeech(`Nova mensagem de suporte de ${sender}: ${content}`, `support-admin:${payload.message.id}`, 120);
-              try {
-                if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
-                  new Notification("Nova mensagem no suporte", {
-                    body: `${sender}: ${content}`,
-                    tag: `botadmin-support-admin-${payload.message.id}`,
-                  });
-                }
-              } catch {}
+              const adminSettings = adminRealtimeRef.current;
+              const spoken = applyTemplate(adminSettings.supportTemplate, {
+                customer_name: sender,
+                message: content,
+                message_type: payload.message.messageType,
+              }) || `${sender} disse: ${content}`;
+              if (adminSettings.supportTtsEnabled) {
+                enqueueSpeech(spoken, `support-admin:${payload.message.id}`, 120);
+              }
+              if (adminSettings.supportNotificationsEnabled) {
+                try {
+                  if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                    new Notification("Nova mensagem no suporte", {
+                      body: `${sender}: ${content}`,
+                      tag: `botadmin-support-admin-${payload.message.id}`,
+                    });
+                  }
+                } catch {}
+              }
             }
 
             window.dispatchEvent(
@@ -1908,14 +1970,36 @@ const SupportNotificationListener = () => {
         try {
           const payload = JSON.parse(event.data) as PurchaseCreatedEvent;
           log("sse purchase:created", payload);
-
-          announcePurchase({
+          const isAdmin = sseRoleRef.current === "admin";
+          const adminSettings = adminRealtimeRef.current;
+          const purchaseData = {
             customerName: payload.customerName,
             customerWhatsapp: payload.customerWhatsapp,
             categoryName: payload.categoryName,
             productDetails: payload.productDetails ?? null,
-            coinAudio: purchaseAudioRef.current,
-          });
+          };
+          if (!isAdmin) {
+            announcePurchase({ ...purchaseData, coinAudio: purchaseAudioRef.current });
+          } else if (adminSettings.salesNotificationsEnabled) {
+            const customer = extractString(payload.customerName) || extractString(payload.customerWhatsapp) || "Cliente";
+            const plan = extractString(payload.categoryName) || extractString(payload.productDetails) || "um plano";
+            const amount = Number(payload.categoryPrice);
+            const amountLabel = Number.isFinite(amount) && amount > 0 ? formatCurrency(amount) : "";
+            const spoken = applyTemplate(adminSettings.salesTemplate, {
+              customer_name: customer,
+              plan_name: plan,
+              amount: amountLabel,
+            }) || `${customer} realizou uma compra do plano ${plan}${amountLabel ? ` no valor de ${amountLabel}` : ""}.`;
+            playCoin(purchaseAudioRef.current ?? generalAudioRef.current, `admin-sale:${payload.purchasedAt}:${customer}:${plan}`);
+            if (adminSettings.salesTtsEnabled) {
+              enqueueSpeech(spoken, `admin-sale:${payload.purchasedAt}:${customer}:${plan}`, 120);
+            }
+            try {
+              if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                new Notification("Nova venda no painel", { body: spoken, tag: `botadmin-admin-sale-${payload.purchasedAt}` });
+              }
+            } catch {}
+          }
 
           window.dispatchEvent(
             new CustomEvent("purchase:created", { detail: payload }),
@@ -2040,6 +2124,7 @@ const SupportNotificationListener = () => {
 
       // Agora que usuário pode escutar, sincroniza defaults e preferências remotas
       void syncAudioDefaults();
+      if (role === "admin") void syncAdminRealtimeSettings();
 
       if (sseRef.current && !force) {
         if (sseRoleRef.current === role) {

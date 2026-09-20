@@ -1170,7 +1170,7 @@ class BotAdminApiClient {
     int instanceId,
     String listId,
     Map<String, dynamic> data,
-  ) => postJson(
+  ) => putJson(
     '/api/bot-instances/$instanceId/broadcast-lists/${Uri.encodeComponent(listId)}/templates',
     data: data,
   );
@@ -1310,6 +1310,16 @@ class BotAdminApiClient {
 
   Future<Map<String, dynamic>> simulateAdminSaleNotification() =>
       postJson('/api/admin/sales-events/simulate', data: const {});
+
+  Future<Map<String, dynamic>> loadAdminRealtimeNotificationSettings() =>
+      getJson('/api/admin/realtime-notifications');
+
+  Future<Map<String, dynamic>> saveAdminRealtimeNotificationSettings(
+    Map<String, dynamic> settings,
+  ) => putJson(
+    '/api/admin/realtime-notifications',
+    data: settings,
+  );
 
   Future<List<AdminSupportThreadSummary>> loadUserSupportThreads() async {
     final json = await getJson('/api/support/threads');

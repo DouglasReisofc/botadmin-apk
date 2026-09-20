@@ -5,7 +5,7 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-const String botAdminRealtimeChannelId = 'botadmin_realtime_messages_v5';
+const String botAdminRealtimeChannelId = 'botadmin_realtime_messages_v6';
 const String _botAdminRealtimeChannelName = 'Mensagens do WhatsApp';
 const String _botAdminRealtimeChannelDescription =
     'Notificacoes de conversas monitoradas pelo BotAdmin.';
@@ -54,8 +54,44 @@ class NativeMessageNotifications {
         .resolvePlatformSpecificImplementation<
             AndroidFlutterLocalNotificationsPlugin>()
         ?.createNotificationChannel(channel);
+    await _localNotifications
+        .resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>()
+        ?.requestNotificationsPermission();
 
     _localNotificationsReady = true;
+  }
+
+  static Future<void> showAdminAlert({
+    required String title,
+    required String body,
+    String tag = 'botadmin-admin-alert',
+  }) async {
+    if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
+    await initialize();
+    final details = AndroidNotificationDetails(
+      botAdminRealtimeChannelId,
+      _botAdminRealtimeChannelName,
+      channelDescription: _botAdminRealtimeChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      category: AndroidNotificationCategory.message,
+      ticker: '$title: $body',
+      styleInformation: BigTextStyleInformation(
+        body,
+        contentTitle: title,
+      ),
+      tag: tag,
+      onlyAlertOnce: false,
+      autoCancel: true,
+    );
+    await _localNotifications.show(
+      id: _stableNotificationId(tag),
+      title: title,
+      body: body,
+      notificationDetails: NotificationDetails(android: details),
+      payload: 'botadmin://admin-notification',
+    );
   }
 
   static Future<void> showFromRemoteMessage(

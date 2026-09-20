@@ -21,7 +21,7 @@
         android:icon="@mipmap/ic_launcher">
         <meta-data
             android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="botadmin_realtime_messages_v5" />
+            android:value="botadmin_realtime_messages_v6" />
         <service
             android:name="br.com.botadmin.flutter_panel.BotAdminFirebaseMessagingService"
             android:exported="false">

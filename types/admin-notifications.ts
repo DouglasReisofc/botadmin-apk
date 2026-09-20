@@ -25,3 +25,14 @@ export type BillingNotificationSettings = {
   rules: BillingNotificationRule[];
   updatedAt: string | null;
 };
+
+export type AdminRealtimeNotificationSettings = {
+  salesNotificationsEnabled: boolean;
+  salesTtsEnabled: boolean;
+  supportNotificationsEnabled: boolean;
+  supportTtsEnabled: boolean;
+  speechVoice: string;
+  salesTemplate: string;
+  supportTemplate: string;
+  updatedAt: string | null;
+};
