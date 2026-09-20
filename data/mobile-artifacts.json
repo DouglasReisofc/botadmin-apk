@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 40611993,
-    "updatedAt": "2026-09-20T16:20:00.000Z",
+    "sizeBytes": 90564839,
+    "updatedAt": "2026-09-20T23:00:00.000Z",
     "buildType": "release",
-    "versionName": "0.1.309",
-    "versionCode": 315
+    "versionName": "0.1.310",
+    "versionCode": 316
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.309 (315): reprodução de notas de voz do suporte com o token correto do usuário e seletor de vozes TTS no painel admin."
+  "details": "APK Flutter nativo 0.1.310 (316): centro de notificações, inbox responsivo, mídia rica, agendamento e novo ícone nativo BotAdmin."
 }
