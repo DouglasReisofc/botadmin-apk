@@ -33,7 +33,7 @@ addEventListener("message", eventListener);
 if (!window._flutter) {
   window._flutter = {};
 }
-_flutter.buildConfig = {"engineRevision":"a10d8ac38de835021c8d2f920dbf50a920ccc030","builds":[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.vmua2im5h-3s62c.js"},{}],"useLocalCanvasKit":true};
+_flutter.buildConfig = {"engineRevision":"a10d8ac38de835021c8d2f920dbf50a920ccc030","builds":[{"compileTarget":"dart2js","renderer":"canvaskit","mainJsPath":"main.dart.vmua4pimx-3s88e.js"},{}],"useLocalCanvasKit":true};
 
 
 // BotAdmin: CanvasKit local (Skia/WebGL), sem CDN gstatic.

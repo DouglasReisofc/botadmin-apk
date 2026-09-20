@@ -54,19 +54,19 @@ jobs:
 
       - name: Prepare release file
         shell: bash
-        run: cp flutter_panel/build/app/outputs/flutter-apk/app-release.apk botadmin-0.1.306-312-android-release.apk
+        run: cp flutter_panel/build/app/outputs/flutter-apk/app-release.apk botadmin-0.1.307-313-android-release.apk
 
       - uses: actions/upload-artifact@v4
         with:
-          name: botadmin-0.1.306-312-android-release
-          path: botadmin-0.1.306-312-android-release.apk
+          name: botadmin-0.1.307-313-android-release
+          path: botadmin-0.1.307-313-android-release.apk
           if-no-files-found: error
 
       - name: Publish GitHub release
         shell: bash
         run: |
-          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "BotAdmin 0.1.306 (312)" --notes "Notificações persistentes no Android, contador de não lidas e controle central de TTS do suporte e vendas."
-          gh release upload "$RELEASE_TAG" botadmin-0.1.306-312-android-release.apk --clobber
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "BotAdmin 0.1.307 (313)" --notes "Reprodução do áudio original no TTS do suporte, notificações persistentes no Android e controle central de avisos."
+          gh release upload "$RELEASE_TAG" botadmin-0.1.307-313-android-release.apk --clobber
         env:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.tag }}

@@ -614,12 +614,12 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
       name: formState.name,
       description: formState.description || null,
       price: Number.parseFloat(formState.price.replace(/,/g, ".")),
-      addonInstancePrice: 0,
-      addonGroupPrice: 0,
-      groupLimit: 0,
-      instanceLimit: 0,
-      allowFlows: true,
-      storageQuotaGb: 0,
+      addonInstancePrice: Number.parseFloat(formState.addonInstancePrice.replace(/,/g, ".")),
+      addonGroupPrice: Number.parseFloat(formState.addonGroupPrice.replace(/,/g, ".")),
+      groupLimit: Number.parseInt(formState.groupLimit, 10),
+      instanceLimit: Number.parseInt(formState.instanceLimit, 10),
+      allowFlows: formState.allowFlows,
+      storageQuotaGb: Number.parseFloat(formState.storageQuotaGb.replace(/,/g, ".")),
       durationDays: Number.parseInt(formState.durationDays, 10),
       isActive: formState.isActive,
       features: formState.features,
@@ -789,8 +789,8 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
                         </div>
                       </td>
                       <td>{currencyFormatter.format(plan.price)}</td>
-                      <td>Ilimitado</td>
-                      <td>Ilimitado</td>
+                      <td>{plan.groupLimit > 0 ? plan.groupLimit : "Ilimitado"}</td>
+                      <td>{plan.instanceLimit > 0 ? plan.instanceLimit : "Ilimitado"}</td>
                       <td>
                         <Badge bg="success">
                           Completo
@@ -859,7 +859,7 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
         </Modal.Body>
       </Modal>
 
-      <Modal show={showModal} onHide={closeModal} centered>
+      <Modal show={showModal} onHide={closeModal} centered size="lg" scrollable fullscreen="sm-down">
         <Form onSubmit={handleSubmit}>
           <Modal.Header closeButton={!isSubmitting}>
             <Modal.Title>
@@ -900,51 +900,89 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
               required
             />
           </Form.Group>
-	          <Form.Group className="mb-3" controlId="planAddonInstancePrice">
-	            <Form.Label>Perfil/grupo adicional</Form.Label>
-	            <Form.Control
-	              type="number"
-	              step="0.01"
-	              min="0"
-	              value="0"
-	              disabled
-	              required
-	            />
-	            <Form.Text className="text-secondary">
-	              Desativado para novas compras. Qualquer assinatura ativa libera tudo; storage continua em cobrança própria.
-	            </Form.Text>
-	          </Form.Group>
+          <Row className="g-3 mb-3">
+            <Col xs={12} md={6}>
+              <Form.Group controlId="planAddonInstancePrice">
+                <Form.Label>Adicional por perfil (R$)</Form.Label>
+                <Form.Control
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formState.addonInstancePrice}
+                  onChange={(event) => handleChange("addonInstancePrice", event.target.value)}
+                  required
+                />
+              </Form.Group>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Group controlId="planAddonGroupPrice">
+                <Form.Label>Adicional por grupo (R$)</Form.Label>
+                <Form.Control
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={formState.addonGroupPrice}
+                  onChange={(event) => handleChange("addonGroupPrice", event.target.value)}
+                  required
+                />
+              </Form.Group>
+            </Col>
+          </Row>
 
           <Row className="g-3 mb-3">
             <Col md={6}>
-	              <Form.Group controlId="planInstanceLimit">
-	                <Form.Label>Perfis/WhatsApp incluídos</Form.Label>
-	                <Form.Control
-	                  type="number"
-	                  min="0"
-	                  value="0"
-	                  disabled
-	                  required
-	                />
-	                <Form.Text className="text-secondary">
-	                  Qualquer assinatura ativa libera perfis ilimitados.
-	                </Form.Text>
-	              </Form.Group>
+              <Form.Group controlId="planInstanceLimit">
+                <Form.Label>Perfis/WhatsApp incluídos</Form.Label>
+                <Form.Control
+                  type="number"
+                  min="0"
+                  value={formState.instanceLimit}
+                  onChange={(event) => handleChange("instanceLimit", event.target.value)}
+                  required
+                />
+                <Form.Text className="text-secondary">Use 0 para ilimitado.</Form.Text>
+              </Form.Group>
             </Col>
-            <Col md={6}>
+            <Col xs={12} md={6}>
               <Form.Group controlId="planGroupLimit">
                 <Form.Label>Grupos incluídos</Form.Label>
-	                <Form.Control
-	                  type="number"
-	                  min="0"
-	                  value="0"
-	                  disabled
-	                  required
-	                />
-	                <Form.Text className="text-secondary">
-	                  Qualquer assinatura ativa libera grupos ilimitados.
-	                </Form.Text>
-	              </Form.Group>
+                <Form.Control
+                  type="number"
+                  min="0"
+                  value={formState.groupLimit}
+                  onChange={(event) => handleChange("groupLimit", event.target.value)}
+                  required
+                />
+                <Form.Text className="text-secondary">Use 0 para ilimitado.</Form.Text>
+              </Form.Group>
+            </Col>
+          </Row>
+
+          <Row className="g-3 mb-3">
+            <Col xs={12} md={6}>
+              <Form.Group controlId="planStorageQuotaGb">
+                <Form.Label>Armazenamento incluído (GB)</Form.Label>
+                <Form.Control
+                  type="number"
+                  step="0.1"
+                  min="0"
+                  value={formState.storageQuotaGb}
+                  onChange={(event) => handleChange("storageQuotaGb", event.target.value)}
+                  required
+                />
+              </Form.Group>
+            </Col>
+            <Col xs={12} md={6}>
+              <Form.Group controlId="planDuration">
+                <Form.Label>Duração do plano (dias)</Form.Label>
+                <Form.Control
+                  type="number"
+                  min="1"
+                  value={formState.durationDays}
+                  onChange={(event) => handleChange("durationDays", event.target.value)}
+                  required
+                />
+              </Form.Group>
             </Col>
           </Row>
 
@@ -952,11 +990,12 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
 	            <Form.Check
 	              type="switch"
 	              label="Liberar todas as funcionalidades neste plano"
-	              checked={Object.values(formState.features).every(Boolean)}
-	              onChange={(event) =>
-	                setFormState((current) => ({
-	                  ...current,
-	                  features: Object.fromEntries(
+              checked={formState.allowFlows}
+              onChange={(event) =>
+                setFormState((current) => ({
+                  ...current,
+                  allowFlows: event.currentTarget.checked,
+                  features: Object.fromEntries(
 	                    PLAN_FEATURE_OPTIONS.map(([key]) => [
 	                      key,
 	                      event.currentTarget.checked,
@@ -969,17 +1008,6 @@ const AdminPlanManager = ({ plans, trialSettings, trialVariables }: AdminPlanMan
 	              Use os recursos abaixo para definir exatamente o que cada plano libera. O servidor aplica essas permissões.
 	            </Form.Text>
           </Form.Group>
-
-            <Form.Group className="mb-3" controlId="planDuration">
-              <Form.Label>Duração do plano (dias)</Form.Label>
-              <Form.Control
-                type="number"
-                min="1"
-                value={formState.durationDays}
-                onChange={(event) => handleChange("durationDays", event.target.value)}
-                required
-              />
-            </Form.Group>
 
             <Form.Group className="mb-3" controlId="planFeatures">
               <Form.Label>Recursos liberados</Form.Label>

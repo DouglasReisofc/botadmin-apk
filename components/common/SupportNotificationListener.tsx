@@ -24,6 +24,12 @@ type SupportMessagePayload = {
     timestamp: string;
     senderUserId: number | null;
     senderRole: "user" | "admin" | "contact" | "system";
+    media?: {
+      mediaId?: string | null;
+      mediaUrl?: string | null;
+      mediaType?: string | null;
+      mimeType?: string | null;
+    } | null;
   };
 };
 
@@ -1205,6 +1211,37 @@ const SupportNotificationListener = () => {
       }
     };
 
+    const playSupportOriginalAudio = async (
+      media: SupportMessagePayload["message"]["media"],
+    ): Promise<void> => {
+      if (!media) return;
+      const rawUrl = typeof media.mediaUrl === "string" ? media.mediaUrl.trim() : "";
+      const mediaId = typeof media.mediaId === "string" ? media.mediaId.trim() : "";
+      const source = rawUrl || (mediaId
+        ? `${BASE_PREFIX}/api/admin/support/media/${encodeURIComponent(mediaId)}`
+        : "");
+      if (!source) return;
+
+      try {
+        const url = new URL(source, window.location.origin);
+        const audio = new Audio(url.toString());
+        audio.preload = "auto";
+        audio.setAttribute("playsinline", "true");
+        await audio.play();
+        await new Promise<void>((resolve) => {
+          const finish = () => {
+            audio.removeEventListener("ended", finish);
+            audio.removeEventListener("error", finish);
+            resolve();
+          };
+          audio.addEventListener("ended", finish, { once: true });
+          audio.addEventListener("error", finish, { once: true });
+        });
+      } catch (error) {
+        log("support original audio playback failed", { source, error });
+      }
+    };
+
     const speakWithWebSpeech = async (text: string): Promise<void> => {
       if (!audioSettingsRef.current.ttsEnabled) {
         return;
@@ -1813,6 +1850,14 @@ const SupportNotificationListener = () => {
                 : new Date().toISOString(),
             senderUserId: Number.isFinite(Number(rawMessage?.senderUserId)) ? Number(rawMessage.senderUserId) : null,
             senderRole,
+            media: rawMessage?.media && typeof rawMessage.media === "object"
+              ? {
+                  mediaId: typeof rawMessage.media.mediaId === "string" ? rawMessage.media.mediaId : null,
+                  mediaUrl: typeof rawMessage.media.mediaUrl === "string" ? rawMessage.media.mediaUrl : null,
+                  mediaType: typeof rawMessage.media.mediaType === "string" ? rawMessage.media.mediaType : null,
+                  mimeType: typeof rawMessage.media.mimeType === "string" ? rawMessage.media.mimeType : null,
+                }
+              : null,
           } satisfies SupportMessagePayload["message"];
 
           const payload: SupportMessagePayload = {
@@ -1854,18 +1899,29 @@ const SupportNotificationListener = () => {
               const sender = typeof raw?.user?.name === "string" && raw.user.name.trim()
                 ? raw.user.name.trim()
                 : "um cliente";
+              const isAudioMessage = payload.message.messageType.toLowerCase() === "audio" ||
+                payload.message.media?.mediaType?.toLowerCase() === "audio" ||
+                payload.message.media?.mimeType?.toLowerCase().startsWith("audio/") === true;
               const content = typeof payload.message.text === "string" && payload.message.text.trim()
                 ? payload.message.text.trim()
-                : payload.message.messageType === "audio"
+                : isAudioMessage
                   ? "enviou um áudio"
                   : "enviou uma nova mensagem";
               const adminSettings = adminRealtimeRef.current;
               const spoken = applyTemplate(adminSettings.supportTemplate, {
                 customer_name: sender,
-                message: content,
+                message: isAudioMessage ? "" : content,
                 message_type: payload.message.messageType,
-              }) || `${sender} disse: ${content}`;
-              if (adminSettings.supportTtsEnabled) {
+              }) || (isAudioMessage ? `${sender} disse:` : `${sender} disse: ${content}`);
+              if (isAudioMessage) {
+                const ttsUrl = adminSettings.supportTtsEnabled ? buildTtsUrl(spoken) : null;
+                const playOriginal = () => { void playSupportOriginalAudio(payload.message.media); };
+                if (ttsUrl) {
+                  void playSpeechFromUrl(ttsUrl).catch(() => undefined).finally(playOriginal);
+                } else {
+                  playOriginal();
+                }
+              } else if (adminSettings.supportTtsEnabled) {
                 enqueueSpeech(spoken, `support-admin:${payload.message.id}`, 120);
               }
               if (adminSettings.supportNotificationsEnabled) {

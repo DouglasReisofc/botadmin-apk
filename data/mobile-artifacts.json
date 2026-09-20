@@ -8,10 +8,10 @@
     "sizeBytes": 40546457,
     "updatedAt": "2026-09-20T15:41:22.000Z",
     "buildType": "release",
-    "versionName": "0.1.306",
-    "versionCode": 312
+    "versionName": "0.1.307",
+    "versionCode": 313
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.306 (312): notificações persistentes no Android, contador de não lidas e controle central de TTS do suporte e vendas."
+  "details": "APK Flutter nativo 0.1.307 (313): reprodução do áudio original no TTS do suporte, notificações persistentes no Android e controle central de avisos."
 }

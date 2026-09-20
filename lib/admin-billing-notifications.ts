@@ -255,6 +255,24 @@ export const updateBillingNotificationSettings = async (
   await ensureAdminBillingNotificationsTable();
   const db = getDb();
 
+  // Billing and realtime admin alerts share the same row. Preserve the
+  // realtime subtree when the billing editor saves its own fields.
+  let existingPayload: Record<string, unknown> = {};
+  const [existingRows] = await db.query<RawSettingsRow[]>(
+    `SELECT settings FROM admin_billing_notifications WHERE id = 1 LIMIT 1`,
+  );
+  const existingSettings = existingRows?.[0]?.settings;
+  if (typeof existingSettings === "string" && existingSettings.trim()) {
+    try {
+      const parsed = JSON.parse(existingSettings);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        existingPayload = parsed as Record<string, unknown>;
+      }
+    } catch {
+      // Invalid legacy JSON is replaced by the sanitized billing payload.
+    }
+  }
+
   const sanitized = buildSettings(
     {
       rules: settings.rules,
@@ -272,7 +290,14 @@ export const updateBillingNotificationSettings = async (
         timezone = VALUES(timezone),
         updated_at = NOW()
     `,
-    [JSON.stringify({ defaultSendTime: sanitized.defaultSendTime, rules: sanitized.rules }), sanitized.timezone],
+    [
+      JSON.stringify({
+        ...existingPayload,
+        defaultSendTime: sanitized.defaultSendTime,
+        rules: sanitized.rules,
+      }),
+      sanitized.timezone,
+    ],
   );
 
   return getBillingNotificationSettings();
