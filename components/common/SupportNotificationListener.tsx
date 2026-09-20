@@ -1213,12 +1213,13 @@ const SupportNotificationListener = () => {
 
     const playSupportOriginalAudio = async (
       media: SupportMessagePayload["message"]["media"],
+      userId?: number,
     ): Promise<void> => {
       if (!media) return;
       const rawUrl = typeof media.mediaUrl === "string" ? media.mediaUrl.trim() : "";
       const mediaId = typeof media.mediaId === "string" ? media.mediaId.trim() : "";
       const source = rawUrl || (mediaId
-        ? `${BASE_PREFIX}/api/admin/support/media/${encodeURIComponent(mediaId)}`
+        ? `${BASE_PREFIX}/api/admin/support/media/${encodeURIComponent(mediaId)}${userId && userId > 0 ? `?userId=${encodeURIComponent(String(userId))}` : ""}`
         : "");
       if (!source) return;
 
@@ -1915,7 +1916,7 @@ const SupportNotificationListener = () => {
               }) || (isAudioMessage ? `${sender} disse:` : `${sender} disse: ${content}`);
               if (isAudioMessage) {
                 const ttsUrl = adminSettings.supportTtsEnabled ? buildTtsUrl(spoken) : null;
-                const playOriginal = () => { void playSupportOriginalAudio(payload.message.media); };
+                const playOriginal = () => { void playSupportOriginalAudio(payload.message.media, payload.userId); };
                 if (ttsUrl) {
                   void playSpeechFromUrl(ttsUrl).catch(() => undefined).finally(playOriginal);
                 } else {

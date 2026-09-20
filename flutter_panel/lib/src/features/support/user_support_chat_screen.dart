@@ -304,6 +304,7 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
             forAdmin: widget.adminEntry != null,
             isAdminThread: _conversation?.thread.isAdminThread ?? true,
             incomingName: widget.thread.title,
+            supportUserId: widget.adminEntry?.user.id,
           );
           return ConversationMessageBubble(
             thread: widget.thread,

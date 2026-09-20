@@ -136,10 +136,13 @@ const formatDateTime = (value: string | null) => {
   }
 };
 
-const resolveMediaUrl = (media?: SupportMessage["media"]) => {
+const resolveMediaUrl = (media?: SupportMessage["media"], userId?: number | null) => {
   if (!media) return null;
   if (media.mediaUrl) return media.mediaUrl;
-  if (media.mediaId) return `/api/admin/support/media/${encodeURIComponent(media.mediaId)}`;
+  if (media.mediaId) {
+    const path = `/api/admin/support/media/${encodeURIComponent(media.mediaId)}`;
+    return userId && userId > 0 ? `${path}?userId=${encodeURIComponent(String(userId))}` : path;
+  }
   return null;
 };
 
@@ -306,9 +309,10 @@ const AudioMessagePlayer = ({
 const renderSupportMedia = (
   media: SupportMessage["media"],
   isOutbound: boolean,
+  userId?: number | null,
 ) => {
   if (!media) return null;
-  const url = resolveMediaUrl(media);
+  const url = resolveMediaUrl(media, userId);
   if (!url) return null;
 
   const caption = media.caption ?? media.filename ?? null;
@@ -1784,7 +1788,11 @@ const AdminSupportCenter = ({ embedded = false }: AdminSupportCenterProps = {}) 
                       : message.senderRole === "admin" ||
                         message.senderRole === "system" ||
                         (message.senderRole === "user" && message.direction === "outbound");
-                    const mediaPreview = renderSupportMedia(message.media ?? null, isTeamMessage);
+                    const mediaPreview = renderSupportMedia(
+                      message.media ?? null,
+                      isTeamMessage,
+                      conversation.user?.id,
+                    );
                     return (
                       <div
                         key={message.id}

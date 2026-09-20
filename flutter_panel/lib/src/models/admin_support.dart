@@ -153,12 +153,16 @@ class AdminSupportMedia {
   final String? filename;
   final String? caption;
 
-  String? get resolvedUrl {
+  String? get resolvedUrl => resolvedUrlFor();
+
+  String? resolvedUrlFor({int? userId, bool forAdmin = true}) {
     final direct = mediaUrl?.trim();
     if (direct != null && direct.isNotEmpty) return direct;
     final id = mediaId?.trim();
     if (id == null || id.isEmpty) return null;
-    return '/api/admin/support/media/${Uri.encodeComponent(id)}';
+    final path = '/api/${forAdmin ? 'admin/' : ''}support/media/${Uri.encodeComponent(id)}';
+    if (!forAdmin || userId == null || userId <= 0) return path;
+    return Uri(path: path, queryParameters: {'userId': '$userId'}).toString();
   }
 
   factory AdminSupportMedia.fromJson(Map<String, dynamic> json) {
@@ -206,16 +210,16 @@ class AdminSupportMessage {
     required bool forAdmin,
     required bool isAdminThread,
     required String incomingName,
+    int? supportUserId,
   }) {
     final own = forAdmin
         ? isOutboundForAdmin(isAdminThread: isAdminThread)
         : senderRole == 'user';
     final attachment = media;
-    final url = attachment?.mediaUrl?.trim().isNotEmpty == true
-        ? attachment!.mediaUrl
-        : attachment?.mediaId?.isNotEmpty == true
-        ? '/api/${forAdmin ? 'admin/' : ''}support/media/${Uri.encodeComponent(attachment!.mediaId!)}'
-        : null;
+    final url = attachment?.resolvedUrlFor(
+      userId: supportUserId,
+      forAdmin: forAdmin,
+    );
     return ChatMessage(
       id: 'support-$id',
       remoteId: 'support-$id',

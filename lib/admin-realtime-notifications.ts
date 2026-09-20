@@ -1,5 +1,6 @@
 import { RowDataPacket, ResultSetHeader } from "mysql2";
 
+import { NOTIFICATION_VOICE_ID_SET } from "data/notification-audio";
 import { ensureAdminBillingNotificationsTable, getDb } from "./db";
 import type { AdminRealtimeNotificationSettings } from "types/admin-notifications";
 
@@ -37,6 +38,11 @@ const text = (value: unknown, fallback: string, max = 240) => {
   return value.trim().slice(0, max);
 };
 
+const voice = (value: unknown, fallback = DEFAULT_VOICE) => {
+  const candidate = text(value, fallback, 40).toLowerCase();
+  return NOTIFICATION_VOICE_ID_SET.has(candidate) ? candidate : fallback;
+};
+
 const parseSettings = (raw: unknown, updatedAt: Date | string | null): AdminRealtimeNotificationSettings => {
   const value = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
   const realtime = value.realtimeNotifications && typeof value.realtimeNotifications === "object"
@@ -47,7 +53,7 @@ const parseSettings = (raw: unknown, updatedAt: Date | string | null): AdminReal
     salesTtsEnabled: bool(realtime.salesTtsEnabled, true),
     supportNotificationsEnabled: bool(realtime.supportNotificationsEnabled, true),
     supportTtsEnabled: bool(realtime.supportTtsEnabled, true),
-    speechVoice: text(realtime.speechVoice, DEFAULT_VOICE, 40),
+    speechVoice: voice(realtime.speechVoice),
     salesTemplate: text(realtime.salesTemplate, DEFAULT_SALES_TEMPLATE),
     supportTemplate: text(realtime.supportTemplate, DEFAULT_SUPPORT_TEMPLATE),
     updatedAt: updatedAt ? new Date(updatedAt).toISOString() : null,
@@ -83,7 +89,7 @@ export const updateAdminRealtimeNotificationSettings = async (
     salesTtsEnabled: bool(payload.salesTtsEnabled, current.salesTtsEnabled),
     supportNotificationsEnabled: bool(payload.supportNotificationsEnabled, current.supportNotificationsEnabled),
     supportTtsEnabled: bool(payload.supportTtsEnabled, current.supportTtsEnabled),
-    speechVoice: text(payload.speechVoice, current.speechVoice, 40),
+    speechVoice: voice(payload.speechVoice, current.speechVoice),
     salesTemplate: text(payload.salesTemplate, current.salesTemplate),
     supportTemplate: text(payload.supportTemplate, current.supportTemplate),
     updatedAt: new Date().toISOString(),

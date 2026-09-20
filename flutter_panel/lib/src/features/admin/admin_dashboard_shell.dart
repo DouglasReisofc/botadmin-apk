@@ -40,6 +40,21 @@ enum AdminPanelSection {
   settings,
 }
 
+const _adminNotificationVoiceOptions = <({String value, String label})>[
+  (value: 'ludmilla', label: 'Ludmilla · português (br_004)'),
+  (value: 'laizza', label: 'Laizza · português (br_004)'),
+  (value: 'lhays', label: 'Lhays · português (br_003)'),
+  (value: 'bueno', label: 'Bueno · português (br_005)'),
+  (value: 'ivete', label: 'Ivete · português (br_004)'),
+  (value: 'br_003', label: 'Português BR · feminina 2 (br_003)'),
+  (value: 'br_004', label: 'Português BR · feminina 3 (br_004)'),
+  (value: 'br_005', label: 'Português BR · masculino (br_005)'),
+  (value: 'en_us_001', label: 'English US · female (en_us_001)'),
+  (value: 'en_us_006', label: 'English US · male (en_us_006)'),
+  (value: 'es_002', label: 'Español · masculino (es_002)'),
+  (value: 'fr_001', label: 'Français · masculin (fr_001)'),
+];
+
 final adminSectionProvider =
     NotifierProvider<AdminSectionController, AdminPanelSection>(
       AdminSectionController.new,
@@ -1142,7 +1157,10 @@ class _AdminNotificationHostState
             : messages.last,
       );
       if (ttsEnabled) await _speak('$sender disse:', voice: voice);
-      final rawUrl = message.media?.resolvedUrl?.trim() ?? '';
+      final rawUrl = message.media
+              ?.resolvedUrlFor(userId: entry.user.id, forAdmin: true)
+              ?.trim() ??
+          '';
       if (rawUrl.isEmpty) return;
       final player = _supportAudioPlayer ??= AudioPlayer();
       final isProtected =
@@ -3327,7 +3345,9 @@ class _AdminPaymentsWorkspaceState
       var voice = settings['speechVoice']?.toString().trim().isNotEmpty == true
           ? settings['speechVoice'].toString().trim()
           : 'ludmilla';
-      final voiceController = TextEditingController(text: voice);
+      if (!_adminNotificationVoiceOptions.any((item) => item.value == voice)) {
+        voice = 'ludmilla';
+      }
       final saved = await showDialog<bool>(
         context: context,
         builder: (dialogContext) => StatefulBuilder(
@@ -3390,13 +3410,26 @@ class _AdminPaymentsWorkspaceState
                       ),
                     ),
                     const SizedBox(height: 12),
-                    TextField(
-                      controller: voiceController,
-                      onChanged: (value) => voice = value.trim(),
+                    DropdownButtonFormField<String>(
+                      value: voice,
+                      isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Voz TTS',
-                        hintText: 'ludmilla',
+                        helperText: 'Selecione uma voz compatível com a narração.',
                       ),
+                      items: [
+                        for (final item in _adminNotificationVoiceOptions)
+                          DropdownMenuItem<String>(
+                            value: item.value,
+                            child: Text(
+                              item.label,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                      ],
+                      onChanged: (value) {
+                        if (value != null) setState(() => voice = value);
+                      },
                     ),
                   ],
                 ),
@@ -3436,7 +3469,6 @@ class _AdminPaymentsWorkspaceState
       );
       salesTemplate.dispose();
       supportTemplate.dispose();
-      voiceController.dispose();
       if (saved == true && mounted)
         showSuccessToast(context, 'Avisos do admin atualizados.');
     } catch (error) {

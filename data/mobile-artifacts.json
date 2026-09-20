@@ -6,12 +6,12 @@
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
     "sizeBytes": 40611993,
-    "updatedAt": "2026-09-20T15:41:22.000Z",
+    "updatedAt": "2026-09-20T16:20:00.000Z",
     "buildType": "release",
-    "versionName": "0.1.308",
-    "versionCode": 314
+    "versionName": "0.1.309",
+    "versionCode": 315
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.308 (314): modal de planos responsivo no mobile, persistência de adicionais e limites, reprodução do áudio original no TTS do suporte e notificações persistentes."
+  "details": "APK Flutter nativo 0.1.309 (315): reprodução de notas de voz do suporte com o token correto do usuário e seletor de vozes TTS no painel admin."
 }
