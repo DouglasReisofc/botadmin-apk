@@ -2845,22 +2845,13 @@ List<_CategoryDestination> _destinationsFor(
   };
 }
 
-void _activateCategoryDestination(
+Future<void> _activateCategoryDestination(
   BuildContext context,
   WidgetRef ref,
   _CategoryDestination destination,
-) {
+) async {
   if (destination.action == 'group_robot') {
-    ref
-        .read(conversationListFilterProvider.notifier)
-        .select(ConversationListFilter.groups);
-    ref
-        .read(dashboardSectionProvider.notifier)
-        .select(DashboardSection.conversations);
-    showSuccessToast(
-      context,
-      'Selecione um grupo e toque no botão do robô para ativar ou configurar.',
-    );
+    await _openGroupRobotPicker(context, ref);
     return;
   }
   final section = destination.section;
@@ -2871,6 +2862,254 @@ void _activateCategoryDestination(
         .select(ConversationListFilter.internalGroups);
   }
   ref.read(dashboardSectionProvider.notifier).select(section);
+}
+
+Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
+  final data = await ref.read(dashboardSnapshotProvider.future);
+  if (!context.mounted) return;
+  final activeInstance = _resolveActiveInstance(
+    data.instances,
+    ref.read(selectedInstanceIdProvider),
+  );
+  if (activeInstance == null) {
+    showErrorToast(context, 'Crie ou selecione um perfil primeiro.');
+    return;
+  }
+
+  final groups =
+      data.groups
+          .where(
+            (group) =>
+                !group.isInternalGroup &&
+                (group.instanceId == null ||
+                    group.instanceId == activeInstance.id),
+          )
+          .where((group) {
+            if (group.instanceId == activeInstance.id) return true;
+            final key = _normalizeConversationJidKey(group.remoteJid);
+            return data.threads.any(
+              (thread) =>
+                  thread.instanceId == activeInstance.id &&
+                  thread.isGroup &&
+                  _normalizeConversationJidKey(thread.chatJid) == key,
+            );
+          })
+          .toList(growable: false)
+        ..sort(
+          (left, right) =>
+              left.name.toLowerCase().compareTo(right.name.toLowerCase()),
+        );
+
+  final group = await showDialog<BotGroup>(
+    context: context,
+    builder: (dialogContext) => _GroupRobotPickerDialog(
+      profileName: activeInstance.name,
+      groups: groups,
+    ),
+  );
+  if (group == null || !context.mounted) return;
+
+  ConversationThread? thread;
+  final groupKey = _normalizeConversationJidKey(group.remoteJid);
+  for (final candidate in data.threads) {
+    if (candidate.instanceId == activeInstance.id &&
+        candidate.isGroup &&
+        _normalizeConversationJidKey(candidate.chatJid) == groupKey) {
+      thread = candidate;
+      break;
+    }
+  }
+  thread ??= ConversationThread(
+    instanceId: activeInstance.id,
+    chatJid: group.remoteJid,
+    title: group.name,
+    lastMessage: '',
+    lastActivity: DateTime.now(),
+    unreadCount: 0,
+    avatarUrl: group.avatarUrl,
+    chatType: 'group',
+    groupDescription: group.description,
+    linkedGroupId: group.id,
+  );
+
+  ref.read(selectedInstanceIdProvider.notifier).select(activeInstance.id);
+  ref
+      .read(conversationListFilterProvider.notifier)
+      .select(ConversationListFilter.groups);
+  ref
+      .read(dashboardSectionProvider.notifier)
+      .select(DashboardSection.conversations);
+  _openConversationThreadFromList(ref, thread);
+
+  await WidgetsBinding.instance.endOfFrame;
+  if (!context.mounted) return;
+  await _openGroupBotSettingsPanel(context, group);
+}
+
+class _GroupRobotPickerDialog extends StatefulWidget {
+  const _GroupRobotPickerDialog({
+    required this.profileName,
+    required this.groups,
+  });
+
+  final String profileName;
+  final List<BotGroup> groups;
+
+  @override
+  State<_GroupRobotPickerDialog> createState() =>
+      _GroupRobotPickerDialogState();
+}
+
+class _GroupRobotPickerDialogState extends State<_GroupRobotPickerDialog> {
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wa = WaTheme.of(context);
+    final query = _query.trim().toLowerCase();
+    final visibleGroups = query.isEmpty
+        ? widget.groups
+        : widget.groups
+              .where((group) => group.name.toLowerCase().contains(query))
+              .toList(growable: false);
+    final size = MediaQuery.sizeOf(context);
+
+    return Dialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: size.width < 600 ? 16 : 40,
+        vertical: 24,
+      ),
+      backgroundColor: wa.panel,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(22)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 520,
+          maxHeight: (size.height * 0.78).clamp(420.0, 720.0),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(22, 18, 12, 12),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: wa.accentSoft,
+                    child: Icon(Icons.smart_toy_rounded, color: wa.accent),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Configurar robô do grupo',
+                          style: TextStyle(
+                            color: wa.textPrimary,
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          'Perfil: ${widget.profileName}',
+                          style: TextStyle(color: wa.textMuted, fontSize: 12.5),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Fechar',
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 0, 18, 12),
+              child: TextField(
+                controller: _searchController,
+                onChanged: (value) => setState(() => _query = value),
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Pesquisar grupo',
+                ),
+              ),
+            ),
+            Divider(height: 1, color: wa.divider),
+            Expanded(
+              child: visibleGroups.isEmpty
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(28),
+                        child: Text(
+                          widget.groups.isEmpty
+                              ? 'Nenhum grupo encontrado neste perfil.'
+                              : 'Nenhum grupo corresponde à pesquisa.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(color: wa.textMuted),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      itemCount: visibleGroups.length,
+                      separatorBuilder: (_, __) =>
+                          Divider(height: 1, indent: 78, color: wa.divider),
+                      itemBuilder: (context, index) {
+                        final group = visibleGroups[index];
+                        return ListTile(
+                          minTileHeight: 68,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 18,
+                            vertical: 3,
+                          ),
+                          leading: SizedBox(
+                            width: 48,
+                            height: 48,
+                            child: ClipOval(
+                              child: _AvatarImage(
+                                isGroup: true,
+                                active: group.botEnabled,
+                                avatarUrl: group.avatarUrl,
+                              ),
+                            ),
+                          ),
+                          title: Text(
+                            group.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                          subtitle: Text(
+                            group.botEnabled
+                                ? 'Robô ativado'
+                                : 'Robô desativado',
+                            style: TextStyle(
+                              color: group.botEnabled
+                                  ? wa.accent
+                                  : wa.textMuted,
+                              fontSize: 12,
+                            ),
+                          ),
+                          trailing: const Icon(Icons.chevron_right_rounded),
+                          onTap: () => Navigator.of(context).pop(group),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _RailCategoryButton extends ConsumerWidget {
@@ -2952,7 +3191,7 @@ Future<void> _openDesktopCategoryMenu(
     ],
   );
   if (destination != null && context.mounted) {
-    _activateCategoryDestination(context, ref, destination);
+    await _activateCategoryDestination(context, ref, destination);
   }
 }
 
@@ -9308,7 +9547,7 @@ Future<void> _openMobileCategory(
     ),
   );
   if (destination != null && context.mounted) {
-    _activateCategoryDestination(context, ref, destination);
+    await _activateCategoryDestination(context, ref, destination);
   }
 }
 

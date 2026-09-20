@@ -7391,8 +7391,17 @@ function StandardGroupActivationConfigModal({
   const [blacklist, setBlacklist] = useState(
     stringList(settings.blacklist).join("\n"),
   );
-  const [aiProvider, setAiProvider] = useState(
-    String(settings.aiProvider || "groq"),
+  const initialAiProvider = ["groq", "openai", "chatgpt_system"].includes(
+    String(settings.aiProvider || ""),
+  )
+    ? String(settings.aiProvider)
+    : "groq";
+  const [aiProvider, setAiProvider] = useState(initialAiProvider);
+  const [groqKeys, setGroqKeys] = useState(
+    stringList(settings.groqKeys).join("\n"),
+  );
+  const [openAiApiKey, setOpenAiApiKey] = useState(
+    String(settings.openAiApiKey || ""),
   );
   const [aiModel, setAiModel] = useState(String(settings.aiModel || ""));
   const [aiPrompt, setAiPrompt] = useState(String(settings.aiPrompt || ""));
@@ -7447,8 +7456,18 @@ function StandardGroupActivationConfigModal({
 
   const save = async () => {
     if (saving) return;
-    setSaving(true);
     setError("");
+    if (key === "botinterage" && enabled) {
+      if (aiProvider === "groq" && splitConfigLines(groqKeys).length === 0) {
+        setError("Informe ao menos uma chave Groq.");
+        return;
+      }
+      if (aiProvider === "openai" && !openAiApiKey.replace(/\s+/g, "")) {
+        setError("Informe a chave da API oficial da OpenAI.");
+        return;
+      }
+    }
+    setSaving(true);
     let payload = activationPayload(settings, definition, enabled);
     if (messageConfigKey) {
       const labels = splitConfigLines(buttonLabels).slice(0, 3);
@@ -7526,11 +7545,23 @@ function StandardGroupActivationConfigModal({
         ...payload,
         commandToggles: {
           botinterage: enabled,
-          ouviraudiobotinterage: enabled && listenAudio,
+          ouviraudiobotinterage:
+            enabled && aiProvider === "chatgpt_system" && listenAudio,
         },
         featureFlags: { botInterageMentionOnly: mentionOnly },
         aiProvider,
-        aiModel: aiModel.trim() || null,
+        groqKeys: splitConfigLines(groqKeys),
+        openAiApiKey:
+          aiProvider === "openai"
+            ? openAiApiKey.replace(/\s+/g, "") || null
+            : settings.openAiApiKey || null,
+        aiModel:
+          aiProvider === "chatgpt_system"
+            ? "auto"
+            : aiModel.trim() ||
+              (aiProvider === "openai"
+                ? "gpt-4.1-mini"
+                : "llama-3.1-8b-instant"),
         aiPrompt: aiPrompt.trim(),
       };
     } else if (moderationActivationKeys.has(key)) {
@@ -7581,7 +7612,7 @@ function StandardGroupActivationConfigModal({
             <input type="checkbox" checked={enabled} onChange={(event) => setEnabled(event.target.checked)} />
             <i />
           </label>
-          {!isMessageConfig && <section className="activation-live-preview" aria-label={`Prévia de ${definition.label}`}>
+          {(key === "schedule" || key === "horapg") && <section className="activation-live-preview" aria-label={`Prévia de ${definition.label}`}>
             <div className="activation-live-preview-heading"><div><b>Prévia no grupo</b><span>Veja como esta ativação aparece na conversa.</span></div><Eye /></div>
             <div className={`activation-preview-bubble ${enabled ? "is-enabled" : "is-disabled"}`}>
               <Avatar name="BotAdmin" small />
@@ -7664,12 +7695,33 @@ function StandardGroupActivationConfigModal({
             <div className="config-timezone"><Clock3 /><span>Fuso: America/Sao_Paulo</span></div>
           </div>}
           {key === "autodownloader" && <label className="settings-toggle compact-config-toggle"><span><b>Grupo usado só para downloads</b><small>Texto comum vira uma busca com opções MP3 e MP4.</small></span><input type="checkbox" checked={enabled && downloaderOnly} disabled={!enabled} onChange={(event) => setDownloaderOnly(event.target.checked)} /><i /></label>}
-          {key === "botinterage" && <div className="activation-form-grid">
-            <label className="settings-toggle compact-config-toggle"><span><b>Responder somente quando chamado</b><small>Responde a menções ou citações do robô.</small></span><input type="checkbox" checked={mentionOnly} onChange={(event) => setMentionOnly(event.target.checked)} /><i /></label>
-            <label className="settings-toggle compact-config-toggle"><span><b>Ouvir áudios</b><small>Interpreta notas de voz elegíveis.</small></span><input type="checkbox" checked={listenAudio} onChange={(event) => setListenAudio(event.target.checked)} /><i /></label>
-            <label className="quick-label">Integração<select value={aiProvider} onChange={(event) => setAiProvider(event.target.value)}><option value="groq">Groq</option><option value="openai">OpenAI</option><option value="chatgpt_system">ChatGPT Sistema</option></select></label>
-            <label className="quick-label">Modelo<input value={aiModel} onChange={(event) => setAiModel(event.target.value)} placeholder="Automático" /></label>
-            <label className="quick-label full-span">Prompt de comportamento<textarea rows={6} value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Defina como o robô deve falar neste grupo." /></label>
+          {key === "botinterage" && <div className="activation-form-grid botinterage-config-form">
+            <label className="settings-toggle compact-config-toggle full-span"><span><b>Responder somente quando chamado</b><small>Ativado: responde a menções ou quando alguém cita uma mensagem do robô.</small></span><input type="checkbox" checked={mentionOnly} disabled={!enabled} onChange={(event) => setMentionOnly(event.target.checked)} /><i /></label>
+            <label className="quick-label full-span">Integração
+              <select value={aiProvider} onChange={(event) => {
+                const provider = event.target.value;
+                setAiProvider(provider);
+                if (provider === "chatgpt_system") {
+                  setAiModel("auto");
+                } else if (!aiModel.trim() || ["auto", "gpt-4.1-mini", "llama-3.1-8b-instant", "qwen2.5:7b"].includes(aiModel.trim())) {
+                  setAiModel(provider === "openai" ? "gpt-4.1-mini" : "llama-3.1-8b-instant");
+                }
+              }}>
+                <option value="groq">Groq (chave do usuário)</option>
+                <option value="openai">ChatGPT oficial (chave do usuário)</option>
+                <option value="chatgpt_system">ChatGPT Sistema (gerenciado)</option>
+              </select>
+            </label>
+            {aiProvider === "groq" && <label className="quick-label full-span">Chaves Groq
+              <textarea rows={3} value={groqKeys} onChange={(event) => setGroqKeys(event.target.value)} placeholder="Uma chave por linha" autoComplete="off" />
+            </label>}
+            {aiProvider === "openai" && <label className="quick-label full-span">Chave da API OpenAI
+              <input type="password" value={openAiApiKey} onChange={(event) => setOpenAiApiKey(event.target.value)} autoComplete="new-password" />
+            </label>}
+            {aiProvider === "chatgpt_system" && <div className="activation-managed-provider full-span"><ShieldCheck /><span><b>Credencial gerenciada pelo BotAdmin</b><small>Não é necessário informar uma chave de API.</small></span></div>}
+            {aiProvider === "chatgpt_system" && <label className="settings-toggle compact-config-toggle full-span"><span><b>Ouvir áudios no BotInterage</b><small>Notas de voz serão entendidas e respondidas no grupo.</small></span><input type="checkbox" checked={listenAudio} disabled={!enabled} onChange={(event) => setListenAudio(event.target.checked)} /><i /></label>}
+            {aiProvider !== "chatgpt_system" && <label className="quick-label full-span">Modelo<input value={aiModel} onChange={(event) => setAiModel(event.target.value)} placeholder={aiProvider === "openai" ? "gpt-4.1-mini" : "llama-3.1-8b-instant"} /></label>}
+            <label className="quick-label full-span">Prompt de comportamento<textarea rows={6} value={aiPrompt} onChange={(event) => setAiPrompt(event.target.value)} placeholder="Defina como o robô deve falar e responder neste grupo." /></label>
           </div>}
           {moderationActivationKeys.has(key) && <div className="activation-form-grid">
             <label className="settings-toggle compact-config-toggle"><span><b>Apagar mensagem</b><small>Remove o conteúdo que violou a regra.</small></span><input type="checkbox" checked={deleteMessage} onChange={(event) => setDeleteMessage(event.target.checked)} /><i /></label>

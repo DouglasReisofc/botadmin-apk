@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 89842883,
-    "updatedAt": "2026-09-19T21:37:09.000Z",
+    "sizeBytes": 89859267,
+    "updatedAt": "2026-09-20T00:58:41.000Z",
     "buildType": "release",
-    "versionName": "0.1.297",
-    "versionCode": 303
+    "versionName": "0.1.298",
+    "versionCode": 304
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.297 (303): menus ancorados junto à barra lateral e remoção do botão Ativar instância sem função."
+  "details": "APK Flutter nativo 0.1.298 (304): seletor de grupo para abrir e configurar o robô diretamente pelo menu Categorias."
 }
