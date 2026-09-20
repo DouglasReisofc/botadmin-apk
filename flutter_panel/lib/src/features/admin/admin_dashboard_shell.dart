@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:file_selector/file_selector.dart';
@@ -20,7 +21,9 @@ import '../../core/wa_theme.dart';
 import '../../models/admin_support.dart';
 import '../../models/migration_models.dart';
 import '../auth/auth_controller.dart';
+import '../chat/emoji_catalog.dart';
 import '../chat/media_players.dart';
+import '../../core/voice_recorder.dart';
 
 enum AdminPanelSection {
   support,
@@ -1576,12 +1579,17 @@ class _SupportConversationPaneState
     extends ConsumerState<_SupportConversationPane> {
   final _messageController = TextEditingController();
   final _scrollController = ScrollController();
+  final _voiceRecorder = VoiceRecorder();
   var _sending = false;
+  var _recording = false;
+  var _recordingBusy = false;
+  DateTime? _recordingStartedAt;
 
   @override
   void dispose() {
     _messageController.dispose();
     _scrollController.dispose();
+    unawaited(_voiceRecorder.dispose());
     super.dispose();
   }
 
@@ -1644,6 +1652,12 @@ class _SupportConversationPaneState
           controller: _messageController,
           sending: _sending,
           onSend: _sendText,
+          onEmoji: _openEmojiPicker,
+          onGiphy: _openGiphyPicker,
+          onAttach: _pickAndSendMedia,
+          recording: _recording,
+          recordingBusy: _recordingBusy,
+          onRecord: _recording ? _stopAndSendVoice : _startVoiceRecording,
         ),
       ],
     );
@@ -1670,6 +1684,165 @@ class _SupportConversationPaneState
       }
     } finally {
       if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _openEmojiPicker() async {
+    final emoji = await showEmojiPickerSheet(context);
+    if (!mounted || emoji == null || emoji.isEmpty) return;
+    final value = _messageController.value;
+    final start = value.selection.isValid
+        ? value.selection.start
+        : value.text.length;
+    final end = value.selection.isValid
+        ? value.selection.end
+        : value.text.length;
+    final text = value.text.replaceRange(start, end, emoji);
+    _messageController.value = TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: start + emoji.length),
+    );
+  }
+
+  Future<void> _pickAndSendMedia() async {
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Mídias e documentos',
+          extensions: [
+            'jpg',
+            'jpeg',
+            'png',
+            'webp',
+            'gif',
+            'mp4',
+            'mov',
+            'mp3',
+            'ogg',
+            'opus',
+            'webm',
+            'm4a',
+            'pdf',
+            'doc',
+            'docx',
+            'zip',
+          ],
+        ),
+      ],
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) return;
+    final mime = file.mimeType ?? _adminSupportGuessMime(file.name);
+    await _sendSupportMedia(
+      bytes: bytes,
+      fileName: file.name,
+      mimeType: mime,
+      mediaType: _adminSupportMediaType(mime),
+      caption: _messageController.text.trim(),
+    );
+  }
+
+  Future<void> _startVoiceRecording() async {
+    if (_recording || _recordingBusy) return;
+    setState(() => _recordingBusy = true);
+    try {
+      await _voiceRecorder.start();
+      if (!mounted) return;
+      setState(() {
+        _recording = true;
+        _recordingStartedAt = DateTime.now();
+      });
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    } finally {
+      if (mounted) setState(() => _recordingBusy = false);
+    }
+  }
+
+  Future<void> _stopAndSendVoice() async {
+    if (!_recording || _recordingBusy) return;
+    final started = _recordingStartedAt;
+    setState(() {
+      _recording = false;
+      _recordingBusy = true;
+      _recordingStartedAt = null;
+    });
+    try {
+      final recording = await _voiceRecorder.stop();
+      if (recording == null ||
+          recording.bytes.isEmpty ||
+          started == null ||
+          DateTime.now().difference(started) <
+              const Duration(milliseconds: 700)) {
+        if (mounted)
+          showErrorToast(context, 'Grave pelo menos 1 segundo de áudio.');
+        return;
+      }
+      await _sendSupportMedia(
+        bytes: recording.bytes,
+        fileName: recording.fileName,
+        mimeType: recording.mimeType,
+        mediaType: 'audio',
+      );
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+      await _voiceRecorder.cancel();
+    } finally {
+      if (mounted) setState(() => _recordingBusy = false);
+    }
+  }
+
+  Future<void> _sendSupportMedia({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+    required String mediaType,
+    String caption = '',
+  }) async {
+    if (_sending) return;
+    setState(() => _sending = true);
+    try {
+      await ref
+          .read(apiClientProvider)
+          .sendAdminSupportMedia(
+            userId: widget.entry.user.id,
+            whatsappId: widget.entry.thread.whatsappId,
+            bytes: bytes,
+            fileName: fileName,
+            mimeType: mimeType,
+            mediaType: mediaType,
+            caption: caption,
+          );
+      _messageController.clear();
+      ref.invalidate(adminSupportConversationProvider);
+      ref.invalidate(adminSupportThreadsProvider);
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    } finally {
+      if (mounted) setState(() => _sending = false);
+    }
+  }
+
+  Future<void> _openGiphyPicker() async {
+    final selected = await showDialog<GiphyMediaItem>(
+      context: context,
+      builder: (_) =>
+          _AdminSupportGiphyPicker(api: ref.read(apiClientProvider)),
+    );
+    if (selected == null || !mounted) return;
+    try {
+      final media = await ref
+          .read(apiClientProvider)
+          .downloadGiphyMedia(selected);
+      await _sendSupportMedia(
+        bytes: media.bytes,
+        fileName: selected.fileNameForMimeType(media.mimeType),
+        mimeType: media.mimeType,
+        mediaType: selected.isSticker ? 'sticker' : 'image',
+      );
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
     }
   }
 }
@@ -2262,16 +2435,181 @@ class _DocumentPreview extends StatelessWidget {
   }
 }
 
+class _AdminSupportGiphyPicker extends StatefulWidget {
+  const _AdminSupportGiphyPicker({required this.api});
+
+  final BotAdminApiClient api;
+
+  @override
+  State<_AdminSupportGiphyPicker> createState() =>
+      _AdminSupportGiphyPickerState();
+}
+
+class _AdminSupportGiphyPickerState extends State<_AdminSupportGiphyPicker> {
+  final _searchController = TextEditingController();
+  late Future<List<GiphyMediaItem>> _items;
+  String _type = 'gifs';
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.api.searchGiphy(type: _type, limit: 24);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _load() {
+    setState(() {
+      _items = widget.api.searchGiphy(
+        query: _searchController.text.trim(),
+        type: _type,
+        limit: 24,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return AlertDialog(
+      title: const Text('GIFs e figurinhas'),
+      content: SizedBox(
+        width: size.width < 500 ? size.width - 64 : 420,
+        height: size.height < 600 ? size.height * .55 : 430,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('GIFs'),
+                  selected: _type == 'gifs',
+                  onSelected: (_) {
+                    _type = 'gifs';
+                    _load();
+                  },
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Figurinhas'),
+                  selected: _type == 'stickers',
+                  onSelected: (_) {
+                    _type = 'stickers';
+                    _load();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _searchController,
+              onSubmitted: (_) => _load(),
+              decoration: InputDecoration(
+                hintText: 'Pesquisar',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  onPressed: _load,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: FutureBuilder<List<GiphyMediaItem>>(
+                future: _items,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: TextButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Tentar novamente'),
+                      ),
+                    );
+                  }
+                  final items = snapshot.data ?? const <GiphyMediaItem>[];
+                  if (items.isEmpty) {
+                    return const Center(child: Text('Nada encontrado.'));
+                  }
+                  return GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                    itemCount: items.length,
+                    itemBuilder: (_, index) => InkWell(
+                      onTap: () => Navigator.of(context).pop(items[index]),
+                      child: BotAdminCachedImage(
+                        imageUrl: items[index].previewUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, _, _) =>
+                            const Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _adminSupportGuessMime(String fileName) {
+  final name = fileName.toLowerCase();
+  if (name.endsWith('.jpg') || name.endsWith('.jpeg')) return 'image/jpeg';
+  if (name.endsWith('.png')) return 'image/png';
+  if (name.endsWith('.webp')) return 'image/webp';
+  if (name.endsWith('.gif')) return 'image/gif';
+  if (name.endsWith('.mp4') || name.endsWith('.mov')) return 'video/mp4';
+  if (name.endsWith('.mp3')) return 'audio/mpeg';
+  if (name.endsWith('.ogg') || name.endsWith('.opus')) return 'audio/ogg';
+  if (name.endsWith('.webm')) return 'audio/webm';
+  if (name.endsWith('.m4a')) return 'audio/mp4';
+  if (name.endsWith('.pdf')) return 'application/pdf';
+  return 'application/octet-stream';
+}
+
+String _adminSupportMediaType(String mimeType) {
+  final normalized = mimeType.toLowerCase();
+  if (normalized.startsWith('image/')) return 'image';
+  if (normalized.startsWith('video/')) return 'video';
+  if (normalized.startsWith('audio/')) return 'audio';
+  return 'document';
+}
+
 class _SupportComposer extends StatelessWidget {
   const _SupportComposer({
     required this.controller,
     required this.sending,
     required this.onSend,
+    required this.onEmoji,
+    required this.onGiphy,
+    required this.onAttach,
+    required this.recording,
+    required this.recordingBusy,
+    required this.onRecord,
   });
 
   final TextEditingController controller;
   final bool sending;
   final Future<void> Function() onSend;
+  final VoidCallback onEmoji;
+  final VoidCallback onGiphy;
+  final VoidCallback onAttach;
+  final bool recording;
+  final bool recordingBusy;
+  final VoidCallback onRecord;
 
   @override
   Widget build(BuildContext context) {
@@ -2280,11 +2618,25 @@ class _SupportComposer extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
       color: wa.composerBg,
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           IconButton(
-            tooltip: 'Anexar',
-            onPressed: sending ? null : () {},
-            icon: const Icon(Icons.add),
+            tooltip: 'Emojis',
+            onPressed: sending ? null : onEmoji,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
+            icon: const Icon(Icons.emoji_emotions_outlined),
+          ),
+          IconButton(
+            tooltip: 'GIFs e figurinhas',
+            onPressed: sending ? null : onGiphy,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
+            icon: const Icon(Icons.gif_box_outlined),
+          ),
+          IconButton(
+            tooltip: 'Anexar mídia ou documento',
+            onPressed: sending ? null : onAttach,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
+            icon: const Icon(Icons.attach_file_rounded),
           ),
           Expanded(
             child: TextField(
@@ -2303,6 +2655,22 @@ class _SupportComposer extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
+          IconButton(
+            tooltip: recording ? 'Parar e enviar áudio' : 'Gravar áudio',
+            onPressed: sending || recordingBusy ? null : onRecord,
+            constraints: const BoxConstraints.tightFor(width: 40, height: 42),
+            style: IconButton.styleFrom(
+              backgroundColor: recording ? Colors.redAccent : wa.inputFill,
+              foregroundColor: recording ? Colors.white : wa.textPrimary,
+            ),
+            icon: recordingBusy
+                ? const SizedBox.square(
+                    dimension: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(recording ? Icons.stop_rounded : Icons.mic_none_rounded),
+          ),
+          const SizedBox(width: 4),
           IconButton(
             tooltip: 'Enviar',
             onPressed: sending ? null : onSend,

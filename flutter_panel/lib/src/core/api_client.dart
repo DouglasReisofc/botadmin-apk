@@ -1391,6 +1391,36 @@ class BotAdminApiClient {
     return AdminSupportMessage.fromJson(_map(json['message']));
   }
 
+  Future<AdminSupportMessage> sendAdminSupportMedia({
+    required int userId,
+    required String whatsappId,
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+    String mediaType = 'document',
+    String caption = '',
+  }) async {
+    final response = await _dio.post<Object?>(
+      '/api/admin/support/messages',
+      data: FormData.fromMap({
+        'userId': userId.toString(),
+        'to': whatsappId,
+        'mode': 'media',
+        'mediaType': mediaType,
+        if (caption.trim().isNotEmpty) 'caption': caption.trim(),
+        'file': MultipartFile.fromBytes(
+          bytes,
+          filename: fileName,
+          contentType: DioMediaType.parse(
+            mimeType.trim().isEmpty ? 'application/octet-stream' : mimeType,
+          ),
+        ),
+      }),
+    );
+    final json = _decode(response);
+    return AdminSupportMessage.fromJson(_map(json['message']));
+  }
+
   Future<AdminSupportThreadSummary> updateAdminSupportHandlingMode({
     required int userId,
     required String whatsappId,
