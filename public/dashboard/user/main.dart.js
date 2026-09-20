@@ -40660,59 +40660,61 @@ break}if(p===B.el)b.E(0,$.Q7().gaE(),t.UC).saU(0,B.hN)
 b.E(0,$.eU().gaE(),t.g).du(0,p)
 case 1:return A.h(q,r)}})
 return A.i($async$azA,r)},
-H6(a0,a1){var s=0,r=A.j(t.H),q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a
-var $async$H6=A.e(function(a2,a3){if(a2===1)return A.f(a3,r)
+H6(a1,a2){var s=0,r=A.j(t.H),q,p,o,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0
+var $async$H6=A.e(function(a3,a4){if(a3===1)return A.f(a4,r)
 for(;;)switch(s){case 0:s=3
-return A.c(a1.E(0,$.cV().gF7(),t.L6),$async$H6)
-case 3:a=a3
-if(a0.e==null){s=1
-break}p=A.qW(a.a,a1.E(0,$.j6(),t.R))
-if(p==null){A.aG(a0,"Crie ou selecione um perfil primeiro.")
+return A.c(a2.E(0,$.cV().gF7(),t.L6),$async$H6)
+case 3:a0=a4
+if(a1.e==null){s=1
+break}p=A.G(a1,!0)
+o=A.qW(a0.a,a2.E(0,$.j6(),t.R))
+if(o==null){A.aG(a1,"Crie ou selecione um perfil primeiro.")
 s=1
-break}o=a.b
-n=A.D(o).i("aj<1>")
-m=n.i("aj<A.E>")
-o=A.C(new A.aj(new A.aj(o,new A.cef(p),n),new A.ceg(p,a),m),m.i("A.E"))
-o.$flags=1
-l=o
-B.c.cz(l,new A.ceh())
+break}n=a0.b
+m=A.D(n).i("aj<1>")
+l=m.i("aj<A.E>")
+n=A.C(new A.aj(new A.aj(n,new A.cef(o),m),new A.ceg(o,a0),l),l.i("A.E"))
+n.$flags=1
+k=n
+B.c.cz(k,new A.ceh())
 s=4
-return A.c(A.aH(null,null,!0,null,new A.cei(p,l),a0,null,!0,t.FE),$async$H6)
-case 4:k=a3
-if(k==null||a0.e==null){s=1
-break}o=k.c
-j=A.H5(o)
-n=a.c
-m=n.length
-h=p.a
-g=0
-for(;;){if(!(g<n.length)){i=null
-break}f=n[g]
-if(f.a===h){e=f.z
-if(!(e==="channel"||B.b.b1(f.b,"@newsletter"))){d=!0
-if(e!=="internal_group"){c=f.b
-if(!B.b.b1(c,"@g.us"))if(e!=="group")if(e!=="community"){e=B.c.gO(c.split("@"))
-d=A.av("\\D+",!0,!1,!1,!1)
-b=A.aW(e,d,"")
-e=A.av("^120363\\d{6,}$",!0,!1,!1,!1)
-e=e.b.test(b)}else e=d
-else e=d
-else e=d}else e=d}else e=!1
-e=e&&A.H5(f.b)===j}else e=!1
-if(e){i=f
-break}n.length===m||(0,A.T)(n);++g}if(i==null){n=k.b
-m=Date.now()
-i=A.BB(null,!1,k.w,null,null,o,"group",k.r,!1,h,null,null,null,null,null,new A.bX(m,0,!1),"",null,null,k.a,null,null,!1,null,null,!1,null,null,n,0)}a1.E(0,$.j6().gaE(),t.WR).du(0,h)
-a1.E(0,$.Q7().gaE(),t.UC).saU(0,B.vO)
-a1.E(0,$.eU().gaE(),t.g).du(0,B.cb)
-A.a6Q(a1,i)
+return A.c(A.aH(null,null,!0,null,new A.cei(o,k),a1,null,!0,t.FE),$async$H6)
+case 4:j=a4
+if(j==null||a1.e==null){s=1
+break}n=j.c
+i=A.H5(n)
+m=a0.c
+l=m.length
+g=o.a
+f=0
+for(;;){if(!(f<m.length)){h=null
+break}e=m[f]
+if(e.a===g){d=e.z
+if(!(d==="channel"||B.b.b1(e.b,"@newsletter"))){c=!0
+if(d!=="internal_group"){b=e.b
+if(!B.b.b1(b,"@g.us"))if(d!=="group")if(d!=="community"){d=B.c.gO(b.split("@"))
+c=A.av("\\D+",!0,!1,!1,!1)
+a=A.aW(d,c,"")
+d=A.av("^120363\\d{6,}$",!0,!1,!1,!1)
+d=d.b.test(a)}else d=c
+else d=c
+else d=c}else d=c}else d=!1
+d=d&&A.H5(e.b)===i}else d=!1
+if(d){h=e
+break}m.length===l||(0,A.T)(m);++f}if(h==null){m=j.b
+l=Date.now()
+h=A.BB(null,!1,j.w,null,null,n,"group",j.r,!1,g,null,null,null,null,null,new A.bX(l,0,!1),"",null,null,j.a,null,null,!1,null,null,!1,null,null,m,0)}a2.E(0,$.j6().gaE(),t.WR).du(0,g)
+a2.E(0,$.Q7().gaE(),t.UC).saU(0,B.vO)
+a2.E(0,$.eU().gaE(),t.g).du(0,B.cb)
+A.a6Q(a2,h)
 s=5
 return A.c($.aA.gS4(),$async$H6)
 case 5:s=6
 return A.c(A.is(B.adF,null,t.H),$async$H6)
-case 6:if(a0.e==null){s=1
+case 6:n=p.c
+if(n==null){s=1
 break}s=7
-return A.c(A.a6S(a0,k),$async$H6)
+return A.c(A.a6S(n,j),$async$H6)
 case 7:case 1:return A.h(q,r)}})
 return A.i($async$H6,r)},
 bQx(a,b,c,d){return new A.asp(c,b,d,a,null)},

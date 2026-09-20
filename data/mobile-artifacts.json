@@ -6,12 +6,12 @@
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
     "sizeBytes": 89859267,
-    "updatedAt": "2026-09-20T01:30:58.807Z",
+    "updatedAt": "2026-09-20T02:15:57.000Z",
     "buildType": "release",
-    "versionName": "0.1.299",
-    "versionCode": 305
+    "versionName": "0.1.300",
+    "versionCode": 306
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.299 (305): abertura confiável do modal de ativações no Android e cabeçalho mais limpo com avatar, nome, ID e fechar."
+  "details": "APK Flutter nativo 0.1.300 (306): ao selecionar Robô dos grupos no mobile, a conversa e o modal de configurações do robô abrem em sequência usando o navegador raiz estável."
 }

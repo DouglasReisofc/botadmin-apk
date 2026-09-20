@@ -2864,6 +2864,10 @@ Future<void> _activateCategoryDestination(
 Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
   final data = await ref.read(dashboardSnapshotProvider.future);
   if (!context.mounted) return;
+  // On mobile, selecting a conversation replaces the widget that owns
+  // `context` (the bottom navigation bar). Keep the root navigator instead so
+  // the robot settings sheet can still be presented after that rebuild.
+  final rootNavigator = Navigator.of(context, rootNavigator: true);
   final activeInstance = _resolveActiveInstance(
     data.instances,
     ref.read(selectedInstanceIdProvider),
@@ -2944,8 +2948,8 @@ Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
   // settings sheet, otherwise the sheet can be dismissed together with the
   // picker and only the conversation remains visible.
   await Future<void>.delayed(const Duration(milliseconds: 240));
-  if (!context.mounted) return;
-  await _openGroupBotSettingsPanel(context, group);
+  if (!rootNavigator.mounted) return;
+  await _openGroupBotSettingsPanel(rootNavigator.context, group);
 }
 
 class _GroupRobotPickerDialog extends StatefulWidget {
