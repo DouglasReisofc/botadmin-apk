@@ -7,7 +7,8 @@ import {
   saveUploadedFile,
 } from "lib/uploads";
 
-const ALLOWED_MIME_PREFIXES = ["image/"];
+const ALLOWED_MIME_PREFIXES = ["image/", "video/"];
+const ALLOWED_JSON_TYPES = new Set(["application/json", "text/json"]);
 
 const ensureAdmin = async () => {
   const user = await getCurrentUser();
@@ -43,8 +44,8 @@ export async function POST(request: NextRequest) {
     }
 
     const mime = (file.type ?? "").toLowerCase();
-    if (!ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix))) {
-      return NextResponse.json({ message: "Envie apenas arquivos de imagem." }, { status: 400 });
+    if (!ALLOWED_MIME_PREFIXES.some((prefix) => mime.startsWith(prefix)) && !ALLOWED_JSON_TYPES.has(mime)) {
+      return NextResponse.json({ message: "Envie imagem, vídeo ou Lottie JSON." }, { status: 400 });
     }
 
     const previousPathRaw = formData.get("previousPath");
@@ -53,7 +54,9 @@ export async function POST(request: NextRequest) {
         ? previousPathRaw.trim()
         : "";
 
-    const storedPath = await saveUploadedFile(file, "notifications/push", { convertToWebp: true });
+    const storedPath = await saveUploadedFile(file, "notifications/push", {
+      convertToWebp: mime.startsWith("image/") && !mime.includes("gif"),
+    });
     if (previousPath) {
       await deleteUploadedFile(previousPath).catch(() => {});
     }

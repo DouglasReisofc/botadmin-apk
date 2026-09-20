@@ -9,7 +9,8 @@ const String botAdminRealtimeChannelId = 'botadmin_realtime_messages_v6';
 const String _botAdminRealtimeChannelName = 'Mensagens do WhatsApp';
 const String _botAdminRealtimeChannelDescription =
     'Notificacoes de conversas monitoradas pelo BotAdmin.';
-const String _botAdminMessageGroupKey = 'br.com.botadmin.flutter_panel.WHATSAPP_MESSAGES';
+const String _botAdminMessageGroupKey =
+    'br.com.botadmin.flutter_panel.WHATSAPP_MESSAGES';
 const int _botAdminMessageSummaryId = 900001;
 
 final FlutterLocalNotificationsPlugin _localNotifications =
@@ -38,7 +39,9 @@ class NativeMessageNotifications {
     if (kIsWeb || defaultTargetPlatform != TargetPlatform.android) return;
     if (_localNotificationsReady) return;
 
-    const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
+    const androidInit = AndroidInitializationSettings(
+      '@drawable/ic_stat_botadmin_notification',
+    );
     const initSettings = InitializationSettings(android: androidInit);
     await _localNotifications.initialize(settings: initSettings);
 
@@ -52,11 +55,13 @@ class NativeMessageNotifications {
     );
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.createNotificationChannel(channel);
     await _localNotifications
         .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
+          AndroidFlutterLocalNotificationsPlugin
+        >()
         ?.requestNotificationsPermission();
 
     _localNotificationsReady = true;
@@ -72,15 +77,13 @@ class NativeMessageNotifications {
     final details = AndroidNotificationDetails(
       botAdminRealtimeChannelId,
       _botAdminRealtimeChannelName,
+      icon: 'ic_stat_botadmin_notification',
       channelDescription: _botAdminRealtimeChannelDescription,
       importance: Importance.high,
       priority: Priority.high,
       category: AndroidNotificationCategory.message,
       ticker: '$title: $body',
-      styleInformation: BigTextStyleInformation(
-        body,
-        contentTitle: title,
-      ),
+      styleInformation: BigTextStyleInformation(body, contentTitle: title),
       tag: tag,
       onlyAlertOnce: false,
       autoCancel: true,
@@ -150,13 +153,14 @@ class NativeMessageNotifications {
       data['conversationId'],
       data['conversation_id'],
     ]);
-    final notificationId = _stableNotificationId(chatKey.isEmpty
-        ? '${safeTitle}_$safeBody'
-        : chatKey);
+    final notificationId = _stableNotificationId(
+      chatKey.isEmpty ? '${safeTitle}_$safeBody' : chatKey,
+    );
 
     final details = AndroidNotificationDetails(
       botAdminRealtimeChannelId,
       _botAdminRealtimeChannelName,
+      icon: 'ic_stat_botadmin_notification',
       channelDescription: _botAdminRealtimeChannelDescription,
       importance: Importance.high,
       priority: Priority.high,
@@ -182,6 +186,7 @@ class NativeMessageNotifications {
     const summaryDetails = AndroidNotificationDetails(
       botAdminRealtimeChannelId,
       _botAdminRealtimeChannelName,
+      icon: 'ic_stat_botadmin_notification',
       channelDescription: _botAdminRealtimeChannelDescription,
       importance: Importance.high,
       priority: Priority.high,

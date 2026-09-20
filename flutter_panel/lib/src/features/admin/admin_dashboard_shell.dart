@@ -70,6 +70,11 @@ final adminPartnersProvider =
       (ref) => ref.watch(apiClientProvider).loadPartnerMembers(),
     );
 
+final adminPanelNotificationsProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+      return ref.watch(apiClientProvider).loadAdminPanelNotifications();
+    });
+
 final selectedAdminSupportThreadProvider =
     NotifierProvider<
       SelectedAdminSupportThreadController,
@@ -859,13 +864,7 @@ class AdminDashboardShell extends ConsumerWidget {
       ),
       AdminPanelSection.partners => const _AdminPartnersWorkspace(),
       AdminPanelSection.payments => const _AdminPaymentsWorkspace(),
-      AdminPanelSection.campaigns => _AdminRecordsWorkspace(
-        title: 'Campanhas',
-        subtitle: 'Avisos, tutoriais e anúncios globais.',
-        icon: Icons.campaign_outlined,
-        recordsAsync: ref.watch(adminCampaignsProvider),
-        onRefresh: () => ref.invalidate(adminCampaignsProvider),
-      ),
+      AdminPanelSection.campaigns => const _AdminPanelNotificationsWorkspace(),
       AdminPanelSection.botinterage => _AdminRecordsWorkspace(
         title: 'BotInterage',
         subtitle: 'Integrações ativas, provedores e credenciais mascaradas.',
@@ -1157,7 +1156,8 @@ class _AdminNotificationHostState
             : messages.last,
       );
       if (ttsEnabled) await _speak('$sender disse:', voice: voice);
-      final rawUrl = message.media
+      final rawUrl =
+          message.media
               ?.resolvedUrlFor(userId: entry.user.id, forAdmin: true)
               ?.trim() ??
           '';
@@ -1339,8 +1339,8 @@ const _adminNavItems = [
   ),
   _RailButton(
     AdminPanelSection.campaigns,
-    Icons.campaign_outlined,
-    'Campanhas',
+    Icons.notifications_active_outlined,
+    'Notificações',
   ),
   _RailButton(
     AdminPanelSection.botinterage,
@@ -3415,7 +3415,8 @@ class _AdminPaymentsWorkspaceState
                       isExpanded: true,
                       decoration: const InputDecoration(
                         labelText: 'Voz TTS',
-                        helperText: 'Selecione uma voz compatível com a narração.',
+                        helperText:
+                            'Selecione uma voz compatível com a narração.',
                       ),
                       items: [
                         for (final item in _adminNotificationVoiceOptions)
@@ -3559,6 +3560,437 @@ class _AdminPaymentsWorkspaceState
       ],
     );
   }
+}
+
+class _AdminPanelNotificationsWorkspace extends ConsumerWidget {
+  const _AdminPanelNotificationsWorkspace();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final async = ref.watch(adminPanelNotificationsProvider);
+    final wa = WaTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: async.when(
+        loading: () => const Center(child: CircularProgressIndicator()),
+        error: (error, _) =>
+            Center(child: Text('Não foi possível carregar: $error')),
+        data: (items) => Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.notifications_active_outlined, color: wa.accent),
+                const SizedBox(width: 10),
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Notificações',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      Text(
+                        'Envie avisos ricos para o painel e celulares.',
+                        style: TextStyle(color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                ),
+                FilledButton.icon(
+                  onPressed: () => _openNotificationComposer(context, ref),
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Nova notificação'),
+                ),
+              ],
+            ),
+            const SizedBox(height: 18),
+            Expanded(
+              child: items.isEmpty
+                  ? const Center(
+                      child: Text('Nenhuma notificação criada ainda.'),
+                    )
+                  : ListView.separated(
+                      itemCount: items.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 10),
+                      itemBuilder: (_, index) {
+                        final item = items[index];
+                        final status = item['status']?.toString() ?? 'draft';
+                        final id = int.tryParse('${item['id']}');
+                        return Card(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: wa.accent.withOpacity(.12),
+                              child: Icon(
+                                Icons.notifications_outlined,
+                                color: wa.accent,
+                              ),
+                            ),
+                            title: Text(
+                              item['title']?.toString() ?? '',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${item['message'] ?? ''}\n$status · ${item['recipientCount'] ?? 0} destinatários',
+                            ),
+                            isThreeLine: true,
+                            trailing: Wrap(
+                              spacing: 4,
+                              children: [
+                                if (id != null)
+                                  IconButton(
+                                    tooltip: 'Reutilizar',
+                                    onPressed: () => _openNotificationComposer(
+                                      context,
+                                      ref,
+                                      initial: item,
+                                    ),
+                                    icon: const Icon(Icons.copy_outlined),
+                                  ),
+                                if (id != null &&
+                                    (status == 'draft' ||
+                                        status == 'scheduled'))
+                                  IconButton(
+                                    tooltip: 'Enviar agora',
+                                    onPressed: () async {
+                                      await ref
+                                          .read(apiClientProvider)
+                                          .sendAdminPanelNotification(id);
+                                      ref.invalidate(
+                                        adminPanelNotificationsProvider,
+                                      );
+                                    },
+                                    icon: const Icon(Icons.send_outlined),
+                                  ),
+                                if (id != null &&
+                                    status != 'cancelled' &&
+                                    status != 'sent')
+                                  IconButton(
+                                    tooltip: 'Cancelar',
+                                    onPressed: () async {
+                                      await ref
+                                          .read(apiClientProvider)
+                                          .cancelAdminPanelNotification(id);
+                                      ref.invalidate(
+                                        adminPanelNotificationsProvider,
+                                      );
+                                    },
+                                    icon: const Icon(Icons.close_rounded),
+                                  ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Future<void> _openNotificationComposer(
+  BuildContext context,
+  WidgetRef ref, {
+  Map<String, dynamic>? initial,
+}) async {
+  return _showNotificationComposer(context, ref, initial: initial);
+}
+
+Future<String?> _pickNotificationDateTime(BuildContext context) async {
+  final now = DateTime.now();
+  final date = await showDatePicker(
+    context: context,
+    firstDate: now,
+    lastDate: DateTime(now.year + 3),
+    initialDate: now,
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(now.add(const Duration(minutes: 5))),
+  );
+  if (time == null) return null;
+  return DateTime(
+    date.year,
+    date.month,
+    date.day,
+    time.hour,
+    time.minute,
+  ).toIso8601String();
+}
+
+Future<void> _showNotificationComposer(
+  BuildContext context,
+  WidgetRef ref, {
+  Map<String, dynamic>? initial,
+}) async {
+  final title = TextEditingController(text: initial?['title']?.toString());
+  final message = TextEditingController(text: initial?['message']?.toString());
+  final mediaUrl = TextEditingController(
+    text: initial?['mediaUrl']?.toString(),
+  );
+  final targetUrl = TextEditingController(
+    text: initial?['targetUrl']?.toString(),
+  );
+  final targetEmail = TextEditingController();
+  final startsAt = TextEditingController();
+  final expiresAt = TextEditingController();
+  String mediaType = 'image';
+  String targetType = 'all';
+  bool sendNow = true;
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        title: const Text('Nova notificação'),
+        content: SizedBox(
+          width: 560,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: title,
+                  decoration: const InputDecoration(
+                    labelText: 'Título',
+                    prefixIcon: Icon(Icons.title),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: message,
+                  minLines: 4,
+                  maxLines: 8,
+                  decoration: const InputDecoration(
+                    labelText: 'Mensagem',
+                    hintText:
+                        'Aceita emojis, links e marcação simples (negrito/itálico).',
+                    alignLabelWithHint: true,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final narrow = constraints.maxWidth < 480;
+                    final fields = <Widget>[
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: mediaType,
+                          decoration: const InputDecoration(labelText: 'Mídia'),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'image',
+                              child: Text('Imagem/banner'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'video',
+                              child: Text('Vídeo'),
+                            ),
+                            DropdownMenuItem(value: 'gif', child: Text('GIF')),
+                            DropdownMenuItem(
+                              value: 'lottie',
+                              child: Text('Lottie JSON'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => mediaType = value ?? 'image'),
+                        ),
+                      ),
+                      SizedBox(width: narrow ? 0 : 10, height: narrow ? 10 : 0),
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: targetType,
+                          decoration: const InputDecoration(
+                            labelText: 'Público',
+                          ),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 'all',
+                              child: Text('Todos os usuários'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'user',
+                              child: Text('Usuário específico'),
+                            ),
+                          ],
+                          onChanged: (value) =>
+                              setState(() => targetType = value ?? 'all'),
+                        ),
+                      ),
+                    ];
+                    return narrow
+                        ? Column(
+                            children: [
+                              (fields[0] as Expanded).child,
+                              fields[1],
+                              (fields[2] as Expanded).child,
+                            ],
+                          )
+                        : Row(children: fields);
+                  },
+                ),
+                if (targetType == 'user') ...[
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: targetEmail,
+                    keyboardType: TextInputType.emailAddress,
+                    decoration: const InputDecoration(
+                      labelText: 'E-mail do usuário',
+                      prefixIcon: Icon(Icons.person_search_outlined),
+                    ),
+                  ),
+                ],
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: OutlinedButton.icon(
+                    onPressed: () async {
+                      final file = await openFile(
+                        acceptedTypeGroups: const [
+                          _adminNotificationMediaTypeGroup,
+                        ],
+                      );
+                      if (file == null) return;
+                      final bytes = await file.readAsBytes();
+                      if (bytes.isEmpty || !context.mounted) return;
+                      try {
+                        final mime = _guessAdminNotificationMimeType(
+                          file.name,
+                          file.mimeType,
+                        );
+                        final uploaded = await ref
+                            .read(apiClientProvider)
+                            .uploadAdminPanelNotificationMedia(
+                              bytes: bytes,
+                              fileName: file.name,
+                              mimeType: mime,
+                            );
+                        mediaUrl.text = uploaded['url']?.toString() ?? '';
+                        final lower = file.name.toLowerCase();
+                        setState(() {
+                          mediaType = mime.startsWith('video/')
+                              ? 'video'
+                              : lower.endsWith('.json')
+                              ? 'lottie'
+                              : lower.endsWith('.gif')
+                              ? 'gif'
+                              : 'image';
+                        });
+                      } catch (error) {
+                        if (context.mounted)
+                          showErrorToast(context, error.toString());
+                      }
+                    },
+                    icon: const Icon(Icons.upload_file_outlined),
+                    label: const Text('Enviar arquivo'),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: mediaUrl,
+                  decoration: const InputDecoration(
+                    labelText: 'URL da mídia (opcional)',
+                    prefixIcon: Icon(Icons.link),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: targetUrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Link ao clicar (opcional)',
+                    prefixIcon: Icon(Icons.open_in_new),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: startsAt,
+                  readOnly: true,
+                  onTap: () async {
+                    final value = await _pickNotificationDateTime(context);
+                    if (value != null) startsAt.text = value;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Programar exibição (opcional)',
+                    hintText: 'Selecione data e hora',
+                    prefixIcon: Icon(Icons.schedule),
+                  ),
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: expiresAt,
+                  readOnly: true,
+                  onTap: () async {
+                    final value = await _pickNotificationDateTime(context);
+                    if (value != null) expiresAt.text = value;
+                  },
+                  decoration: const InputDecoration(
+                    labelText: 'Encerrar exibição (opcional)',
+                    hintText: 'Selecione data e hora',
+                    prefixIcon: Icon(Icons.event_busy_outlined),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SwitchListTile(
+                  value: sendNow,
+                  onChanged: (value) => setState(() => sendNow = value),
+                  title: const Text('Enviar agora'),
+                  subtitle: const Text(
+                    'Desative para salvar como rascunho e programar depois.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () async {
+              try {
+                await ref.read(apiClientProvider).createAdminPanelNotification({
+                  'title': title.text,
+                  'message': message.text,
+                  'mediaType': mediaType,
+                  'mediaUrl': mediaUrl.text,
+                  'targetUrl': targetUrl.text,
+                  'targetType': targetType,
+                  if (targetType == 'user')
+                    'targetEmail': targetEmail.text.trim(),
+                  'sendNow': sendNow,
+                  if (startsAt.text.trim().isNotEmpty)
+                    'startsAt': startsAt.text.trim(),
+                  if (expiresAt.text.trim().isNotEmpty)
+                    'expiresAt': expiresAt.text.trim(),
+                });
+                if (context.mounted) {
+                  Navigator.pop(dialogContext);
+                  ref.invalidate(adminPanelNotificationsProvider);
+                  showSuccessToast(
+                    context,
+                    sendNow ? 'Notificação enviada.' : 'Rascunho salvo.',
+                  );
+                }
+              } catch (error) {
+                if (context.mounted) showErrorToast(context, error.toString());
+              }
+            },
+            child: Text(sendNow ? 'Enviar' : 'Salvar'),
+          ),
+        ],
+      ),
+    ),
+  );
 }
 
 class _AdminRecordsWorkspace extends ConsumerStatefulWidget {
@@ -4692,6 +5124,12 @@ const _adminImageTypeGroup = XTypeGroup(
   ],
 );
 
+const _adminNotificationMediaTypeGroup = XTypeGroup(
+  label: 'Mídia de notificação',
+  extensions: ['png', 'jpg', 'jpeg', 'webp', 'gif', 'mp4', 'webm', 'json'],
+  mimeTypes: ['image/*', 'video/*', 'application/json', 'text/json'],
+);
+
 String _guessAdminMimeType(String fileName, String? candidate) {
   final typed = candidate?.trim();
   if (typed != null && typed.isNotEmpty) return typed;
@@ -4700,6 +5138,23 @@ String _guessAdminMimeType(String fileName, String? candidate) {
   if (lower.endsWith('.ico')) return 'image/x-icon';
   if (lower.endsWith('.webp')) return 'image/webp';
   if (lower.endsWith('.png')) return 'image/png';
+  return 'image/jpeg';
+}
+
+String _guessAdminNotificationMimeType(String fileName, String? candidate) {
+  final typed = candidate?.trim();
+  if (typed != null &&
+      typed.isNotEmpty &&
+      typed != 'application/octet-stream') {
+    return typed;
+  }
+  final lower = fileName.toLowerCase();
+  if (lower.endsWith('.mp4')) return 'video/mp4';
+  if (lower.endsWith('.webm')) return 'video/webm';
+  if (lower.endsWith('.gif')) return 'image/gif';
+  if (lower.endsWith('.json')) return 'application/json';
+  if (lower.endsWith('.png')) return 'image/png';
+  if (lower.endsWith('.webp')) return 'image/webp';
   return 'image/jpeg';
 }
 

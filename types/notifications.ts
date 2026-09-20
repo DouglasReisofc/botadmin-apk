@@ -34,6 +34,32 @@ export type UserNotification = {
   readAt: string | null;
 };
 
+export type AdminPanelNotificationStatus =
+  | "draft"
+  | "scheduled"
+  | "sending"
+  | "sent"
+  | "cancelled";
+
+export type AdminPanelNotification = {
+  id: number;
+  title: string;
+  message: string;
+  contentJson: Record<string, unknown> | null;
+  mediaType: string | null;
+  mediaUrl: string | null;
+  targetUrl: string | null;
+  targetType: "all" | "user";
+  targetUserId: number | null;
+  status: AdminPanelNotificationStatus;
+  startsAt: string | null;
+  expiresAt: string | null;
+  sentAt: string | null;
+  recipientCount: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type NotificationSpeechMode = "browser" | "api";
 
 export type UserNotificationAudioSettings = {

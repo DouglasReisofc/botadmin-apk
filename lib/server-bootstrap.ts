@@ -3,6 +3,7 @@ import { ensureAutoDownWebSocketServer } from "./autodown-websocket-server";
 import { ensureWhatsappCallMediaWebSocketServer } from "./whatsapp-call-media-websocket-server";
 import { ensureWhatsappRealtimeWebSocketServer } from "./whatsapp-realtime-websocket-server";
 import { startAdminCampaignDispatcher } from "./admin-campaign-dispatcher";
+import { startAdminPanelNotificationDispatcher } from "./admin-panel-notification-dispatcher";
 import { startAdsDispatcher } from "./bot-ads-dispatcher";
 import { startBotAdCampaignDispatcher } from "./bot-ad-campaign-dispatcher";
 import { startAntiInactivityDispatcher } from "./bot-anti-inactivity-dispatcher";
@@ -37,6 +38,7 @@ if (!runtime.__botAdminServerBootstrap && typeof process !== "undefined" && !isB
     startRedisSingleton("ads-dispatcher", startAdsDispatcher);
     startRedisSingleton("bot-ad-campaign-dispatcher", startBotAdCampaignDispatcher);
     startRedisSingleton("admin-campaign-dispatcher", startAdminCampaignDispatcher);
+    startRedisSingleton("admin-panel-notification-dispatcher", startAdminPanelNotificationDispatcher);
     startRedisSingleton("anti-inactivity-dispatcher", startAntiInactivityDispatcher);
     startRedisSingleton("horapg-dispatcher", startHorapgDispatcher);
     startRedisSingleton("schedule-dispatcher", startScheduleDispatcher);

@@ -3407,6 +3407,36 @@ export const ensureUserNotificationTable = async () =>
   `);
   });
 
+export const ensureAdminPanelNotificationTable = async () =>
+  runEnsure("admin-panel-notification", async () => {
+    const db = getDb();
+    await db.query(`
+      CREATE TABLE IF NOT EXISTS admin_panel_notifications (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        title VARCHAR(255) NOT NULL,
+        message TEXT NOT NULL,
+        content_json LONGTEXT NULL,
+        media_type VARCHAR(32) NULL,
+        media_url TEXT NULL,
+        target_url TEXT NULL,
+        target_type ENUM('all','user') NOT NULL DEFAULT 'all',
+        target_user_id INT NULL,
+        status ENUM('draft','scheduled','sending','sent','cancelled') NOT NULL DEFAULT 'draft',
+        starts_at DATETIME NULL,
+        expires_at DATETIME NULL,
+        sent_at DATETIME NULL,
+        recipient_count INT NOT NULL DEFAULT 0,
+        created_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_admin_panel_notifications_due (status, starts_at),
+        INDEX idx_admin_panel_notifications_expiry (expires_at),
+        CONSTRAINT fk_admin_panel_notifications_user FOREIGN KEY (target_user_id) REFERENCES users(id) ON DELETE SET NULL,
+        CONSTRAINT fk_admin_panel_notifications_creator FOREIGN KEY (created_by) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB;
+    `);
+  });
+
 export const ensurePushSubscriptionTable = async () =>
   runEnsure("push-subscription", async () => {
   const db = getDb();

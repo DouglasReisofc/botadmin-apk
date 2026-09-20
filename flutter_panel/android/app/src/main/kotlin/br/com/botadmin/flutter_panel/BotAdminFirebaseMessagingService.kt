@@ -1,5 +1,7 @@
 package br.com.botadmin.flutter_panel
 
+import com.botadmin.shop.R
+
 import android.Manifest
 import android.app.ActivityManager
 import android.app.Notification
@@ -161,7 +163,7 @@ object BotAdminMessageNotifier {
         state.lines.forEach { style.addLine(it) }
 
         val notification = Notification.Builder(context, MESSAGE_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_botadmin_notification)
             .setContentTitle(chatTitle)
             .setContentText(body)
             .setStyle(style)
@@ -182,7 +184,7 @@ object BotAdminMessageNotifier {
         notificationManager.notify(chatNotificationId, notification)
 
         val summary = Notification.Builder(context, MESSAGE_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_botadmin_notification)
             .setContentTitle("BotAdmin")
             .setContentText("${state.totalUnread} mensagens de ${state.totalChats} conversa${if (state.totalChats == 1) "" else "s"}")
             .setNumber(state.totalUnread)
@@ -217,7 +219,7 @@ object BotAdminMessageNotifier {
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
         ensureMessageChannel(notificationManager)
         val notification = Notification.Builder(context, MESSAGE_CHANNEL_ID)
-            .setSmallIcon(android.R.drawable.stat_notify_chat)
+            .setSmallIcon(R.drawable.ic_stat_botadmin_notification)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(Notification.BigTextStyle().bigText(body))

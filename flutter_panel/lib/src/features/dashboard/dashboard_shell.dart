@@ -34,6 +34,7 @@ import '../chat/media_players.dart';
 import '../groups/group_settings_screen.dart';
 import '../support/user_support_chat_screen.dart';
 import 'dashboard_controller.dart';
+import 'user_notification_center.dart';
 import 'broadcast_panel.dart';
 import 'flows_panel.dart';
 import 'internal_groups_panel.dart';
@@ -3398,12 +3399,14 @@ class _MainRail extends ConsumerWidget {
               onPressed: () =>
                   ref.read(authControllerProvider.notifier).logout(),
             )
-          else
+          else ...[
+            const UserNotificationBell(),
             _ProfileSwitcherButton(
               userName: userName,
               instances: instances,
               activeInstance: activeInstance,
             ),
+          ],
           SizedBox(height: 8),
         ],
       ),
@@ -8544,6 +8547,7 @@ class _MobileDashboardHeader extends ConsumerWidget {
         child: Row(
           children: [
             const Expanded(child: _BotAdminBrandHeader()),
+            if (!isPartner) const UserNotificationBell(),
             PopupMenuButton<_ListAction>(
               tooltip: 'Mais',
               icon: Icon(Icons.more_vert_rounded, size: 25, color: wa.icon),

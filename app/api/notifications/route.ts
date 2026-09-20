@@ -6,6 +6,7 @@ import {
   getUnreadCountForUser,
   markNotificationsAsRead,
   deleteAllNotificationsForUser,
+  deleteNotificationForUser,
 } from "lib/user-notifications";
 
 export async function GET() {
@@ -65,14 +66,19 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
     const user = await getCurrentUser();
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
 
-    await deleteAllNotificationsForUser(user.id);
+    const id = Number(new URL(request.url).searchParams.get("id"));
+    if (Number.isInteger(id) && id > 0) {
+      await deleteNotificationForUser(user.id, id);
+    } else {
+      await deleteAllNotificationsForUser(user.id);
+    }
     return NextResponse.json({ message: "Notificações apagadas." });
   } catch (error) {
     console.error("Failed to delete notifications", error);

@@ -1,5 +1,7 @@
 package br.com.botadmin.flutter_panel
 
+import com.botadmin.shop.R
+
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -259,7 +261,7 @@ class BotAdminRealtimeNotificationService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return Notification.Builder(this, RealtimeServiceChannelId)
-            .setSmallIcon(android.R.drawable.stat_notify_sync)
+            .setSmallIcon(R.drawable.ic_stat_botadmin_notification)
             .setContentTitle("BotAdmin")
             .setContentText("Ativo")
             .setOngoing(true)

@@ -223,3 +223,15 @@ export const deleteAllNotificationsForUser = async (userId: number): Promise<voi
     [userId],
   );
 };
+
+export const deleteNotificationForUser = async (
+  userId: number,
+  notificationId: number,
+): Promise<void> => {
+  await ensureUserNotificationTable();
+  const db = getDb();
+  await db.query(
+    `DELETE FROM user_notifications WHERE user_id = ? AND id = ?`,
+    [userId, notificationId],
+  );
+};

@@ -285,6 +285,86 @@ class BotAdminApiClient {
     );
   }
 
+  Future<({List<Map<String, dynamic>> items, int unreadCount})>
+  loadUserNotifications() async {
+    final json = await getJson('/api/notifications');
+    final raw = json['notifications'];
+    final items = raw is List
+        ? raw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .where((item) {
+                final metadata = item['metadata'];
+                if (metadata is! Map) return true;
+                final expiresAt = DateTime.tryParse(
+                  '${metadata['expiresAt'] ?? ''}',
+                );
+                return expiresAt == null || expiresAt.isAfter(DateTime.now());
+              })
+              .toList()
+        : <Map<String, dynamic>>[];
+    final visibleUnread = items.where((item) => item['isRead'] != true).length;
+    return (items: items, unreadCount: visibleUnread);
+  }
+
+  Future<void> markUserNotificationsRead(Object ids) async {
+    await postJson('/api/notifications', data: {'notificationIds': ids});
+  }
+
+  Future<void> deleteUserNotifications() async {
+    await deleteJson('/api/notifications');
+  }
+
+  Future<void> deleteUserNotification(int id) async {
+    await deleteJson('/api/notifications?id=$id');
+  }
+
+  Future<List<Map<String, dynamic>>> loadAdminPanelNotifications() async {
+    final json = await getJson('/api/admin/panel-notifications');
+    final raw = json['notifications'];
+    return raw is List
+        ? raw
+              .whereType<Map>()
+              .map((item) => Map<String, dynamic>.from(item))
+              .toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  Future<Map<String, dynamic>> createAdminPanelNotification(
+    Map<String, dynamic> data,
+  ) async {
+    return postJson('/api/admin/panel-notifications', data: data);
+  }
+
+  Future<Map<String, dynamic>> uploadAdminPanelNotificationMedia({
+    required Uint8List bytes,
+    required String fileName,
+    required String mimeType,
+  }) async {
+    final form = FormData.fromMap({
+      'file': MultipartFile.fromBytes(
+        bytes,
+        filename: fileName,
+        contentType: DioMediaType.parse(
+          mimeType.isEmpty ? 'application/octet-stream' : mimeType,
+        ),
+      ),
+    });
+    final json = await postFormData(
+      '/api/admin/notifications/push/upload',
+      form,
+    );
+    return _map(json['media']);
+  }
+
+  Future<Map<String, dynamic>> sendAdminPanelNotification(int id) async {
+    return postJson('/api/admin/panel-notifications/$id/send');
+  }
+
+  Future<void> cancelAdminPanelNotification(int id) async {
+    await deleteJson('/api/admin/panel-notifications/$id');
+  }
+
   String _absoluteInviteUrl(String raw) {
     return AppConfig.publicInviteUrl(raw);
   }
@@ -1316,10 +1396,7 @@ class BotAdminApiClient {
 
   Future<Map<String, dynamic>> saveAdminRealtimeNotificationSettings(
     Map<String, dynamic> settings,
-  ) => putJson(
-    '/api/admin/realtime-notifications',
-    data: settings,
-  );
+  ) => putJson('/api/admin/realtime-notifications', data: settings);
 
   Future<List<AdminSupportThreadSummary>> loadUserSupportThreads() async {
     final json = await getJson('/api/support/threads');
