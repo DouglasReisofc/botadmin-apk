@@ -6,12 +6,12 @@
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
     "sizeBytes": 89875783,
-    "updatedAt": "2026-09-20T03:30:00.000Z",
+    "updatedAt": "2026-09-20T04:15:00.000Z",
     "buildType": "release",
-    "versionName": "0.1.301",
-    "versionCode": 307
+    "versionName": "0.1.302",
+    "versionCode": 308
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.301 (307): atualização real dos grupos no modal do robô e suporte com emojis, GIFs, figurinhas, anexos e áudio."
+  "details": "APK Flutter nativo 0.1.302 (308): balões corretos no atendimento interno, players de áudio/vídeo e chat de suporte completo."
 }

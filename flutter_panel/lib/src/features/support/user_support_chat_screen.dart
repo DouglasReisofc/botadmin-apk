@@ -15,6 +15,7 @@ import '../../core/voice_recorder.dart';
 import '../../models/admin_support.dart';
 import '../../models/conversation_thread.dart';
 import '../chat/emoji_catalog.dart';
+import '../chat/media_players.dart';
 
 class UserSupportChatScreen extends ConsumerStatefulWidget {
   const UserSupportChatScreen({
@@ -300,16 +301,19 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
           IconButton(
             tooltip: 'Emojis',
             onPressed: _sending ? null : _openEmojiPicker,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
             icon: const Icon(Icons.emoji_emotions_outlined),
           ),
           IconButton(
             tooltip: 'GIFs e figurinhas',
             onPressed: _sending ? null : _openGiphyPicker,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
             icon: const Icon(Icons.gif_box_outlined),
           ),
           IconButton(
             tooltip: 'Anexar mídia ou documento',
             onPressed: _sending ? null : _pickAndSendMedia,
+            constraints: const BoxConstraints.tightFor(width: 38, height: 42),
             icon: const Icon(Icons.attach_file_rounded),
           ),
           Expanded(
@@ -335,6 +339,7 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
             onPressed: _sending || _recordingBusy
                 ? null
                 : (_recording ? _stopAndSendVoice : _startVoiceRecording),
+            constraints: const BoxConstraints.tightFor(width: 40, height: 42),
             style: IconButton.styleFrom(
               backgroundColor: _recording ? Colors.redAccent : wa.inputFill,
               foregroundColor: _recording ? Colors.white : wa.textPrimary,
@@ -564,40 +569,9 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
 
   Future<void> _openGiphyPicker() async {
     final api = ref.read(apiClientProvider);
-    final items = await api
-        .searchGiphy(limit: 18)
-        .catchError((_) => const <GiphyMediaItem>[]);
-    if (!mounted || items.isEmpty) {
-      if (mounted)
-        showErrorToast(context, 'Não foi possível carregar GIFs agora.');
-      return;
-    }
     final selected = await showDialog<GiphyMediaItem>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('GIFs e figurinhas'),
-        content: SizedBox(
-          width: 420,
-          height: 360,
-          child: GridView.builder(
-            gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 3,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
-            ),
-            itemCount: items.length,
-            itemBuilder: (_, index) => InkWell(
-              onTap: () => Navigator.of(dialogContext).pop(items[index]),
-              child: BotAdminCachedImage(
-                imageUrl: items[index].previewUrl,
-                fit: BoxFit.cover,
-                errorWidget: (_, _, _) =>
-                    const Icon(Icons.broken_image_outlined),
-              ),
-            ),
-          ),
-        ),
-      ),
+      builder: (_) => _SupportGiphyPicker(api: api),
     );
     if (selected == null || !mounted) return;
     try {
@@ -676,6 +650,137 @@ class _UserSupportMessageBubble extends StatelessWidget {
   }
 }
 
+class _SupportGiphyPicker extends StatefulWidget {
+  const _SupportGiphyPicker({required this.api});
+
+  final BotAdminApiClient api;
+
+  @override
+  State<_SupportGiphyPicker> createState() => _SupportGiphyPickerState();
+}
+
+class _SupportGiphyPickerState extends State<_SupportGiphyPicker> {
+  final _searchController = TextEditingController();
+  String _type = 'gifs';
+  late Future<List<GiphyMediaItem>> _items;
+
+  @override
+  void initState() {
+    super.initState();
+    _items = widget.api.searchGiphy(type: _type, limit: 24);
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _load() {
+    setState(() {
+      _items = widget.api.searchGiphy(
+        query: _searchController.text.trim(),
+        type: _type,
+        limit: 24,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    return AlertDialog(
+      title: const Text('GIFs e figurinhas'),
+      contentPadding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+      content: SizedBox(
+        width: size.width < 500 ? size.width - 64 : 420,
+        height: size.height < 600 ? size.height * 0.55 : 430,
+        child: Column(
+          children: [
+            Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('GIFs'),
+                  selected: _type == 'gifs',
+                  onSelected: (_) {
+                    _type = 'gifs';
+                    _load();
+                  },
+                ),
+                const SizedBox(width: 8),
+                ChoiceChip(
+                  label: const Text('Figurinhas'),
+                  selected: _type == 'stickers',
+                  onSelected: (_) {
+                    _type = 'stickers';
+                    _load();
+                  },
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _searchController,
+              onSubmitted: (_) => _load(),
+              decoration: InputDecoration(
+                hintText: 'Pesquisar',
+                prefixIcon: const Icon(Icons.search_rounded),
+                suffixIcon: IconButton(
+                  tooltip: 'Buscar',
+                  onPressed: _load,
+                  icon: const Icon(Icons.arrow_forward_rounded),
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: FutureBuilder<List<GiphyMediaItem>>(
+                future: _items,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState != ConnectionState.done) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (snapshot.hasError) {
+                    return Center(
+                      child: TextButton.icon(
+                        onPressed: _load,
+                        icon: const Icon(Icons.refresh_rounded),
+                        label: const Text('Tentar novamente'),
+                      ),
+                    );
+                  }
+                  final items = snapshot.data ?? const <GiphyMediaItem>[];
+                  if (items.isEmpty) {
+                    return const Center(child: Text('Nada encontrado.'));
+                  }
+                  return GridView.builder(
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 3,
+                          crossAxisSpacing: 8,
+                          mainAxisSpacing: 8,
+                        ),
+                    itemCount: items.length,
+                    itemBuilder: (_, index) => InkWell(
+                      onTap: () => Navigator.of(context).pop(items[index]),
+                      child: BotAdminCachedImage(
+                        imageUrl: items[index].previewUrl,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, _, _) =>
+                            const Icon(Icons.broken_image_outlined),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _UserSupportMediaPreview extends StatelessWidget {
   const _UserSupportMediaPreview({required this.media});
 
@@ -696,6 +801,21 @@ class _UserSupportMediaPreview extends StatelessWidget {
           fit: BoxFit.cover,
           errorWidget: (_, _, _) => _fileCard(wa),
         ),
+      );
+    }
+    if (url != null && media.mediaType == 'audio') {
+      return InlineAudioPlayer(
+        url: url,
+        title: media.filename ?? 'Áudio',
+        mimeType: media.mimeType,
+        compact: true,
+      );
+    }
+    if (url != null && media.mediaType == 'video') {
+      return InlineVideoPlayer(
+        url: url,
+        title: media.filename,
+        mimeType: media.mimeType,
       );
     }
     return _fileCard(wa);

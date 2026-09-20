@@ -20,6 +20,7 @@ import '../../core/wa_theme.dart';
 import '../../models/admin_support.dart';
 import '../../models/migration_models.dart';
 import '../auth/auth_controller.dart';
+import '../chat/media_players.dart';
 
 enum AdminPanelSection {
   support,
@@ -1624,7 +1625,10 @@ class _SupportConversationPaneState
                   ),
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
-                    return _SupportMessageBubble(message: messages[index]);
+                    return _SupportMessageBubble(
+                      message: messages[index],
+                      isAdminThread: payload.thread.isAdminThread,
+                    );
                   },
                 );
               },
@@ -2119,14 +2123,18 @@ class _ThreadActionButton extends StatelessWidget {
 }
 
 class _SupportMessageBubble extends StatelessWidget {
-  const _SupportMessageBubble({required this.message});
+  const _SupportMessageBubble({
+    required this.message,
+    required this.isAdminThread,
+  });
 
   final AdminSupportMessage message;
+  final bool isAdminThread;
 
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
-    final outbound = message.isOutbound;
+    final outbound = message.isOutboundForAdmin(isAdminThread: isAdminThread);
     final text = message.text?.trim();
     final media = message.media;
     return Align(
@@ -2198,6 +2206,21 @@ class _SupportMediaPreview extends StatelessWidget {
           fit: BoxFit.cover,
           errorBuilder: (_, _, _) => _DocumentPreview(media: media),
         ),
+      );
+    }
+    if (media.mediaType == 'audio') {
+      return InlineAudioPlayer(
+        url: url,
+        title: media.filename ?? 'Áudio',
+        mimeType: media.mimeType,
+        compact: true,
+      );
+    }
+    if (media.mediaType == 'video') {
+      return InlineVideoPlayer(
+        url: url,
+        title: media.filename,
+        mimeType: media.mimeType,
       );
     }
     return _DocumentPreview(media: media);

@@ -189,10 +189,13 @@ class AdminSupportMessage {
   final int? senderUserId;
   final AdminSupportMedia? media;
 
-  bool get isOutbound =>
-      direction == 'outbound' ||
-      senderRole == 'admin' ||
-      senderRole == 'system';
+  /// `direction` is stored from the account owner's perspective. In the
+  /// internal admin thread a user's message is also `outbound`.
+  bool isOutboundForAdmin({required bool isAdminThread}) => isAdminThread
+      ? senderRole == 'admin' || senderRole == 'system'
+      : senderRole == 'admin' ||
+            senderRole == 'system' ||
+            (senderRole == 'user' && direction == 'outbound');
 
   factory AdminSupportMessage.fromJson(Map<String, dynamic> json) {
     final mediaJson = json['media'];
