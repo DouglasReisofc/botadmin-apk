@@ -2139,6 +2139,7 @@ Future<void> _openGroupBotSettingsPanel(BuildContext context, BotGroup group) {
   final size = MediaQuery.sizeOf(context);
   return showBotAdminBottomSheet<void>(
     context: context,
+    useRootNavigator: true,
     isScrollControlled: true,
     useSafeArea: true,
     enableDrag: true,
@@ -2173,11 +2174,7 @@ Future<void> _openGroupBotSettingsPanel(BuildContext context, BotGroup group) {
                 Expanded(
                   child: GroupSettingsScreen(
                     group: group,
-                    leading: IconButton(
-                      onPressed: () => Navigator.of(context).maybePop(),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Fechar',
-                    ),
+                    showCloseButton: true,
                   ),
                 ),
               ],
@@ -2942,6 +2939,11 @@ Future<void> _openGroupRobotPicker(BuildContext context, WidgetRef ref) async {
   _openConversationThreadFromList(ref, thread);
 
   await WidgetsBinding.instance.endOfFrame;
+  // The picker dialog is still completing its reverse transition on Android
+  // when its Future resolves. Let that route settle before pushing the
+  // settings sheet, otherwise the sheet can be dismissed together with the
+  // picker and only the conversation remains visible.
+  await Future<void>.delayed(const Duration(milliseconds: 240));
   if (!context.mounted) return;
   await _openGroupBotSettingsPanel(context, group);
 }

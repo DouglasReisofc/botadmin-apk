@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
+import '../../core/botadmin_cached_image.dart';
 import '../../core/wa_theme.dart';
 import '../../core/top_toast.dart';
 import '../../models/bot_group.dart';
@@ -13,10 +14,16 @@ import '../dashboard/dashboard_controller.dart';
 import 'group_settings_controller.dart';
 
 class GroupSettingsScreen extends ConsumerStatefulWidget {
-  const GroupSettingsScreen({super.key, required this.group, this.leading});
+  const GroupSettingsScreen({
+    super.key,
+    required this.group,
+    this.leading,
+    this.showCloseButton = false,
+  });
 
   final BotGroup? group;
   final Widget? leading;
+  final bool showCloseButton;
 
   @override
   ConsumerState<GroupSettingsScreen> createState() =>
@@ -72,6 +79,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
           _GroupHeader(
             group: group,
             leading: widget.leading,
+            showCloseButton: widget.showCloseButton,
             onOpenActivations: () {
               final bundle = ref
                   .read(groupSettingsProvider(group.id))
@@ -899,11 +907,13 @@ class _GroupHeader extends StatelessWidget {
   const _GroupHeader({
     required this.group,
     required this.onOpenActivations,
+    this.showCloseButton = false,
     this.leading,
   });
 
   final BotGroup group;
   final Widget? leading;
+  final bool showCloseButton;
   final VoidCallback onOpenActivations;
 
   @override
@@ -911,12 +921,7 @@ class _GroupHeader extends StatelessWidget {
     return Material(
       color: Theme.of(context).colorScheme.surface,
       child: ListTile(
-        leading:
-            leading ??
-            CircleAvatar(
-              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-              child: const Icon(Icons.groups_rounded),
-            ),
+        leading: leading ?? _GroupAvatar(avatarUrl: group.avatarUrl),
         title: Text(
           group.name,
           maxLines: 1,
@@ -924,14 +929,53 @@ class _GroupHeader extends StatelessWidget {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
         subtitle: Text(
-          group.remoteJid,
+          'ID: ${group.remoteJid}',
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
-        trailing: FilledButton.tonalIcon(
-          onPressed: onOpenActivations,
-          icon: const Icon(Icons.settings_rounded),
-          label: const Text('Ativacoes'),
+        trailing: showCloseButton
+            ? IconButton(
+                onPressed: () => Navigator.of(context).maybePop(),
+                tooltip: 'Fechar',
+                icon: const Icon(Icons.close_rounded),
+              )
+            : FilledButton.tonalIcon(
+                onPressed: onOpenActivations,
+                icon: const Icon(Icons.settings_rounded),
+                label: const Text('Ativacoes'),
+              ),
+      ),
+    );
+  }
+}
+
+class _GroupAvatar extends StatelessWidget {
+  const _GroupAvatar({this.avatarUrl});
+
+  final String? avatarUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final raw = avatarUrl?.trim() ?? '';
+    final fallback = CircleAvatar(
+      backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+      child: const Icon(Icons.groups_rounded),
+    );
+    if (raw.isEmpty) return fallback;
+    return ClipOval(
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: BotAdminCachedImage(
+          imageUrl: raw,
+          width: 48,
+          height: 48,
+          fit: BoxFit.cover,
+          fadeInDuration: Duration.zero,
+          fadeOutDuration: Duration.zero,
+          placeholderFadeInDuration: Duration.zero,
+          placeholder: (_, _) => fallback,
+          errorWidget: (_, _, _) => fallback,
         ),
       ),
     );
