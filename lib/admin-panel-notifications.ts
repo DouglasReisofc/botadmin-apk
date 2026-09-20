@@ -68,6 +68,18 @@ const normalizeUrl = (value: unknown): string | null => {
   throw new Error("Use um link http(s) ou um caminho interno iniciado por '/'.");
 };
 
+const inferMediaType = (value: string | null, explicit: unknown): string | null => {
+  const requested = typeof explicit === "string" ? explicit.trim().toLowerCase() : "";
+  if (requested) return requested.slice(0, 32);
+  if (!value) return null;
+  const path = value.split(/[?#]/, 1)[0].toLowerCase();
+  if (path.endsWith(".json")) return "lottie";
+  if (path.endsWith(".gif")) return "gif";
+  if (/\.(mp4|webm|mov|m4v)$/.test(path)) return "video";
+  if (/\.(png|jpe?g|webp|svg|avif)$/.test(path)) return "image";
+  return null;
+};
+
 const getRow = async (id: number): Promise<AdminPanelNotification | null> => {
   await ensureAdminPanelNotificationTable();
   const [rows] = await getDb().query<NotificationRow[]>(
@@ -114,8 +126,8 @@ export const createAdminPanelNotification = async (
   const contentJson = input.contentJson && typeof input.contentJson === "object"
     ? JSON.stringify(input.contentJson).slice(0, 12000)
     : null;
-  const mediaType = typeof input.mediaType === "string" ? input.mediaType.trim().slice(0, 32) || null : null;
   const mediaUrl = normalizeUrl(input.mediaUrl);
+  const mediaType = inferMediaType(mediaUrl, input.mediaType);
   const targetUrl = normalizeUrl(input.targetUrl);
   const shouldSchedule = input.sendNow === true || input.status === "scheduled" || (typeof input.startsAt === "string" && input.startsAt.trim().length > 0);
   const status: AdminPanelNotificationStatus = shouldSchedule ? "scheduled" : "draft";

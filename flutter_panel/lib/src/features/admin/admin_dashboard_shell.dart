@@ -163,6 +163,13 @@ final adminUsersProvider = FutureProvider.autoDispose<List<_AdminRecord>>(
   (ref) => _loadAdminUsers(ref.watch(apiClientProvider)),
 );
 
+/// Lista leve usada pelo compositor de notificações. Mantemos a mesma fonte
+/// do cadastro de usuários para evitar que o admin precise digitar e-mails.
+final adminNotificationUsersProvider =
+    FutureProvider.autoDispose<List<_AdminRecord>>(
+      (ref) => _loadAdminUsers(ref.watch(apiClientProvider)),
+    );
+
 final adminBotInterageProvider = FutureProvider.autoDispose<List<_AdminRecord>>((
   ref,
 ) async {
@@ -3569,127 +3576,133 @@ class _AdminPanelNotificationsWorkspace extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final async = ref.watch(adminPanelNotificationsProvider);
     final wa = WaTheme.of(context);
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: async.when(
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (error, _) =>
-            Center(child: Text('Não foi possível carregar: $error')),
-        data: (items) => Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.notifications_active_outlined, color: wa.accent),
-                const SizedBox(width: 10),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Notificações',
-                        style: TextStyle(
-                          fontSize: 22,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      Text(
-                        'Envie avisos ricos para o painel e celulares.',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                FilledButton.icon(
-                  onPressed: () => _openNotificationComposer(context, ref),
-                  icon: const Icon(Icons.add_rounded),
-                  label: const Text('Nova notificação'),
-                ),
-              ],
-            ),
-            const SizedBox(height: 18),
-            Expanded(
-              child: items.isEmpty
-                  ? const Center(
-                      child: Text('Nenhuma notificação criada ainda.'),
-                    )
-                  : ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (_, index) {
-                        final item = items[index];
-                        final status = item['status']?.toString() ?? 'draft';
-                        final id = int.tryParse('${item['id']}');
-                        return Card(
-                          child: ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: wa.accent.withOpacity(.12),
-                              child: Icon(
-                                Icons.notifications_outlined,
-                                color: wa.accent,
-                              ),
-                            ),
-                            title: Text(
-                              item['title']?.toString() ?? '',
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '${item['message'] ?? ''}\n$status · ${item['recipientCount'] ?? 0} destinatários',
-                            ),
-                            isThreeLine: true,
-                            trailing: Wrap(
-                              spacing: 4,
-                              children: [
-                                if (id != null)
-                                  IconButton(
-                                    tooltip: 'Reutilizar',
-                                    onPressed: () => _openNotificationComposer(
-                                      context,
-                                      ref,
-                                      initial: item,
-                                    ),
-                                    icon: const Icon(Icons.copy_outlined),
-                                  ),
-                                if (id != null &&
-                                    (status == 'draft' ||
-                                        status == 'scheduled'))
-                                  IconButton(
-                                    tooltip: 'Enviar agora',
-                                    onPressed: () async {
-                                      await ref
-                                          .read(apiClientProvider)
-                                          .sendAdminPanelNotification(id);
-                                      ref.invalidate(
-                                        adminPanelNotificationsProvider,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.send_outlined),
-                                  ),
-                                if (id != null &&
-                                    status != 'cancelled' &&
-                                    status != 'sent')
-                                  IconButton(
-                                    tooltip: 'Cancelar',
-                                    onPressed: () async {
-                                      await ref
-                                          .read(apiClientProvider)
-                                          .cancelAdminPanelNotification(id);
-                                      ref.invalidate(
-                                        adminPanelNotificationsProvider,
-                                      );
-                                    },
-                                    icon: const Icon(Icons.close_rounded),
-                                  ),
-                              ],
-                            ),
+    return ColoredBox(
+      color: wa.panel,
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: async.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (error, _) =>
+              Center(child: Text('Não foi possível carregar: $error')),
+          data: (items) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.notifications_active_outlined, color: wa.accent),
+                  const SizedBox(width: 10),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Notificações',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w800,
                           ),
-                        );
-                      },
+                        ),
+                        Text(
+                          'Envie avisos ricos para o painel e celulares.',
+                          style: TextStyle(color: Colors.grey),
+                        ),
+                      ],
                     ),
-            ),
-          ],
+                  ),
+                  FilledButton.icon(
+                    onPressed: () => _openNotificationComposer(context, ref),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Nova notificação'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Expanded(
+                child: items.isEmpty
+                    ? const Center(
+                        child: Text('Nenhuma notificação criada ainda.'),
+                      )
+                    : ListView.separated(
+                        itemCount: items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemBuilder: (_, index) {
+                          final item = items[index];
+                          final status = item['status']?.toString() ?? 'draft';
+                          final id = int.tryParse('${item['id']}');
+                          return Card(
+                            color: wa.panel,
+                            surfaceTintColor: Colors.transparent,
+                            child: ListTile(
+                              leading: CircleAvatar(
+                                backgroundColor: wa.accent.withOpacity(.12),
+                                child: Icon(
+                                  Icons.notifications_outlined,
+                                  color: wa.accent,
+                                ),
+                              ),
+                              title: Text(
+                                item['title']?.toString() ?? '',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                              subtitle: Text(
+                                '${item['message'] ?? ''}\n$status · ${item['recipientCount'] ?? 0} destinatários',
+                              ),
+                              isThreeLine: true,
+                              trailing: Wrap(
+                                spacing: 4,
+                                children: [
+                                  if (id != null)
+                                    IconButton(
+                                      tooltip: 'Reutilizar',
+                                      onPressed: () =>
+                                          _openNotificationComposer(
+                                            context,
+                                            ref,
+                                            initial: item,
+                                          ),
+                                      icon: const Icon(Icons.copy_outlined),
+                                    ),
+                                  if (id != null &&
+                                      (status == 'draft' ||
+                                          status == 'scheduled'))
+                                    IconButton(
+                                      tooltip: 'Enviar agora',
+                                      onPressed: () async {
+                                        await ref
+                                            .read(apiClientProvider)
+                                            .sendAdminPanelNotification(id);
+                                        ref.invalidate(
+                                          adminPanelNotificationsProvider,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.send_outlined),
+                                    ),
+                                  if (id != null &&
+                                      status != 'cancelled' &&
+                                      status != 'sent')
+                                    IconButton(
+                                      tooltip: 'Cancelar',
+                                      onPressed: () async {
+                                        await ref
+                                            .read(apiClientProvider)
+                                            .cancelAdminPanelNotification(id);
+                                        ref.invalidate(
+                                          adminPanelNotificationsProvider,
+                                        );
+                                      },
+                                      icon: const Icon(Icons.close_rounded),
+                                    ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -3740,256 +3753,528 @@ Future<void> _showNotificationComposer(
   final targetUrl = TextEditingController(
     text: initial?['targetUrl']?.toString(),
   );
-  final targetEmail = TextEditingController();
-  final startsAt = TextEditingController();
-  final expiresAt = TextEditingController();
-  String mediaType = 'image';
-  String targetType = 'all';
-  bool sendNow = true;
+  final startsAt = TextEditingController(
+    text: initial?['startsAt']?.toString(),
+  );
+  final expiresAt = TextEditingController(
+    text: initial?['expiresAt']?.toString(),
+  );
+  String targetType = initial?['targetType']?.toString() == 'user'
+      ? 'user'
+      : 'all';
+  int? targetUserId = int.tryParse('${initial?['targetUserId'] ?? ''}');
+  String? targetUserLabel;
+  bool sendNow = initial == null || initial?['status'] == 'sent';
+  bool showAdvanced = false;
+  String? selectedFileName;
+  String? detectedMediaType = initial?['mediaType']?.toString();
+
+  String mediaLabel(String? type) => switch (type) {
+    'video' => 'Vídeo',
+    'gif' => 'GIF animado',
+    'lottie' => 'Animação Lottie',
+    'image' => 'Imagem / banner',
+    _ => 'Sem anexo',
+  };
+
+  void insertMarkup(String marker) {
+    final value = message.value;
+    final selection = value.selection;
+    final selected = selection.isValid && !selection.isCollapsed
+        ? value.text.substring(selection.start, selection.end)
+        : 'texto';
+    final replacement = '$marker$selected$marker';
+    final start = selection.isValid ? selection.start : value.text.length;
+    final end = selection.isValid ? selection.end : value.text.length;
+    final next = value.text.replaceRange(start, end, replacement);
+    message.value = value.copyWith(
+      text: next,
+      selection: TextSelection.collapsed(offset: start + replacement.length),
+    );
+  }
+
   await showDialog<void>(
     context: context,
-    builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setState) => AlertDialog(
-        title: const Text('Nova notificação'),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
+    builder: (dialogContext) {
+      final wa = WaTheme.of(dialogContext);
+      final compact = MediaQuery.sizeOf(dialogContext).width < 600;
+      return StatefulBuilder(
+        builder: (context, setState) => Dialog(
+          backgroundColor: wa.panel,
+          surfaceTintColor: Colors.transparent,
+          insetPadding: EdgeInsets.all(compact ? 12 : 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(color: wa.border),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: 650,
+              maxHeight: MediaQuery.sizeOf(context).height * .9,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                TextField(
-                  controller: title,
-                  decoration: const InputDecoration(
-                    labelText: 'Título',
-                    prefixIcon: Icon(Icons.title),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: message,
-                  minLines: 4,
-                  maxLines: 8,
-                  decoration: const InputDecoration(
-                    labelText: 'Mensagem',
-                    hintText:
-                        'Aceita emojis, links e marcação simples (negrito/itálico).',
-                    alignLabelWithHint: true,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final narrow = constraints.maxWidth < 480;
-                    final fields = <Widget>[
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: mediaType,
-                          decoration: const InputDecoration(labelText: 'Mídia'),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'image',
-                              child: Text('Imagem/banner'),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 18, 14, 16),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        backgroundColor: wa.accentSoft,
+                        child: Icon(Icons.campaign_outlined, color: wa.accent),
+                      ),
+                      const SizedBox(width: 12),
+                      const Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Nova notificação',
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.w800,
+                              ),
                             ),
-                            DropdownMenuItem(
-                              value: 'video',
-                              child: Text('Vídeo'),
-                            ),
-                            DropdownMenuItem(value: 'gif', child: Text('GIF')),
-                            DropdownMenuItem(
-                              value: 'lottie',
-                              child: Text('Lottie JSON'),
+                            SizedBox(height: 3),
+                            Text(
+                              'Crie um aviso claro e envie em poucos passos.',
+                              style: TextStyle(color: Colors.grey),
                             ),
                           ],
-                          onChanged: (value) =>
-                              setState(() => mediaType = value ?? 'image'),
                         ),
                       ),
-                      SizedBox(width: narrow ? 0 : 10, height: narrow ? 10 : 0),
-                      Expanded(
-                        child: DropdownButtonFormField<String>(
-                          value: targetType,
+                      IconButton(
+                        tooltip: 'Fechar',
+                        onPressed: () => Navigator.pop(dialogContext),
+                        icon: const Icon(Icons.close),
+                      ),
+                    ],
+                  ),
+                ),
+                Divider(height: 1, color: wa.border),
+                Flexible(
+                  child: SingleChildScrollView(
+                    padding: EdgeInsets.all(compact ? 16 : 22),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        TextField(
+                          controller: title,
+                          textInputAction: TextInputAction.next,
                           decoration: const InputDecoration(
-                            labelText: 'Público',
+                            labelText: 'Título',
+                            hintText: 'Ex.: Novidade importante',
+                            prefixIcon: Icon(Icons.title),
                           ),
-                          items: const [
-                            DropdownMenuItem(
-                              value: 'all',
-                              child: Text('Todos os usuários'),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          controller: message,
+                          minLines: 5,
+                          maxLines: 9,
+                          decoration: const InputDecoration(
+                            labelText: 'Mensagem',
+                            hintText: 'Escreva o aviso para seus usuários...',
+                            helperText:
+                                'Você pode usar emojis, links, **negrito** e *itálico*.',
+                            alignLabelWithHint: true,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            IconButton(
+                              tooltip: 'Negrito',
+                              onPressed: () => insertMarkup('**'),
+                              icon: const Icon(Icons.format_bold),
                             ),
-                            DropdownMenuItem(
-                              value: 'user',
-                              child: Text('Usuário específico'),
+                            IconButton(
+                              tooltip: 'Itálico',
+                              onPressed: () => insertMarkup('*'),
+                              icon: const Icon(Icons.format_italic),
+                            ),
+                            IconButton(
+                              tooltip: 'Adicionar emoji',
+                              onPressed: () {
+                                final value = message.value;
+                                final position = value.selection.isValid
+                                    ? value.selection.start
+                                    : value.text.length;
+                                message.value = value.copyWith(
+                                  text: value.text.replaceRange(
+                                    position,
+                                    position,
+                                    ' ✨',
+                                  ),
+                                  selection: TextSelection.collapsed(
+                                    offset: position + 2,
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.emoji_emotions_outlined),
+                            ),
+                            const Spacer(),
+                            TextButton.icon(
+                              onPressed: () =>
+                                  setState(() => showAdvanced = !showAdvanced),
+                              icon: Icon(
+                                showAdvanced
+                                    ? Icons.expand_less
+                                    : Icons.tune_outlined,
+                                size: 18,
+                              ),
+                              label: Text(
+                                showAdvanced ? 'Ocultar opções' : 'Mais opções',
+                              ),
                             ),
                           ],
-                          onChanged: (value) =>
-                              setState(() => targetType = value ?? 'all'),
                         ),
-                      ),
-                    ];
-                    return narrow
-                        ? Column(
+                        const SizedBox(height: 8),
+                        DecoratedBox(
+                          decoration: BoxDecoration(
+                            color: wa.panelElevated,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: wa.border),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Row(
+                              children: [
+                                Icon(Icons.attach_file, color: wa.accent),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    selectedFileName ??
+                                        (mediaUrl.text.trim().isEmpty
+                                            ? 'Nenhuma mídia anexada'
+                                            : 'Mídia por URL'),
+                                    overflow: TextOverflow.ellipsis,
+                                    style: TextStyle(
+                                      color: wa.textPrimary,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                if (detectedMediaType != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: Chip(
+                                      label: Text(
+                                        mediaLabel(detectedMediaType),
+                                        style: const TextStyle(fontSize: 11),
+                                      ),
+                                      visualDensity: VisualDensity.compact,
+                                      side: BorderSide.none,
+                                      backgroundColor: wa.accentSoft,
+                                    ),
+                                  ),
+                                OutlinedButton.icon(
+                                  onPressed: () async {
+                                    final file = await openFile(
+                                      acceptedTypeGroups: const [
+                                        _adminNotificationMediaTypeGroup,
+                                      ],
+                                    );
+                                    if (file == null) return;
+                                    final bytes = await file.readAsBytes();
+                                    if (bytes.isEmpty || !context.mounted)
+                                      return;
+                                    try {
+                                      final mime =
+                                          _guessAdminNotificationMimeType(
+                                            file.name,
+                                            file.mimeType,
+                                          );
+                                      final uploaded = await ref
+                                          .read(apiClientProvider)
+                                          .uploadAdminPanelNotificationMedia(
+                                            bytes: bytes,
+                                            fileName: file.name,
+                                            mimeType: mime,
+                                          );
+                                      mediaUrl.text =
+                                          uploaded['url']?.toString() ?? '';
+                                      setState(() {
+                                        selectedFileName = file.name;
+                                        detectedMediaType =
+                                            _inferAdminNotificationMediaType(
+                                              file.name,
+                                              mime,
+                                            );
+                                      });
+                                    } catch (error) {
+                                      if (context.mounted)
+                                        showErrorToast(
+                                          context,
+                                          error.toString(),
+                                        );
+                                    }
+                                  },
+                                  icon: const Icon(
+                                    Icons.upload_file_outlined,
+                                    size: 18,
+                                  ),
+                                  label: const Text('Anexar'),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (showAdvanced) ...[
+                          const SizedBox(height: 14),
+                          ExpansionTile(
+                            initiallyExpanded: true,
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Destinatários',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            leading: const Icon(Icons.people_alt_outlined),
                             children: [
-                              (fields[0] as Expanded).child,
-                              fields[1],
-                              (fields[2] as Expanded).child,
+                              DropdownButtonFormField<String>(
+                                value: targetType,
+                                decoration: const InputDecoration(
+                                  labelText: 'Enviar para',
+                                ),
+                                items: const [
+                                  DropdownMenuItem(
+                                    value: 'all',
+                                    child: Text('Todos os usuários ativos'),
+                                  ),
+                                  DropdownMenuItem(
+                                    value: 'user',
+                                    child: Text('Um usuário específico'),
+                                  ),
+                                ],
+                                onChanged: (value) => setState(() {
+                                  targetType = value ?? 'all';
+                                  if (targetType == 'all') targetUserId = null;
+                                }),
+                              ),
+                              if (targetType == 'user') ...[
+                                const SizedBox(height: 12),
+                                Consumer(
+                                  builder: (context, ref, _) {
+                                    final users = ref.watch(
+                                      adminNotificationUsersProvider,
+                                    );
+                                    return users.when(
+                                      loading: () =>
+                                          const LinearProgressIndicator(),
+                                      error: (error, _) => Text(
+                                        'Não foi possível carregar usuários: $error',
+                                      ),
+                                      data: (items) => Autocomplete<_AdminRecord>(
+                                        initialValue: targetUserLabel == null
+                                            ? null
+                                            : TextEditingValue(
+                                                text: targetUserLabel!,
+                                              ),
+                                        displayStringForOption: (item) =>
+                                            '${item.title} · ${item.subtitle}',
+                                        optionsBuilder: (value) {
+                                          final query = value.text
+                                              .trim()
+                                              .toLowerCase();
+                                          if (query.isEmpty) return items;
+                                          return items.where(
+                                            (item) =>
+                                                '${item.title} ${item.subtitle}'
+                                                    .toLowerCase()
+                                                    .contains(query),
+                                          );
+                                        },
+                                        onSelected: (item) => setState(() {
+                                          targetUserId = int.tryParse(item.id);
+                                          targetUserLabel =
+                                              '${item.title} · ${item.subtitle}';
+                                        }),
+                                        fieldViewBuilder:
+                                            (
+                                              context,
+                                              controller,
+                                              focusNode,
+                                              onSubmitted,
+                                            ) => TextField(
+                                              controller: controller,
+                                              focusNode: focusNode,
+                                              decoration: const InputDecoration(
+                                                labelText:
+                                                    'Buscar por nome ou e-mail',
+                                                prefixIcon: Icon(
+                                                  Icons.person_search_outlined,
+                                                ),
+                                              ),
+                                            ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ],
                             ],
-                          )
-                        : Row(children: fields);
-                  },
-                ),
-                if (targetType == 'user') ...[
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: targetEmail,
-                    keyboardType: TextInputType.emailAddress,
-                    decoration: const InputDecoration(
-                      labelText: 'E-mail do usuário',
-                      prefixIcon: Icon(Icons.person_search_outlined),
+                          ),
+                          const Divider(height: 24),
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Mídia e comportamento',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            leading: const Icon(Icons.link_outlined),
+                            children: [
+                              TextField(
+                                controller: mediaUrl,
+                                onChanged: (value) => setState(
+                                  () => detectedMediaType =
+                                      _inferAdminNotificationMediaType(
+                                        value,
+                                        null,
+                                      ),
+                                ),
+                                decoration: const InputDecoration(
+                                  labelText: 'URL da mídia (opcional)',
+                                  prefixIcon: Icon(Icons.link),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: targetUrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Link ao clicar (opcional)',
+                                  prefixIcon: Icon(Icons.open_in_new),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const Divider(height: 24),
+                          ExpansionTile(
+                            tilePadding: EdgeInsets.zero,
+                            childrenPadding: EdgeInsets.zero,
+                            title: const Text(
+                              'Programação',
+                              style: TextStyle(fontWeight: FontWeight.w700),
+                            ),
+                            leading: const Icon(Icons.schedule_outlined),
+                            children: [
+                              TextField(
+                                controller: startsAt,
+                                readOnly: true,
+                                onTap: () async {
+                                  final value = await _pickNotificationDateTime(
+                                    context,
+                                  );
+                                  if (value != null)
+                                    setState(() {
+                                      startsAt.text = value;
+                                      sendNow = false;
+                                    });
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Exibir em (opcional)',
+                                  hintText: 'Agora, ou escolha uma data',
+                                  prefixIcon: Icon(Icons.schedule),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: expiresAt,
+                                readOnly: true,
+                                onTap: () async {
+                                  final value = await _pickNotificationDateTime(
+                                    context,
+                                  );
+                                  if (value != null) expiresAt.text = value;
+                                },
+                                decoration: const InputDecoration(
+                                  labelText: 'Encerrar em (opcional)',
+                                  prefixIcon: Icon(Icons.event_busy_outlined),
+                                ),
+                              ),
+                              SwitchListTile.adaptive(
+                                contentPadding: EdgeInsets.zero,
+                                value: sendNow,
+                                onChanged: (value) =>
+                                    setState(() => sendNow = value),
+                                title: const Text('Enviar imediatamente'),
+                                subtitle: const Text(
+                                  'Desative para deixar agendado ou como rascunho.',
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
                     ),
                   ),
-                ],
-                const SizedBox(height: 10),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: OutlinedButton.icon(
-                    onPressed: () async {
-                      final file = await openFile(
-                        acceptedTypeGroups: const [
-                          _adminNotificationMediaTypeGroup,
-                        ],
-                      );
-                      if (file == null) return;
-                      final bytes = await file.readAsBytes();
-                      if (bytes.isEmpty || !context.mounted) return;
-                      try {
-                        final mime = _guessAdminNotificationMimeType(
-                          file.name,
-                          file.mimeType,
-                        );
-                        final uploaded = await ref
-                            .read(apiClientProvider)
-                            .uploadAdminPanelNotificationMedia(
-                              bytes: bytes,
-                              fileName: file.name,
-                              mimeType: mime,
-                            );
-                        mediaUrl.text = uploaded['url']?.toString() ?? '';
-                        final lower = file.name.toLowerCase();
-                        setState(() {
-                          mediaType = mime.startsWith('video/')
-                              ? 'video'
-                              : lower.endsWith('.json')
-                              ? 'lottie'
-                              : lower.endsWith('.gif')
-                              ? 'gif'
-                              : 'image';
-                        });
-                      } catch (error) {
-                        if (context.mounted)
-                          showErrorToast(context, error.toString());
-                      }
-                    },
-                    icon: const Icon(Icons.upload_file_outlined),
-                    label: const Text('Enviar arquivo'),
-                  ),
                 ),
-                const SizedBox(height: 6),
-                TextField(
-                  controller: mediaUrl,
-                  decoration: const InputDecoration(
-                    labelText: 'URL da mídia (opcional)',
-                    prefixIcon: Icon(Icons.link),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: targetUrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Link ao clicar (opcional)',
-                    prefixIcon: Icon(Icons.open_in_new),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: startsAt,
-                  readOnly: true,
-                  onTap: () async {
-                    final value = await _pickNotificationDateTime(context);
-                    if (value != null) startsAt.text = value;
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Programar exibição (opcional)',
-                    hintText: 'Selecione data e hora',
-                    prefixIcon: Icon(Icons.schedule),
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: expiresAt,
-                  readOnly: true,
-                  onTap: () async {
-                    final value = await _pickNotificationDateTime(context);
-                    if (value != null) expiresAt.text = value;
-                  },
-                  decoration: const InputDecoration(
-                    labelText: 'Encerrar exibição (opcional)',
-                    hintText: 'Selecione data e hora',
-                    prefixIcon: Icon(Icons.event_busy_outlined),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                SwitchListTile(
-                  value: sendNow,
-                  onChanged: (value) => setState(() => sendNow = value),
-                  title: const Text('Enviar agora'),
-                  subtitle: const Text(
-                    'Desative para salvar como rascunho e programar depois.',
+                Divider(height: 1, color: wa.border),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          try {
+                            final inferredType =
+                                detectedMediaType ??
+                                _inferAdminNotificationMediaType(
+                                  mediaUrl.text,
+                                  null,
+                                );
+                            await ref
+                                .read(apiClientProvider)
+                                .createAdminPanelNotification({
+                                  'title': title.text,
+                                  'message': message.text,
+                                  if (inferredType != null)
+                                    'mediaType': inferredType,
+                                  'mediaUrl': mediaUrl.text,
+                                  'targetUrl': targetUrl.text,
+                                  'targetType': targetType,
+                                  if (targetType == 'user' &&
+                                      targetUserId != null)
+                                    'targetUserId': targetUserId,
+                                  'sendNow': sendNow,
+                                  if (startsAt.text.trim().isNotEmpty)
+                                    'startsAt': startsAt.text.trim(),
+                                  if (expiresAt.text.trim().isNotEmpty)
+                                    'expiresAt': expiresAt.text.trim(),
+                                });
+                            if (context.mounted) {
+                              Navigator.pop(dialogContext);
+                              ref.invalidate(adminPanelNotificationsProvider);
+                              showSuccessToast(
+                                context,
+                                sendNow
+                                    ? 'Notificação enviada.'
+                                    : 'Rascunho salvo.',
+                              );
+                            }
+                          } catch (error) {
+                            if (context.mounted)
+                              showErrorToast(context, error.toString());
+                          }
+                        },
+                        icon: const Icon(Icons.send_outlined),
+                        label: Text(sendNow ? 'Enviar agora' : 'Salvar'),
+                      ),
+                    ],
                   ),
                 ),
               ],
             ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              try {
-                await ref.read(apiClientProvider).createAdminPanelNotification({
-                  'title': title.text,
-                  'message': message.text,
-                  'mediaType': mediaType,
-                  'mediaUrl': mediaUrl.text,
-                  'targetUrl': targetUrl.text,
-                  'targetType': targetType,
-                  if (targetType == 'user')
-                    'targetEmail': targetEmail.text.trim(),
-                  'sendNow': sendNow,
-                  if (startsAt.text.trim().isNotEmpty)
-                    'startsAt': startsAt.text.trim(),
-                  if (expiresAt.text.trim().isNotEmpty)
-                    'expiresAt': expiresAt.text.trim(),
-                });
-                if (context.mounted) {
-                  Navigator.pop(dialogContext);
-                  ref.invalidate(adminPanelNotificationsProvider);
-                  showSuccessToast(
-                    context,
-                    sendNow ? 'Notificação enviada.' : 'Rascunho salvo.',
-                  );
-                }
-              } catch (error) {
-                if (context.mounted) showErrorToast(context, error.toString());
-              }
-            },
-            child: Text(sendNow ? 'Enviar' : 'Salvar'),
-          ),
-        ],
-      ),
-    ),
+      );
+    },
   );
 }
 
@@ -5156,6 +5441,32 @@ String _guessAdminNotificationMimeType(String fileName, String? candidate) {
   if (lower.endsWith('.png')) return 'image/png';
   if (lower.endsWith('.webp')) return 'image/webp';
   return 'image/jpeg';
+}
+
+String? _inferAdminNotificationMediaType(String value, String? mimeType) {
+  final mime = (mimeType ?? '').toLowerCase();
+  final lower = value.toLowerCase().split('?').first;
+  if (mime == 'application/json' ||
+      mime == 'text/json' ||
+      lower.endsWith('.json')) {
+    return 'lottie';
+  }
+  if (mime == 'image/gif' || lower.endsWith('.gif')) return 'gif';
+  if (mime.startsWith('video/') ||
+      lower.endsWith('.mp4') ||
+      lower.endsWith('.webm') ||
+      lower.endsWith('.mov')) {
+    return 'video';
+  }
+  if (mime.startsWith('image/') ||
+      lower.endsWith('.png') ||
+      lower.endsWith('.jpg') ||
+      lower.endsWith('.jpeg') ||
+      lower.endsWith('.webp') ||
+      lower.endsWith('.svg')) {
+    return 'image';
+  }
+  return null;
 }
 
 Future<_AdminPickedFile?> _pickAdminImageFile() async {

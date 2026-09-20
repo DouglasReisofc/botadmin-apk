@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 90564839,
-    "updatedAt": "2026-09-20T23:00:00.000Z",
+    "sizeBytes": 90679667,
+    "updatedAt": "2026-09-20T23:26:42.000Z",
     "buildType": "release",
-    "versionName": "0.1.310",
-    "versionCode": 316
+    "versionName": "0.1.311",
+    "versionCode": 317
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.310 (316): centro de notificações, inbox responsivo, mídia rica, agendamento e novo ícone nativo BotAdmin."
+  "details": "APK Flutter nativo 0.1.311 (317): compositor profissional de notificações, detecção automática de mídia e destinatários pesquisáveis."
 }
