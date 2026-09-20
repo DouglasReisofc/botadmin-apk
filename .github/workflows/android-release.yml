@@ -1,0 +1,66 @@
+name: Android release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: GitHub release tag
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-release-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.47.0"
+          channel: stable
+          cache: true
+
+      - name: Restore release signing key
+        shell: bash
+        run: echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$GITHUB_WORKSPACE/botadmin-release.jks"
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+
+      - name: Test and build signed APK
+        working-directory: flutter_panel
+        run: |
+          flutter pub get
+          flutter test --no-pub
+          flutter build apk --release --target-platform android-arm64 --dart-define=BOTADMIN_API_BASE_URL=https://botadmin.shop
+        env:
+          ANDROID_KEYSTORE: ${{ github.workspace }}/botadmin-release.jks
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_ALIAS_PASSWORD: ${{ secrets.ANDROID_KEY_ALIAS_PASSWORD }}
+
+      - name: Prepare release file
+        shell: bash
+        run: cp flutter_panel/build/app/outputs/flutter-apk/app-release.apk botadmin-0.1.305-311-android-release.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: botadmin-0.1.305-311-android-release
+          path: botadmin-0.1.305-311-android-release.apk
+          if-no-files-found: error
+
+      - name: Publish GitHub release
+        shell: bash
+        run: |
+          gh release view "$RELEASE_TAG" >/dev/null 2>&1 || gh release create "$RELEASE_TAG" --title "BotAdmin 0.1.305 (311)" --notes "Atendimento admin com edição, reação e exclusão de mensagens; notificações de suporte e vendas com aviso narrado."
+          gh release upload "$RELEASE_TAG" botadmin-0.1.305-311-android-release.apk --clobber
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag }}

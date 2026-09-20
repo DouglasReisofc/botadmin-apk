@@ -1680,8 +1680,10 @@ const SupportNotificationListener = () => {
         .replace(/\bassinar\s+o\s+plano\b/gi, "comprou o plano");
 
       const dedupeKey = `${isApiNotification ? "api-plan" : "plan"}:${payload.id}`;
-      const isAdminRole = sseRoleRef.current === "admin";
-      const shouldPlayAudio = !(isAdminNotification && isAdminRole);
+      // Avisos de cobrança do administrador são deliberadamente narrados no
+      // painel admin; o listener do usuário continua filtrando pelo próprio
+      // userId via SSE.
+      const shouldPlayAudio = true;
       if (shouldPlayAudio) {
         playCoin(generalAudioRef.current ?? purchaseAudioRef.current, dedupeKey);
         const delay = amountLabel || requestLabel ? 90 : 180;
@@ -1781,7 +1783,10 @@ const SupportNotificationListener = () => {
             (userId == null || (authState.userId != null && userId === authState.userId));
           const shouldPlayInbound = isCurrentUserSupportEvent && originalDirection === "inbound";
 
-          if (shouldPlayInbound) {
+          const isAdminInboundSupport =
+            current === "admin" && senderRole !== "admin" && senderRole !== "system";
+
+          if (shouldPlayInbound || isAdminInboundSupport) {
             const conversationActive = isSupportConversationActive(payload.whatsappId);
             const queue = buildSupportAudioQueue(payload.whatsappId, payload.message.messageType);
             const [primary, ...fallbacks] = queue;
@@ -1789,8 +1794,28 @@ const SupportNotificationListener = () => {
             void playOneShotWithFallback(primary ?? null, fallbacks);
 
             // Não criar notificação/unread quando a conversa estiver aberta
-            if (!conversationActive) {
+            if (!conversationActive && current !== "admin") {
               incrementCount(payload.whatsappId);
+            }
+
+            if (isAdminInboundSupport) {
+              const sender = typeof raw?.user?.name === "string" && raw.user.name.trim()
+                ? raw.user.name.trim()
+                : "um cliente";
+              const content = typeof payload.message.text === "string" && payload.message.text.trim()
+                ? payload.message.text.trim()
+                : payload.message.messageType === "audio"
+                  ? "enviou um áudio"
+                  : "enviou uma nova mensagem";
+              enqueueSpeech(`Nova mensagem de suporte de ${sender}: ${content}`, `support-admin:${payload.message.id}`, 120);
+              try {
+                if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                  new Notification("Nova mensagem no suporte", {
+                    body: `${sender}: ${content}`,
+                    tag: `botadmin-support-admin-${payload.message.id}`,
+                  });
+                }
+              } catch {}
             }
 
             window.dispatchEvent(
@@ -1880,9 +1905,6 @@ const SupportNotificationListener = () => {
       });
 
       es.addEventListener("purchase:created", (event: MessageEvent) => {
-        if (sseRoleRef.current === "admin") {
-          return;
-        }
         try {
           const payload = JSON.parse(event.data) as PurchaseCreatedEvent;
           log("sse purchase:created", payload);

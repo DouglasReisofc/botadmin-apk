@@ -9,12 +9,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/app_ready.dart';
 import '../../core/auth_redirect.dart';
 import '../../core/botadmin_cached_image.dart';
+import '../../core/browser_notifications.dart';
 import '../../core/theme_controller.dart';
 import '../../core/top_toast.dart';
 import '../../core/wa_theme.dart';
@@ -880,32 +882,167 @@ class AdminDashboardShell extends ConsumerWidget {
       ),
     };
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        _handleAdminBack(context, ref);
-      },
-      child: Scaffold(
-        backgroundColor: wa.shellBg,
-        body: SafeArea(
-          child: compact
-              ? Column(
-                  children: [
-                    Expanded(child: content),
-                    _AdminBottomNav(section: section),
-                  ],
-                )
-              : Row(
-                  children: [
-                    _AdminRail(section: section),
-                    Expanded(child: content),
-                  ],
-                ),
+    return _AdminNotificationHost(
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          _handleAdminBack(context, ref);
+        },
+        child: Scaffold(
+          backgroundColor: wa.shellBg,
+          body: SafeArea(
+            child: compact
+                ? Column(
+                    children: [
+                      Expanded(child: content),
+                      _AdminBottomNav(section: section),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      _AdminRail(section: section),
+                      Expanded(child: content),
+                    ],
+                  ),
+          ),
         ),
       ),
     );
   }
+}
+
+class _AdminNotificationHost extends ConsumerStatefulWidget {
+  const _AdminNotificationHost({required this.child});
+  final Widget child;
+
+  @override
+  ConsumerState<_AdminNotificationHost> createState() =>
+      _AdminNotificationHostState();
+}
+
+class _AdminNotificationHostState
+    extends ConsumerState<_AdminNotificationHost> {
+  Timer? _timer;
+  final Map<String, String> _seenSupport = <String, String>{};
+  int _lastSaleId = 0;
+  bool _seeded = false;
+  bool _polling = false;
+  AudioPlayer? _ttsPlayer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer.periodic(const Duration(seconds: 5), (_) {
+      unawaited(_pollAdminNotifications());
+    });
+    unawaited(_pollAdminNotifications());
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    final player = _ttsPlayer;
+    _ttsPlayer = null;
+    if (player != null) unawaited(player.dispose());
+    super.dispose();
+  }
+
+  Future<void> _pollAdminNotifications() async {
+    if (_polling) return;
+    _polling = true;
+    try {
+      final api = ref.read(apiClientProvider);
+      final threads = await api.loadAdminSupportThreads();
+      for (final entry in threads) {
+        final stamp = entry.thread.lastMessageAt?.trim();
+        if (stamp == null || stamp.isEmpty) continue;
+        final key = entry.key;
+        final previous = _seenSupport[key];
+        _seenSupport[key] = stamp;
+        if (!_seeded || previous == null || previous == stamp) continue;
+        if (entry.thread.lastMessageSenderRole == 'admin' ||
+            entry.thread.lastMessageSenderRole == 'system')
+          continue;
+        final sender = entry.displayName.trim().isEmpty
+            ? 'Cliente'
+            : entry.displayName.trim();
+        final preview = (entry.thread.lastMessagePreview ?? '').trim();
+        final detail = preview.isEmpty ? 'enviou uma nova mensagem' : preview;
+        final spoken = 'Nova mensagem de suporte de $sender: $detail';
+        if (mounted) {
+          showSuccessToast(
+            context,
+            'Suporte: $sender enviou uma nova mensagem.',
+          );
+          await BrowserNotifications.show(
+            title: 'Nova mensagem no suporte',
+            body: '$sender: $detail',
+            tag: 'botadmin-admin-support-${entry.key}-$stamp',
+          );
+        }
+        unawaited(_speak(spoken));
+      }
+
+      final sales = await api.getJson(
+        '/api/admin/sales-events?after=$_lastSaleId&limit=20',
+      );
+      final latestId =
+          int.tryParse(sales['latestId']?.toString() ?? '') ?? _lastSaleId;
+      final events = sales['events'] is List
+          ? (sales['events'] as List)
+          : const [];
+      if (_seeded) {
+        for (final raw in events.whereType<Map>()) {
+          final customer =
+              raw['customerName']?.toString().trim().isNotEmpty == true
+              ? raw['customerName'].toString().trim()
+              : 'Cliente';
+          final plan = raw['planName']?.toString().trim().isNotEmpty == true
+              ? raw['planName'].toString().trim()
+              : 'um plano';
+          final amount = raw['amount']?.toString().trim() ?? '';
+          final text = amount.isEmpty
+              ? '$customer realizou uma compra do plano $plan.'
+              : '$customer realizou uma compra do plano $plan no valor de $amount.';
+          if (mounted) {
+            showSuccessToast(context, 'Nova venda: $customer · $plan');
+            await BrowserNotifications.show(
+              title: 'Nova venda no painel',
+              body: text,
+              tag: 'botadmin-admin-sale-${raw['id']}',
+            );
+          }
+          unawaited(_speak(text));
+        }
+      }
+      _lastSaleId = latestId > _lastSaleId ? latestId : _lastSaleId;
+      _seeded = true;
+    } catch (_) {
+      // A próxima rodada reconecta sem interromper o painel.
+    } finally {
+      _polling = false;
+    }
+  }
+
+  Future<void> _speak(String text) async {
+    if (text.trim().isEmpty) return;
+    try {
+      final base = Uri.tryParse(AppConfig.apiBaseUrl);
+      if (base == null || !base.hasScheme) return;
+      final uri = base
+          .resolve('/api/tts')
+          .replace(queryParameters: {'texto': text, 'voz': 'ludmilla'});
+      final player = _ttsPlayer ??= AudioPlayer();
+      await player.setUrl(uri.toString());
+      await player.play();
+    } catch (_) {
+      // Autoplay bloqueado ou TTS indisponível não deve afetar a mensagem.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 void _handleAdminBack(BuildContext context, WidgetRef ref) {
@@ -2980,6 +3117,16 @@ class _AdminPaymentsWorkspaceState
     extends ConsumerState<_AdminPaymentsWorkspace> {
   var _history = false;
 
+  Future<void> _simulateSale() async {
+    try {
+      await ref.read(apiClientProvider).simulateAdminSaleNotification();
+      if (mounted)
+        showSuccessToast(context, 'Teste controlado enviado ao painel admin.');
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
@@ -2991,24 +3138,37 @@ class _AdminPaymentsWorkspaceState
             padding: const EdgeInsets.fromLTRB(18, 12, 18, 4),
             child: SizedBox(
               width: double.infinity,
-              child: SegmentedButton<bool>(
-                segments: const [
-                  ButtonSegment(
-                    value: false,
-                    icon: Icon(Icons.tune_rounded),
-                    label: Text('Configurações'),
+              child: Column(
+                children: [
+                  SegmentedButton<bool>(
+                    segments: const [
+                      ButtonSegment(
+                        value: false,
+                        icon: Icon(Icons.tune_rounded),
+                        label: Text('Configurações'),
+                      ),
+                      ButtonSegment(
+                        value: true,
+                        icon: Icon(Icons.receipt_long_outlined),
+                        label: Text('Histórico'),
+                      ),
+                    ],
+                    selected: {_history},
+                    onSelectionChanged: (value) {
+                      setState(() => _history = value.first);
+                    },
+                    showSelectedIcon: false,
                   ),
-                  ButtonSegment(
-                    value: true,
-                    icon: Icon(Icons.receipt_long_outlined),
-                    label: Text('Histórico'),
+                  const SizedBox(height: 8),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: OutlinedButton.icon(
+                      onPressed: _simulateSale,
+                      icon: const Icon(Icons.volume_up_outlined, size: 18),
+                      label: const Text('Testar aviso de venda'),
+                    ),
                   ),
                 ],
-                selected: {_history},
-                onSelectionChanged: (value) {
-                  setState(() => _history = value.first);
-                },
-                showSelectedIcon: false,
               ),
             ),
           ),

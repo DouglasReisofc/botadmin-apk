@@ -11,11 +11,44 @@ import {
   recordSupportMessage,
   buildSupportThreadSummary,
   serializeSupportMessage,
+  mutateSupportMessage,
   setSupportHandlingMode,
 } from "lib/support";
 import { sendMediaMessage, sendTextMessage, getAppBaseUrl } from "lib/meta";
 import { resolveUploadedFileUrl, UPLOADS_STORAGE_ROOT } from "lib/uploads";
 import { emitSupportMessageEvent, emitSupportThreadUpdate } from "lib/realtime";
+
+export async function PATCH(request: Request) {
+  try {
+    const user = await getCurrentUser();
+    if (!user) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+    const body = await request.json().catch(() => null);
+    const messageId = Number(body?.messageId);
+    const whatsappId = typeof body?.to === "string" ? body.to.trim() : "";
+    const action = typeof body?.action === "string" ? body.action.trim().toLowerCase() : "";
+    if (!Number.isFinite(messageId) || messageId <= 0 || !whatsappId) {
+      return NextResponse.json({ message: "Mensagem inválida." }, { status: 400 });
+    }
+    if (action !== "edit" && action !== "delete" && action !== "react") {
+      return NextResponse.json({ message: "Ação não suportada." }, { status: 400 });
+    }
+    const updated = await mutateSupportMessage({
+      userId: user.id,
+      whatsappId,
+      messageId: Math.trunc(messageId),
+      action,
+      text: body?.text,
+      emoji: body?.emoji,
+      actorRole: "user",
+      actorUserId: user.id,
+    });
+    if (!updated) return NextResponse.json({ message: "Mensagem não encontrada." }, { status: 404 });
+    return NextResponse.json({ ok: true, message: serializeSupportMessage(updated) });
+  } catch (error) {
+    console.error("[support] Falha ao alterar mensagem", error);
+    return NextResponse.json({ message: "Não foi possível alterar a mensagem." }, { status: 500 });
+  }
+}
 
 const inferMediaType = (inputType: string, fallback: string):
   | "image"

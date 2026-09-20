@@ -35192,8 +35192,8 @@ aiP:function aiP(a){var _=this
 _.w=null
 _.x=a
 _.y=0
-_.Q=_.z=!1
-_.as=null
+_.z=!1
+_.Q=null
 _.d=$
 _.c=_.a=null},
 b9R:function b9R(a){this.a=a},
@@ -141821,95 +141821,89 @@ s.w=A.jy(B.pA,new A.b9R(s))
 s.tG()},
 m(){var s,r=this,q=r.w
 if(q!=null)q.a_(0)
-s=r.as
-r.as=null
+s=r.Q
+r.Q=null
 if(s!=null)s.m()
 r.Y()},
-tG(){var s=0,r=A.j(t.H),q,p=2,o=[],n=[],m=this,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1,b2,b3,b4
-var $async$tG=A.e(function(b5,b6){if(b5===1){o.push(b6)
-s=p}for(;;)switch(s){case 0:if(m.Q){s=1
-break}m.Q=!0
-p=4
-l=m.gM().E(0,$.aj(),t.C)
+tG(){var s=0,r=A.j(t.H),q=1,p=[],o=this,n,m,l,k,j,i,h,g,f,e,d,c,b,a,a0,a1,a2,a3,a4,a5,a6,a7,a8,a9,b0,b1,b2
+var $async$tG=A.e(function(b3,b4){if(b3===1){p.push(b4)
+s=q}for(;;)switch(s){case 0:q=3
+n=o.gM().E(0,$.aj(),t.C)
+s=6
+return A.c(n.JF(),$async$tG)
+case 6:m=b4
+a4=J.bB(m),a5=o.x
+case 7:if(!a4.F()){s=8
+break}l=a4.gV(a4)
+a6=l.b.x
+k=a6==null?null:B.b.k(a6)
+if(k==null||k.length===0){s=7
+break}a6=l
+j=""+a6.a.a+":"+a6.b.a
+i=a5.h(0,j)
+a5.j(0,j,k)
+if(!o.z||i==null||i===k){s=7
+break}if(l.b.ay==="admin"||l.b.ay==="system"){s=7
+break}h=B.b.k(J.crR(l)).length===0?"Cliente":B.b.k(J.crR(l))
+a6=l.b.w
+g=B.b.k(a6==null?"":a6)
+f=J.aO(g)===0?"enviou uma nova mensagem":g
+e="Nova mensagem de suporte de "+A.z(h)+": "+A.z(f)
+a6=o.c
+s=a6!=null?9:10
+break
+case 9:A.a7n(a6,B.B,B.fh,!1,B.eb,"Suporte: "+A.z(h)+" enviou uma nova mensagem.")
+a6=l
+s=11
+return A.c(A.a97(A.z(h)+": "+A.z(f),"botadmin-admin-support-"+(""+a6.a.a+":"+a6.b.a)+"-"+k,"Nova mensagem no suporte"),$async$tG)
+case 11:case 10:o.B0(e)
 s=7
-return A.c(l.JF(),$async$tG)
-case 7:k=b6
-a6=J.bB(k),a7=m.x
-case 8:if(!a6.F()){s=9
-break}j=a6.gV(a6)
-a8=j.b.x
-i=a8==null?null:B.b.k(a8)
-if(i==null||i.length===0){s=8
-break}a8=j
-h=""+a8.a.a+":"+a8.b.a
-g=a7.h(0,h)
-a7.j(0,h,i)
-if(!m.z||g==null||g===i){s=8
-break}if(j.b.ay==="admin"||j.b.ay==="system"){s=8
-break}f=B.b.k(J.crR(j)).length===0?"Cliente":B.b.k(J.crR(j))
-a8=j.b.w
-e=B.b.k(a8==null?"":a8)
-d=J.aO(e)===0?"enviou uma nova mensagem":e
-c="Nova mensagem de suporte de "+A.z(f)+": "+A.z(d)
-a8=m.c
-s=a8!=null?10:11
 break
-case 10:A.a7n(a8,B.B,B.fh,!1,B.eb,"Suporte: "+A.z(f)+" enviou uma nova mensagem.")
-a8=j
-s=12
-return A.c(A.a97(A.z(f)+": "+A.z(d),"botadmin-admin-support-"+(""+a8.a.a+":"+a8.b.a)+"-"+i,"Nova mensagem no suporte"),$async$tG)
-case 12:case 11:m.B0(c)
-s=8
+case 8:s=12
+return A.c(n.bf("/api/admin/sales-events?after="+o.y+"&limit=20"),$async$tG)
+case 12:d=b4
+a4=J.r(d,"latestId")
+a4=a4==null?null:J.n(a4)
+a7=A.bg(a4==null?"":a4,null)
+c=a7==null?o.y:a7
+a4=t.j
+b=a4.b(J.r(d,"events"))?a4.a(J.r(d,"events")):B.ed
+s=o.z?13:14
 break
-case 9:s=13
-return A.c(l.bf("/api/admin/sales-events?after="+m.y+"&limit=20"),$async$tG)
-case 13:b=b6
-a6=J.r(b,"latestId")
-a6=a6==null?null:J.n(a6)
-a9=A.bg(a6==null?"":a6,null)
-a=a9==null?m.y:a9
-a6=t.j
-a0=a6.b(J.r(b,"events"))?a6.a(J.r(b,"events")):B.ed
-s=m.z?14:15
+case 13:a4=J.fo(b,t.f),a5=J.bB(a4.a),a4=a4.$ti,a6=new A.kE(a5,a4.i("kE<1>")),a4=a4.c
+case 15:if(!a6.F()){s=16
+break}a=a4.a(a5.gV(a5))
+a8=J.r(a,"customerName")
+a0=(a8==null?null:B.b.k(J.n(a8)).length!==0)===!0?B.b.k(J.n(J.r(a,"customerName"))):"Cliente"
+a8=J.r(a,"planName")
+a1=(a8==null?null:B.b.k(J.n(a8)).length!==0)===!0?B.b.k(J.n(J.r(a,"planName"))):"um plano"
+a9=J.r(a,"amount")
+b0=a9==null?null:B.b.k(J.n(a9))
+a2=b0==null?"":b0
+a3=J.aO(a2)===0?A.z(a0)+" realizou uma compra do plano "+A.z(a1)+".":A.z(a0)+" realizou uma compra do plano "+A.z(a1)+" no valor de "+A.z(a2)+"."
+a8=o.c
+s=a8!=null?17:18
 break
-case 14:a6=J.fo(a0,t.f),a7=J.bB(a6.a),a6=a6.$ti,a8=new A.kE(a7,a6.i("kE<1>")),a6=a6.c
-case 16:if(!a8.F()){s=17
-break}a1=a6.a(a7.gV(a7))
-b0=J.r(a1,"customerName")
-a2=(b0==null?null:B.b.k(J.n(b0)).length!==0)===!0?B.b.k(J.n(J.r(a1,"customerName"))):"Cliente"
-b0=J.r(a1,"planName")
-a3=(b0==null?null:B.b.k(J.n(b0)).length!==0)===!0?B.b.k(J.n(J.r(a1,"planName"))):"um plano"
-b1=J.r(a1,"amount")
-b2=b1==null?null:B.b.k(J.n(b1))
-a4=b2==null?"":b2
-a5=J.aO(a4)===0?A.z(a2)+" realizou uma compra do plano "+A.z(a3)+".":A.z(a2)+" realizou uma compra do plano "+A.z(a3)+" no valor de "+A.z(a4)+"."
-b0=m.c
-s=b0!=null?18:19
+case 17:A.a7n(a8,B.B,B.fh,!1,B.eb,"Nova venda: "+A.z(a0)+" \xb7 "+A.z(a1))
+s=19
+return A.c(A.a97(a3,"botadmin-admin-sale-"+A.z(J.r(a,"id")),"Nova venda no painel"),$async$tG)
+case 19:case 18:o.B0(a3)
+s=15
 break
-case 18:A.a7n(b0,B.B,B.fh,!1,B.eb,"Nova venda: "+A.z(a2)+" \xb7 "+A.z(a3))
-s=20
-return A.c(A.a97(a5,"botadmin-admin-sale-"+A.z(J.r(a1,"id")),"Nova venda no painel"),$async$tG)
-case 20:case 19:m.B0(a5)
-s=16
-break
-case 17:case 15:a6=m.y
-m.y=a>a6?a:a6
-m.z=!0
-n.push(6)
+case 16:case 14:a4=o.y
+o.y=c>a4?c:a4
+o.z=!0
+q=1
 s=5
 break
-case 4:p=3
-b4=o.pop()
-n.push(6)
+case 3:q=2
+b2=p.pop()
 s=5
 break
-case 3:n=[2]
-case 5:p=2
-m.Q=!1
-s=n.pop()
+case 2:s=1
 break
-case 6:case 1:return A.h(q,r)
-case 2:return A.f(o.at(-1),r)}})
+case 5:return A.h(null,r)
+case 1:return A.f(p.at(-1),r)}})
 return A.i($async$tG,r)},
 B0(a){return this.b3M(a)},
 b3M(a){var s=0,r=A.j(t.H),q,p=2,o=[],n=this,m,l,k,j,i,h
@@ -141919,8 +141913,8 @@ break}p=4
 m=A.fn($.il())
 if(m==null||!m.gl5()){s=1
 break}l=m.a0("/api/tts").a7b(0,A.V(["texto",a,"voz","ludmilla"],t.N,t.z))
-j=n.as
-k=j==null?n.as=A.csi():j
+j=n.Q
+k=j==null?n.Q=A.csi():j
 s=7
 return A.c(k.a8Y(A.clR(A.fm(l.gmp(),0,null),null,null),null,!0),$async$B0)
 case 7:s=8

@@ -1308,6 +1308,9 @@ class BotAdminApiClient {
     return threads;
   }
 
+  Future<Map<String, dynamic>> simulateAdminSaleNotification() =>
+      postJson('/api/admin/sales-events/simulate', data: const {});
+
   Future<List<AdminSupportThreadSummary>> loadUserSupportThreads() async {
     final json = await getJson('/api/support/threads');
     return _list(
@@ -1418,6 +1421,28 @@ class BotAdminApiClient {
       }),
     );
     final json = _decode(response);
+    return AdminSupportMessage.fromJson(_map(json['message']));
+  }
+
+  Future<AdminSupportMessage> runAdminSupportMessageAction({
+    required int userId,
+    required String whatsappId,
+    required int messageId,
+    required String action,
+    String? text,
+    String? emoji,
+  }) async {
+    final json = await patchJson(
+      '/api/admin/support/messages',
+      data: {
+        'userId': userId,
+        'to': whatsappId,
+        'messageId': messageId,
+        'action': action,
+        if (text != null) 'text': text,
+        if (emoji != null) 'emoji': emoji,
+      },
+    );
     return AdminSupportMessage.fromJson(_map(json['message']));
   }
 

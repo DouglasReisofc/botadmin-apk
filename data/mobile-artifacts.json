@@ -8,10 +8,10 @@
     "sizeBytes": 89859191,
     "updatedAt": "2026-09-20T13:03:30.000Z",
     "buildType": "release",
-    "versionName": "0.1.304",
-    "versionCode": 310
+    "versionName": "0.1.305",
+    "versionCode": 311
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.304 (310): atendimento admin e usuário reutilizam os componentes da conversa normal; áudio corrigido, ticks de leitura reais e suporte sempre na lista de conversas."
+  "details": "APK Flutter nativo 0.1.305 (311): atendimento admin com ações de editar, reagir e apagar; alertas de suporte e avisos de venda com narração exclusiva do painel admin."
 }

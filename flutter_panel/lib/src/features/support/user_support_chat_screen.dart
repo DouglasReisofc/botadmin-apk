@@ -12,6 +12,7 @@ import '../../core/top_toast.dart';
 import '../../core/wa_theme.dart';
 import '../../core/voice_recorder.dart';
 import '../../models/admin_support.dart';
+import '../../models/chat_message.dart';
 import '../../models/conversation_thread.dart';
 import '../chat/chat_screen.dart';
 
@@ -297,21 +298,75 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
           22,
         ),
         itemCount: messages.length,
-        itemBuilder: (context, index) => ConversationMessageBubble(
-          thread: widget.thread,
-          message: messages[index].toChatMessage(
+        itemBuilder: (context, index) {
+          final supportMessage = messages[index];
+          final chatMessage = supportMessage.toChatMessage(
             forAdmin: widget.adminEntry != null,
             isAdminThread: _conversation?.thread.isAdminThread ?? true,
             incomingName: widget.thread.title,
-          ),
-          viewportWidth: constraints.maxWidth,
-          enableActions: false,
-          onReply: () {},
-          onRunMessageAction: (_, _, _) async {},
-          onToggleDeletedReveal: (_, _) async {},
-        ),
+          );
+          return ConversationMessageBubble(
+            thread: widget.thread,
+            message: chatMessage,
+            viewportWidth: constraints.maxWidth,
+            enableActions: widget.adminEntry != null,
+            onReply: () {},
+            onRunMessageAction: (message, action, data) =>
+                _runMessageAction(supportMessage, message, action, data),
+            onToggleDeletedReveal: (_, _) async {},
+          );
+        },
       ),
     );
+  }
+
+  Future<void> _runMessageAction(
+    AdminSupportMessage supportMessage,
+    ChatMessage message,
+    String action,
+    Map<String, Object?> data,
+  ) async {
+    final entry = widget.adminEntry;
+    if (entry == null) return;
+    if (action == 'delete') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: const Text('Apagar mensagem?'),
+          content: const Text('A mensagem será ocultada para os dois lados.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB42318),
+              ),
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Apagar'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    try {
+      await ref
+          .read(apiClientProvider)
+          .runAdminSupportMessageAction(
+            userId: entry.user.id,
+            whatsappId: widget.thread.chatJid,
+            messageId: supportMessage.id,
+            action: action,
+            text: action == 'edit' ? data['text']?.toString() : null,
+            emoji: action == 'react' ? data['emoji']?.toString() : null,
+          );
+      await _loadConversation(silent: true, scrollToBottom: false);
+      widget.onConversationChanged?.call();
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    }
   }
 
   Widget _buildComposer(BuildContext context) => ConversationComposer(
@@ -369,7 +424,8 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
             );
       if (!mounted || generation != _generation) return;
       final previousCount = _conversation?.messages.length ?? 0;
-      final wasNearBottom = !_scrollController.hasClients ||
+      final wasNearBottom =
+          !_scrollController.hasClients ||
           _scrollController.position.extentAfter < 120;
       setState(() {
         _conversation = payload;
@@ -377,7 +433,8 @@ class _UserSupportChatScreenState extends ConsumerState<UserSupportChatScreen>
         _refreshing = false;
         _error = null;
       });
-      if (scrollToBottom || (payload.messages.length > previousCount && wasNearBottom)) {
+      if (scrollToBottom ||
+          (payload.messages.length > previousCount && wasNearBottom)) {
         _scheduleScrollToBottom();
       }
       if (payload.messages.length != previousCount) {

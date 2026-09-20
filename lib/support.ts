@@ -130,6 +130,7 @@ export type SupportThread = {
   handlingMode: "bot" | "human";
   reminderSentAt: Date | null;
   unreadCount?: number;
+  lastMessageSenderRole?: SupportMessageSenderRole | null;
 };
 
 export type SupportMessageSenderRole = "user" | "admin" | "contact" | "system";
@@ -146,6 +147,7 @@ type SupportThreadRow = RowDataPacket & {
   handling_mode: string | null;
   reminder_sent_at: Date | string | null;
   unread_count?: number | string | null;
+  last_message_sender_role?: string | null;
 };
 
 type SupportThreadWithUserRow = SupportThreadRow & {
@@ -189,6 +191,12 @@ const mapThreadRow = (row: SupportThreadRow): SupportThread => ({
   handlingMode: row.handling_mode === "human" ? "human" : "bot",
   reminderSentAt: row.reminder_sent_at ? new Date(row.reminder_sent_at) : null,
   unreadCount: Number(row.unread_count ?? 0) || 0,
+  lastMessageSenderRole:
+    row.last_message_sender_role === "admin" || row.last_message_sender_role === "contact" || row.last_message_sender_role === "system"
+      ? row.last_message_sender_role
+      : row.last_message_sender_role === "user"
+        ? "user"
+        : null,
 });
 
 export const getOrCreateSupportThread = async (
@@ -271,6 +279,14 @@ export type SerializedSupportMessage = {
   timestamp: string;
   senderUserId: number | null;
   senderRole: SupportMessageSenderRole;
+  isDeleted?: boolean;
+  editedAt?: string | null;
+  reactions?: Array<{
+    emoji: string;
+    senderUserId?: number | null;
+    senderRole?: SupportMessageSenderRole;
+    timestamp?: string | null;
+  }>;
   media?: {
     mediaId?: string | null;
     mediaUrl?: string | null;
@@ -293,6 +309,7 @@ export type SerializedSupportThread = {
   displayWhatsappId?: string | null;
   isAdminThread?: boolean;
   unreadCount?: number;
+  lastMessageSenderRole?: SupportMessageSenderRole | null;
 };
 
 export type SupportThreadSummary = SerializedSupportThread & {
@@ -386,6 +403,30 @@ export const serializeSupportMessage = (message: SupportMessage): SerializedSupp
   timestamp: message.timestamp,
   senderUserId: message.senderUserId,
   senderRole: message.senderRole,
+  isDeleted: Boolean(
+    message.payload && typeof message.payload === "object" &&
+      (message.payload as Record<string, unknown>).deleted === true,
+  ),
+  editedAt:
+    message.payload && typeof message.payload === "object" &&
+    typeof (message.payload as Record<string, unknown>).editedAt === "string"
+      ? String((message.payload as Record<string, unknown>).editedAt)
+      : null,
+  reactions:
+    message.payload && typeof message.payload === "object" &&
+    Array.isArray((message.payload as Record<string, unknown>).reactions)
+      ? ((message.payload as Record<string, unknown>).reactions as unknown[])
+          .filter((item): item is Record<string, unknown> => !!item && typeof item === "object")
+          .map((item) => ({
+            emoji: typeof item.emoji === "string" ? item.emoji : "",
+            senderUserId: item.senderUserId == null ? null : Number(item.senderUserId),
+            senderRole: (item.senderRole === "admin" || item.senderRole === "contact" || item.senderRole === "system"
+              ? item.senderRole
+              : "user") as SupportMessageSenderRole,
+            timestamp: typeof item.timestamp === "string" ? item.timestamp : null,
+          }))
+          .filter((item) => item.emoji.trim().length > 0)
+      : [],
   media: extractMediaFromPayload(message.payload),
 });
 
@@ -400,6 +441,7 @@ export const serializeSupportThread = (thread: SupportThread): SerializedSupport
   reminderSentAt: thread.reminderSentAt ? thread.reminderSentAt.toISOString() : null,
   isAdminThread: thread.whatsappId === "__admin__",
   unreadCount: thread.unreadCount ?? 0,
+  lastMessageSenderRole: thread.lastMessageSenderRole ?? null,
 });
 
 export const recordSupportMessage = async (options: {
@@ -798,6 +840,13 @@ export const listAllSupportThreadsWithUsers = async (): Promise<SupportThreadWit
             AND messages.sender_role <> 'admin'
             AND messages.timestamp > COALESCE(threads.admin_last_read_at, '1970-01-01')
         ) AS unread_count,
+        (
+          SELECT messages.sender_role
+          FROM user_support_messages AS messages
+          WHERE messages.thread_id = threads.id
+          ORDER BY messages.timestamp DESC, messages.id DESC
+          LIMIT 1
+        ) AS last_message_sender_role,
         users.name AS user_name,
         users.email AS user_email,
         users.whatsapp_number AS user_whatsapp,
@@ -872,6 +921,99 @@ export const getSupportMessages = async (threadId: number) => {
   );
 
   return rows.map(mapMessageRow);
+};
+
+export type SupportMessageMutation = "edit" | "delete" | "react";
+
+/**
+ * Mutates messages stored in the internal support conversation. These
+ * messages do not go through WhatsApp, so the support payload is the source
+ * of truth for edits, soft deletes and reactions.
+ */
+export const mutateSupportMessage = async (options: {
+  userId: number;
+  whatsappId: string;
+  messageId: number;
+  action: SupportMessageMutation;
+  text?: string;
+  emoji?: string;
+  actorRole: "admin" | "user";
+  actorUserId: number;
+}): Promise<SupportMessage | null> => {
+  await ensureSupportTables();
+  const db = getDb();
+  const { canonical } = await resolveCanonicalWhatsappId(options.whatsappId);
+  const [rows] = await db.query<SupportMessageRow[]>(
+    `SELECT messages.*
+       FROM user_support_messages AS messages
+       INNER JOIN user_support_threads AS threads ON threads.id = messages.thread_id
+      WHERE messages.id = ? AND messages.user_id = ? AND threads.whatsapp_id = ?
+      LIMIT 1`,
+    [options.messageId, options.userId, canonical],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+
+  const current = mapMessageRow(rows[0]);
+  if (options.actorRole === "user" && current.senderRole !== "user") return null;
+  if (options.action === "edit" && current.senderRole !== options.actorRole) return null;
+  const payload = current.payload && typeof current.payload === "object"
+    ? { ...(current.payload as Record<string, unknown>) }
+    : {};
+  const now = new Date().toISOString();
+
+  if (options.action === "edit") {
+    const nextText = (options.text ?? "").trim();
+    if (!nextText && !payload.mediaType) return null;
+    payload.editedAt = now;
+    if (payload.mediaType) payload.caption = nextText || null;
+    await db.query(
+      `UPDATE user_support_messages SET text = ?, payload = ? WHERE id = ? LIMIT 1`,
+      [nextText || null, JSON.stringify(payload), options.messageId],
+    );
+  } else if (options.action === "delete") {
+    payload.deleted = true;
+    payload.deletedAt = now;
+    payload.deletedByUserId = options.actorUserId;
+    payload.deletedByRole = options.actorRole;
+    payload.reactions = [];
+    await db.query(
+      `UPDATE user_support_messages SET text = NULL, payload = ? WHERE id = ? LIMIT 1`,
+      [JSON.stringify(payload), options.messageId],
+    );
+  } else {
+    const emoji = (options.emoji ?? "").trim();
+    if (!emoji) return null;
+    const existing = Array.isArray(payload.reactions) ? payload.reactions : [];
+    const normalized = existing.filter(
+      (item): item is Record<string, unknown> => !!item && typeof item === "object",
+    );
+    const sameActor = normalized.findIndex(
+      (item) => Number(item.senderUserId) === options.actorUserId && String(item.emoji ?? "") === emoji,
+    );
+    if (sameActor >= 0) {
+      normalized.splice(sameActor, 1);
+    } else {
+      normalized.push({
+        emoji,
+        senderUserId: options.actorUserId,
+        senderRole: options.actorRole,
+        timestamp: now,
+      });
+    }
+    payload.reactions = normalized;
+    await db.query(
+      `UPDATE user_support_messages SET payload = ? WHERE id = ? LIMIT 1`,
+      [JSON.stringify(payload), options.messageId],
+    );
+  }
+
+  const [updatedRows] = await db.query<SupportMessageRow[]>(
+    `SELECT * FROM user_support_messages WHERE id = ? LIMIT 1`,
+    [options.messageId],
+  );
+  return Array.isArray(updatedRows) && updatedRows.length > 0
+    ? mapMessageRow(updatedRows[0])
+    : null;
 };
 
 export const markSupportThreadRead = async (

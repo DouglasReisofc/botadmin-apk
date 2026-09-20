@@ -7,6 +7,7 @@ import {
   ensureUserTable,
   getDb,
 } from "lib/db";
+import { emitPurchaseCreated } from "lib/realtime";
 
 const SIMULATED_PROVIDER = "botadmin_simulator";
 
@@ -60,6 +61,20 @@ export async function POST() {
         }),
       ],
     );
+
+    // A simulação é deliberadamente isolada: registra a venda marcada como
+    // simulada e publica apenas o evento em tempo real para o painel admin.
+    emitPurchaseCreated({
+      userId: currentUser.id,
+      purchase: {
+        categoryName: String(plan.name || "Plano Mensal"),
+        categoryPrice: Number.isFinite(amount) ? amount : 25,
+        customerName: currentUser.name || currentUser.email || `Usuário #${currentUser.id}`,
+        customerWhatsapp: currentUser.whatsappNumber ?? null,
+        purchasedAt: new Date().toISOString(),
+        productDetails: "teste controlado do painel admin",
+      },
+    });
 
     return NextResponse.json({
       ok: true,

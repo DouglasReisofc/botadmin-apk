@@ -9,6 +9,7 @@ import {
   recordSupportMessage,
   buildSupportThreadSummary,
   serializeSupportMessage,
+  mutateSupportMessage,
   setSupportHandlingMode,
   getMinutesLeftIn24hWindow,
 } from "lib/support";
@@ -20,6 +21,46 @@ import {
 } from "lib/meta";
 import { resolveUploadedFileUrl, UPLOADS_STORAGE_ROOT } from "lib/uploads";
 import { emitSupportMessageEvent, emitSupportThreadUpdate } from "lib/realtime";
+
+export async function PATCH(request: Request) {
+  try {
+    const admin = await getCurrentUser();
+    if (!admin) return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
+    if (admin.role !== "admin") return NextResponse.json({ message: "Acesso restrito aos administradores." }, { status: 403 });
+    const body = await request.json().catch(() => null);
+    const userId = Number(body?.userId);
+    const messageId = Number(body?.messageId);
+    const whatsappId = typeof body?.to === "string" ? body.to.trim() : "";
+    const action = typeof body?.action === "string" ? body.action.trim().toLowerCase() : "";
+    if (!Number.isFinite(userId) || userId <= 0 || !Number.isFinite(messageId) || messageId <= 0 || !whatsappId) {
+      return NextResponse.json({ message: "Mensagem inválida." }, { status: 400 });
+    }
+    if (action !== "edit" && action !== "delete" && action !== "react") {
+      return NextResponse.json({ message: "Ação não suportada." }, { status: 400 });
+    }
+    if (action === "edit" && typeof body?.text !== "string") {
+      return NextResponse.json({ message: "Informe o novo texto." }, { status: 400 });
+    }
+    if (action === "react" && typeof body?.emoji !== "string") {
+      return NextResponse.json({ message: "Informe a reação." }, { status: 400 });
+    }
+    const updated = await mutateSupportMessage({
+      userId: Math.trunc(userId),
+      whatsappId,
+      messageId: Math.trunc(messageId),
+      action,
+      text: body.text,
+      emoji: body.emoji,
+      actorRole: "admin",
+      actorUserId: admin.id,
+    });
+    if (!updated) return NextResponse.json({ message: "Mensagem não encontrada." }, { status: 404 });
+    return NextResponse.json({ ok: true, message: serializeSupportMessage(updated) });
+  } catch (error) {
+    console.error("[admin-support] Falha ao alterar mensagem", error);
+    return NextResponse.json({ message: "Não foi possível alterar a mensagem." }, { status: 500 });
+  }
+}
 
 const inferMediaType = (inputType: string, fallback: string):
   | "image"

@@ -6867,10 +6867,13 @@ class ConversationMessageBubble extends StatelessWidget {
             onToggleDeletedReveal: (reveal) =>
                 onToggleDeletedReveal(message, reveal),
             canDelete:
+                thread.isSupport ||
                 message.fromMe ||
                 (thread.isInternalGroup && thread.instanceIsAdmin == true),
             canEdit:
-                thread.isInternalGroup && message.fromMe && !message.isDeleted,
+                (thread.isSupport || thread.isInternalGroup) &&
+                message.fromMe &&
+                !message.isDeleted,
             canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,
             canRevealDeleted:
                 !thread.isInternalGroup || message.canRevealDeletedContent,
@@ -6882,10 +6885,11 @@ class ConversationMessageBubble extends StatelessWidget {
             actionsButton: _MessageActionsButton(
               message: message,
               canDelete:
+                  thread.isSupport ||
                   message.fromMe ||
                   (thread.isInternalGroup && thread.instanceIsAdmin == true),
               canEdit:
-                  thread.isInternalGroup &&
+                  (thread.isSupport || thread.isInternalGroup) &&
                   message.fromMe &&
                   !message.isDeleted,
               canPin: !thread.isInternalGroup || thread.instanceIsAdmin == true,

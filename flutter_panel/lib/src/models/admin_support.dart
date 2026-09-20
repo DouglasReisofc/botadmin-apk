@@ -49,6 +49,7 @@ class AdminSupportThreadSummary {
     this.supportName,
     this.supportAvatarUrl,
     this.supportRole,
+    this.lastMessageSenderRole,
   });
 
   final String whatsappId;
@@ -66,6 +67,7 @@ class AdminSupportThreadSummary {
   final String? supportName;
   final String? supportAvatarUrl;
   final String? supportRole;
+  final String? lastMessageSenderRole;
 
   bool get isOpen => status == 'open';
   bool get isHuman => handlingMode == 'human';
@@ -87,6 +89,7 @@ class AdminSupportThreadSummary {
       supportName: json['supportName']?.toString(),
       supportAvatarUrl: json['supportAvatarUrl']?.toString(),
       supportRole: json['supportRole']?.toString(),
+      lastMessageSenderRole: json['lastMessageSenderRole']?.toString(),
     );
   }
 }
@@ -181,6 +184,9 @@ class AdminSupportMessage {
     this.senderUserId,
     this.media,
     this.deliveryState = MessageDeliveryState.sent,
+    this.isDeleted = false,
+    this.editedAt,
+    this.reactions = const [],
   });
 
   final int id;
@@ -192,6 +198,9 @@ class AdminSupportMessage {
   final int? senderUserId;
   final AdminSupportMedia? media;
   final MessageDeliveryState deliveryState;
+  final bool isDeleted;
+  final DateTime? editedAt;
+  final List<ChatReaction> reactions;
 
   ChatMessage toChatMessage({
     required bool forAdmin,
@@ -222,6 +231,12 @@ class AdminSupportMessage {
       mediaFileName: attachment?.filename,
       mediaCaption: attachment?.caption,
       isAnimatedMedia: attachment?.mimeType == 'image/gif',
+      deletedAt: isDeleted ? DateTime.tryParse(timestamp) : null,
+      editedAt: editedAt,
+      deletedByName: isDeleted
+          ? (senderRole == 'admin' ? 'Administrador' : incomingName)
+          : null,
+      reactions: reactions,
       deliveryState: own ? deliveryState : null,
     );
   }
@@ -251,6 +266,27 @@ class AdminSupportMessage {
         'delivered' => MessageDeliveryState.delivered,
         _ => MessageDeliveryState.sent,
       },
+      isDeleted: json['isDeleted'] == true,
+      editedAt: DateTime.tryParse(json['editedAt']?.toString() ?? ''),
+      reactions:
+          (json['reactions'] is List ? (json['reactions'] as List) : const [])
+              .whereType<Map>()
+              .map(
+                (item) => ChatReaction(
+                  emoji: item['emoji']?.toString() ?? '',
+                  targetMessageId: 'support-${_asInt(json['id'])}',
+                  senderName: item['senderRole']?.toString() == 'admin'
+                      ? 'Administrador'
+                      : null,
+                  senderJid: item['senderUserId']?.toString(),
+                  fromMe: item['senderRole']?.toString() == 'admin',
+                  timestamp: DateTime.tryParse(
+                    item['timestamp']?.toString() ?? '',
+                  ),
+                ),
+              )
+              .where((reaction) => reaction.emoji.trim().isNotEmpty)
+              .toList(growable: false),
       media: mediaJson is Map
           ? AdminSupportMedia.fromJson(mediaJson.cast<String, dynamic>())
           : null,
