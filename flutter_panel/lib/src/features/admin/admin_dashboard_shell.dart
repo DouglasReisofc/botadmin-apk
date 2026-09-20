@@ -8840,6 +8840,12 @@ class _PlanDialogState extends State<_PlanDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final viewportWidth = MediaQuery.sizeOf(context).width;
+    final compact = viewportWidth < 600;
+    final contentWidth = compact
+        ? (viewportWidth - 56).clamp(280.0, 920.0).toDouble()
+        : (viewportWidth - 128).clamp(560.0, 920.0).toDouble();
+
     Widget numberField(
       TextEditingController controller,
       String label, {
@@ -8852,10 +8858,38 @@ class _PlanDialogState extends State<_PlanDialog> {
       );
     }
 
+    Widget responsiveFields(List<Widget> fields, {int wideColumns = 2}) {
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth < 560 ? 1 : wideColumns;
+          const spacing = 12.0;
+          final fieldWidth =
+              (constraints.maxWidth - (spacing * (columns - 1))) / columns;
+          return Wrap(
+            spacing: spacing,
+            runSpacing: spacing,
+            children: fields
+                .map((field) => SizedBox(width: fieldWidth, child: field))
+                .toList(growable: false),
+          );
+        },
+      );
+    }
+
     return AlertDialog(
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compact ? 12 : 40,
+        vertical: compact ? 16 : 24,
+      ),
+      contentPadding: EdgeInsets.fromLTRB(
+        compact ? 16 : 24,
+        12,
+        compact ? 16 : 24,
+        0,
+      ),
       title: Text(widget.record == null ? 'Novo plano' : 'Editar plano'),
       content: SizedBox(
-        width: 680,
+        width: contentWidth,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -8872,57 +8906,29 @@ class _PlanDialogState extends State<_PlanDialog> {
                 decoration: const InputDecoration(labelText: 'Descrição'),
               ),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(child: numberField(_price, 'Preço', suffix: 'R\$')),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: numberField(
-                      _addonInstancePrice,
-                      'Adicional por perfil',
-                      suffix: 'R\$',
-                    ),
-                  ),
-                ],
-              ),
+              responsiveFields([
+                numberField(_price, 'Preço', suffix: 'R\$'),
+                numberField(
+                  _addonInstancePrice,
+                  'Adicional por perfil',
+                  suffix: 'R\$',
+                ),
+              ]),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: numberField(
-                      _addonGroupPrice,
-                      'Adicional por grupo',
-                      suffix: 'R\$',
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: numberField(
-                      _durationDays,
-                      'Duração',
-                      suffix: 'dias',
-                    ),
-                  ),
-                ],
-              ),
+              responsiveFields([
+                numberField(
+                  _addonGroupPrice,
+                  'Adicional por grupo',
+                  suffix: 'R\$',
+                ),
+                numberField(_durationDays, 'Duração', suffix: 'dias'),
+              ]),
               const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: numberField(_instanceLimit, 'Limite de perfis'),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(child: numberField(_groupLimit, 'Limite de grupos')),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: numberField(
-                      _storageQuotaGb,
-                      'Storage',
-                      suffix: 'GB',
-                    ),
-                  ),
-                ],
-              ),
+              responsiveFields([
+                numberField(_instanceLimit, 'Limite de perfis'),
+                numberField(_groupLimit, 'Limite de grupos'),
+                numberField(_storageQuotaGb, 'Storage', suffix: 'GB'),
+              ], wideColumns: 3),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Liberar funcionalidades e fluxos'),
