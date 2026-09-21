@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 90679667,
-    "updatedAt": "2026-09-20T23:26:42.000Z",
+    "sizeBytes": 90679711,
+    "updatedAt": "2026-09-21T00:36:38.000Z",
     "buildType": "release",
-    "versionName": "0.1.311",
-    "versionCode": 317
+    "versionName": "0.1.312",
+    "versionCode": 318
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.311 (317): compositor profissional de notificações, detecção automática de mídia e destinatários pesquisáveis."
+  "details": "APK Flutter nativo 0.1.312 (318): editor visual de texto, emoji/GIF/figurinha, busca remota de usuários, ações e programação em modal."
 }

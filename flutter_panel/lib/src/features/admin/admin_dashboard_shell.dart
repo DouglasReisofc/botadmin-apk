@@ -27,6 +27,7 @@ import '../../models/migration_models.dart';
 import '../auth/auth_controller.dart';
 import '../support/user_support_chat_screen.dart';
 import '../chat/media_local_file.dart';
+import '../chat/chat_screen.dart';
 
 enum AdminPanelSection {
   support,
@@ -3740,18 +3741,442 @@ Future<String?> _pickNotificationDateTime(BuildContext context) async {
   ).toIso8601String();
 }
 
+class _NotificationTextMark {
+  _NotificationTextMark({
+    required this.start,
+    required this.end,
+    this.bold = false,
+    this.italic = false,
+  });
+
+  int start;
+  int end;
+  bool bold;
+  bool italic;
+}
+
+/// Editor visual do compositor. O texto continua sendo texto puro para push,
+/// enquanto as marcações ficam em contentJson e são renderizadas pelo inbox.
+class _NotificationRichTextController extends TextEditingController {
+  _NotificationRichTextController({super.text});
+
+  final List<_NotificationTextMark> marks = [];
+  bool boldMode = false;
+  bool italicMode = false;
+
+  @override
+  set value(TextEditingValue next) {
+    final previous = super.value;
+    if (next.text != previous.text) {
+      var prefix = 0;
+      while (prefix < previous.text.length &&
+          prefix < next.text.length &&
+          previous.text.codeUnitAt(prefix) == next.text.codeUnitAt(prefix)) {
+        prefix++;
+      }
+      var suffix = 0;
+      while (suffix < previous.text.length - prefix &&
+          suffix < next.text.length - prefix &&
+          previous.text.codeUnitAt(previous.text.length - suffix - 1) ==
+              next.text.codeUnitAt(next.text.length - suffix - 1)) {
+        suffix++;
+      }
+      final oldEnd = previous.text.length - suffix;
+      final delta = next.text.length - previous.text.length;
+      for (final mark in marks) {
+        if (mark.start >= oldEnd) {
+          mark.start = (mark.start + delta).clamp(0, next.text.length);
+          mark.end = (mark.end + delta).clamp(mark.start, next.text.length);
+        } else if (mark.end > prefix) {
+          mark.end = (mark.end + delta).clamp(mark.start, next.text.length);
+          if (mark.start > prefix) mark.start = prefix;
+        }
+      }
+      marks.removeWhere((mark) => mark.end <= mark.start);
+      if (next.text.length > previous.text.length &&
+          next.text.length > prefix + suffix) {
+        final insertedEnd = next.text.length - suffix;
+        if (boldMode || italicMode) {
+          _addMark(prefix, insertedEnd, bold: boldMode, italic: italicMode);
+        }
+      }
+    }
+    super.value = next;
+  }
+
+  void _addMark(int start, int end, {bool? bold, bool? italic}) {
+    if (end <= start) return;
+    final existing = marks.cast<_NotificationTextMark?>().firstWhere(
+      (mark) => mark != null && mark.start == start && mark.end == end,
+      orElse: () => null,
+    );
+    if (existing != null) {
+      existing.bold = existing.bold || bold == true;
+      existing.italic = existing.italic || italic == true;
+    } else {
+      marks.add(
+        _NotificationTextMark(
+          start: start,
+          end: end,
+          bold: bold == true,
+          italic: italic == true,
+        ),
+      );
+    }
+    notifyListeners();
+  }
+
+  void toggleBold() {
+    final selection = value.selection;
+    if (!selection.isValid || selection.isCollapsed) {
+      boldMode = !boldMode;
+    } else {
+      _addMark(selection.start, selection.end, bold: true);
+    }
+    notifyListeners();
+  }
+
+  void toggleItalic() {
+    final selection = value.selection;
+    if (!selection.isValid || selection.isCollapsed) {
+      italicMode = !italicMode;
+    } else {
+      _addMark(selection.start, selection.end, italic: true);
+    }
+    notifyListeners();
+  }
+
+  void insertText(String inserted) {
+    final selection = value.selection;
+    final start = selection.isValid ? selection.start : text.length;
+    final end = selection.isValid ? selection.end : text.length;
+    value = value.copyWith(
+      text: text.replaceRange(start, end, inserted),
+      selection: TextSelection.collapsed(offset: start + inserted.length),
+    );
+  }
+
+  Map<String, dynamic> toContentJson() => {
+    'marks': marks
+        .map(
+          (mark) => {
+            'start': mark.start,
+            'end': mark.end,
+            if (mark.bold) 'bold': true,
+            if (mark.italic) 'italic': true,
+          },
+        )
+        .toList(),
+  };
+
+  void loadContentJson(Object? raw) {
+    if (raw is! Map || raw['marks'] is! List) return;
+    marks
+      ..clear()
+      ..addAll(
+        (raw['marks'] as List)
+            .whereType<Map>()
+            .map((entry) {
+              final map = Map<String, dynamic>.from(entry);
+              return _NotificationTextMark(
+                start: int.tryParse('${map['start']}') ?? 0,
+                end: int.tryParse('${map['end']}') ?? 0,
+                bold: map['bold'] == true,
+                italic: map['italic'] == true,
+              );
+            })
+            .where(
+              (mark) =>
+                  mark.start >= 0 &&
+                  mark.end > mark.start &&
+                  mark.end <= text.length,
+            ),
+      );
+    notifyListeners();
+  }
+
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (text.isEmpty || marks.isEmpty)
+      return TextSpan(style: style, text: text);
+    final points = <int>{0, text.length};
+    for (final mark in marks) {
+      points
+        ..add(mark.start)
+        ..add(mark.end);
+    }
+    final sorted = points.toList()..sort();
+    final children = <InlineSpan>[];
+    for (var i = 0; i < sorted.length - 1; i++) {
+      final start = sorted[i];
+      final end = sorted[i + 1];
+      if (end <= start) continue;
+      final active = marks.where(
+        (mark) => mark.start <= start && mark.end >= end,
+      );
+      var bold = false;
+      var italic = false;
+      for (final mark in active) {
+        bold = bold || mark.bold;
+        italic = italic || mark.italic;
+      }
+      children.add(
+        TextSpan(
+          text: text.substring(start, end),
+          style: style?.copyWith(
+            fontWeight: bold ? FontWeight.w700 : style.fontWeight,
+            fontStyle: italic ? FontStyle.italic : style.fontStyle,
+          ),
+        ),
+      );
+    }
+    return TextSpan(style: style, children: children);
+  }
+}
+
+Future<({String? startsAt, String? expiresAt, bool sendNow})?>
+_showNotificationScheduleDialog(
+  BuildContext context, {
+  String? startsAt,
+  String? expiresAt,
+  required bool sendNow,
+}) async {
+  final start = TextEditingController(text: startsAt);
+  final end = TextEditingController(text: expiresAt);
+  var immediate = sendNow;
+  final result =
+      await showDialog<({String? startsAt, String? expiresAt, bool sendNow})>(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (context, setState) => AlertDialog(
+            backgroundColor: WaTheme.of(context).panel,
+            surfaceTintColor: Colors.transparent,
+            title: const Row(
+              children: [
+                Icon(Icons.schedule_outlined),
+                SizedBox(width: 10),
+                Text('Programar notificação'),
+              ],
+            ),
+            content: SizedBox(
+              width: 430,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: start,
+                    readOnly: true,
+                    onTap: () async {
+                      final value = await _pickNotificationDateTime(context);
+                      if (value != null)
+                        setState(() {
+                          start.text = value;
+                          immediate = false;
+                        });
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Exibir em',
+                      hintText: 'Agora ou escolha uma data e hora',
+                      prefixIcon: Icon(Icons.play_circle_outline),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: end,
+                    readOnly: true,
+                    onTap: () async {
+                      final value = await _pickNotificationDateTime(context);
+                      if (value != null) setState(() => end.text = value);
+                    },
+                    decoration: const InputDecoration(
+                      labelText: 'Encerrar em (opcional)',
+                      prefixIcon: Icon(Icons.event_busy_outlined),
+                    ),
+                  ),
+                  SwitchListTile.adaptive(
+                    contentPadding: EdgeInsets.zero,
+                    value: immediate,
+                    onChanged: (value) => setState(() => immediate = value),
+                    title: const Text('Enviar imediatamente'),
+                  ),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, (
+                  startsAt: start.text.trim().isEmpty
+                      ? null
+                      : start.text.trim(),
+                  expiresAt: end.text.trim().isEmpty ? null : end.text.trim(),
+                  sendNow: immediate,
+                )),
+                child: const Text('Aplicar'),
+              ),
+            ],
+          ),
+        ),
+      );
+  start.dispose();
+  end.dispose();
+  return result;
+}
+
+Future<({String type, String label, String value})?>
+_showNotificationActionDialog(
+  BuildContext context, {
+  String type = 'url',
+  String label = 'Saiba mais',
+  String value = '',
+}) async {
+  final labelController = TextEditingController(text: label);
+  final valueController = TextEditingController(text: value);
+  var selectedType = type;
+  final result = await showDialog<({String type, String label, String value})>(
+    context: context,
+    builder: (dialogContext) => StatefulBuilder(
+      builder: (context, setState) => AlertDialog(
+        backgroundColor: WaTheme.of(context).panel,
+        surfaceTintColor: Colors.transparent,
+        title: const Row(
+          children: [
+            Icon(Icons.smart_button_outlined),
+            SizedBox(width: 10),
+            Text('Botão de ação'),
+          ],
+        ),
+        content: SizedBox(
+          width: 460,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                initialValue: selectedType,
+                decoration: const InputDecoration(
+                  labelText: 'Ao clicar, fazer',
+                ),
+                items: const [
+                  DropdownMenuItem(
+                    value: 'url',
+                    child: Text('Abrir página do site'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'app_route',
+                    child: Text('Abrir página do app'),
+                  ),
+                  DropdownMenuItem(
+                    value: 'function',
+                    child: Text('Chamar uma função'),
+                  ),
+                ],
+                onChanged: (value) => setState(() {
+                  selectedType = value ?? 'url';
+                  if (selectedType == 'function' &&
+                      !const {
+                        'open_notifications',
+                        'open_support',
+                        'refresh_notifications',
+                      }.contains(valueController.text)) {
+                    valueController.text = 'open_notifications';
+                  }
+                }),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: labelController,
+                decoration: const InputDecoration(
+                  labelText: 'Texto do botão',
+                  prefixIcon: Icon(Icons.title),
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (selectedType == 'function')
+                DropdownButtonFormField<String>(
+                  initialValue:
+                      const {
+                        'open_notifications',
+                        'open_support',
+                        'refresh_notifications',
+                      }.contains(valueController.text)
+                      ? valueController.text
+                      : 'open_notifications',
+                  decoration: const InputDecoration(
+                    labelText: 'Função do painel',
+                    prefixIcon: Icon(Icons.bolt_outlined),
+                  ),
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'open_notifications',
+                      child: Text('Abrir central de notificações'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'open_support',
+                      child: Text('Abrir atendimento / suporte'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'refresh_notifications',
+                      child: Text('Atualizar notificações'),
+                    ),
+                  ],
+                  onChanged: (value) =>
+                      valueController.text = value ?? 'open_notifications',
+                )
+              else
+                TextField(
+                  controller: valueController,
+                  decoration: InputDecoration(
+                    labelText: selectedType == 'app_route'
+                        ? 'Rota do app (ex.: /dashboard/user/plano)'
+                        : 'URL ou caminho do site',
+                    prefixIcon: const Icon(Icons.input_outlined),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Remover'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, (
+              type: selectedType,
+              label: labelController.text.trim().isEmpty
+                  ? 'Abrir'
+                  : labelController.text.trim(),
+              value: valueController.text.trim(),
+            )),
+            child: const Text('Aplicar'),
+          ),
+        ],
+      ),
+    ),
+  );
+  labelController.dispose();
+  valueController.dispose();
+  return result;
+}
+
 Future<void> _showNotificationComposer(
   BuildContext context,
   WidgetRef ref, {
   Map<String, dynamic>? initial,
 }) async {
   final title = TextEditingController(text: initial?['title']?.toString());
-  final message = TextEditingController(text: initial?['message']?.toString());
+  final message = _NotificationRichTextController(
+    text: initial?['message']?.toString() ?? '',
+  );
   final mediaUrl = TextEditingController(
     text: initial?['mediaUrl']?.toString(),
-  );
-  final targetUrl = TextEditingController(
-    text: initial?['targetUrl']?.toString(),
   );
   final startsAt = TextEditingController(
     text: initial?['startsAt']?.toString(),
@@ -3759,6 +4184,11 @@ Future<void> _showNotificationComposer(
   final expiresAt = TextEditingController(
     text: initial?['expiresAt']?.toString(),
   );
+  final initialContent = initial?['contentJson'];
+  message.loadContentJson(initialContent);
+  final initialAction = initialContent is Map && initialContent['action'] is Map
+      ? Map<String, dynamic>.from(initialContent['action'] as Map)
+      : const <String, dynamic>{};
   String targetType = initial?['targetType']?.toString() == 'user'
       ? 'user'
       : 'all';
@@ -3768,6 +4198,14 @@ Future<void> _showNotificationComposer(
   bool showAdvanced = false;
   String? selectedFileName;
   String? detectedMediaType = initial?['mediaType']?.toString();
+  String actionType =
+      initialAction['type']?.toString() ??
+      (initial?['targetUrl']?.toString().isNotEmpty == true ? 'url' : '');
+  String actionLabel = initialAction['label']?.toString() ?? 'Saiba mais';
+  String actionValue =
+      initialAction['value']?.toString() ??
+      initial?['targetUrl']?.toString() ??
+      '';
 
   String mediaLabel(String? type) => switch (type) {
     'video' => 'Vídeo',
@@ -3776,22 +4214,6 @@ Future<void> _showNotificationComposer(
     'image' => 'Imagem / banner',
     _ => 'Sem anexo',
   };
-
-  void insertMarkup(String marker) {
-    final value = message.value;
-    final selection = value.selection;
-    final selected = selection.isValid && !selection.isCollapsed
-        ? value.text.substring(selection.start, selection.end)
-        : 'texto';
-    final replacement = '$marker$selected$marker';
-    final start = selection.isValid ? selection.start : value.text.length;
-    final end = selection.isValid ? selection.end : value.text.length;
-    final next = value.text.replaceRange(start, end, replacement);
-    message.value = value.copyWith(
-      text: next,
-      selection: TextSelection.collapsed(offset: start + replacement.length),
-    );
-  }
 
   await showDialog<void>(
     context: context,
@@ -3876,7 +4298,7 @@ Future<void> _showNotificationComposer(
                             labelText: 'Mensagem',
                             hintText: 'Escreva o aviso para seus usuários...',
                             helperText:
-                                'Você pode usar emojis, links, **negrito** e *itálico*.',
+                                'Selecione um trecho ou ative um estilo para continuar digitando formatado.',
                             alignLabelWithHint: true,
                           ),
                         ),
@@ -3885,33 +4307,58 @@ Future<void> _showNotificationComposer(
                           children: [
                             IconButton(
                               tooltip: 'Negrito',
-                              onPressed: () => insertMarkup('**'),
+                              onPressed: message.toggleBold,
+                              color: message.boldMode ? wa.accent : null,
                               icon: const Icon(Icons.format_bold),
                             ),
                             IconButton(
                               tooltip: 'Itálico',
-                              onPressed: () => insertMarkup('*'),
+                              onPressed: message.toggleItalic,
+                              color: message.italicMode ? wa.accent : null,
                               icon: const Icon(Icons.format_italic),
                             ),
                             IconButton(
-                              tooltip: 'Adicionar emoji',
-                              onPressed: () {
-                                final value = message.value;
-                                final position = value.selection.isValid
-                                    ? value.selection.start
-                                    : value.text.length;
-                                message.value = value.copyWith(
-                                  text: value.text.replaceRange(
-                                    position,
-                                    position,
-                                    ' ✨',
-                                  ),
-                                  selection: TextSelection.collapsed(
-                                    offset: position + 2,
-                                  ),
-                                );
+                              tooltip: 'Emojis, GIFs e figurinhas',
+                              onPressed: () async {
+                                final result =
+                                    await showConversationComposerPicker(
+                                      context,
+                                      ref.read(apiClientProvider),
+                                    );
+                                if (!context.mounted || result == null) return;
+                                if (result.emoji != null) {
+                                  message.insertText(result.emoji!);
+                                } else if (result.giphy != null) {
+                                  final media = result.giphy!;
+                                  mediaUrl.text = media.mediaUrl;
+                                  setState(() {
+                                    selectedFileName = media.fileName;
+                                    detectedMediaType = media.isSticker
+                                        ? 'image'
+                                        : 'gif';
+                                  });
+                                }
                               },
                               icon: const Icon(Icons.emoji_emotions_outlined),
+                            ),
+                            IconButton(
+                              tooltip: 'Programar',
+                              onPressed: () async {
+                                final result =
+                                    await _showNotificationScheduleDialog(
+                                      context,
+                                      startsAt: startsAt.text,
+                                      expiresAt: expiresAt.text,
+                                      sendNow: sendNow,
+                                    );
+                                if (result == null || !context.mounted) return;
+                                setState(() {
+                                  startsAt.text = result.startsAt ?? '';
+                                  expiresAt.text = result.expiresAt ?? '';
+                                  sendNow = result.sendNow;
+                                });
+                              },
+                              icon: const Icon(Icons.schedule_outlined),
                             ),
                             const Spacer(),
                             TextButton.icon(
@@ -4054,62 +4501,14 @@ Future<void> _showNotificationComposer(
                               ),
                               if (targetType == 'user') ...[
                                 const SizedBox(height: 12),
-                                Consumer(
-                                  builder: (context, ref, _) {
-                                    final users = ref.watch(
-                                      adminNotificationUsersProvider,
-                                    );
-                                    return users.when(
-                                      loading: () =>
-                                          const LinearProgressIndicator(),
-                                      error: (error, _) => Text(
-                                        'Não foi possível carregar usuários: $error',
-                                      ),
-                                      data: (items) => Autocomplete<_AdminRecord>(
-                                        initialValue: targetUserLabel == null
-                                            ? null
-                                            : TextEditingValue(
-                                                text: targetUserLabel!,
-                                              ),
-                                        displayStringForOption: (item) =>
-                                            '${item.title} · ${item.subtitle}',
-                                        optionsBuilder: (value) {
-                                          final query = value.text
-                                              .trim()
-                                              .toLowerCase();
-                                          if (query.isEmpty) return items;
-                                          return items.where(
-                                            (item) =>
-                                                '${item.title} ${item.subtitle}'
-                                                    .toLowerCase()
-                                                    .contains(query),
-                                          );
-                                        },
-                                        onSelected: (item) => setState(() {
-                                          targetUserId = int.tryParse(item.id);
-                                          targetUserLabel =
-                                              '${item.title} · ${item.subtitle}';
-                                        }),
-                                        fieldViewBuilder:
-                                            (
-                                              context,
-                                              controller,
-                                              focusNode,
-                                              onSubmitted,
-                                            ) => TextField(
-                                              controller: controller,
-                                              focusNode: focusNode,
-                                              decoration: const InputDecoration(
-                                                labelText:
-                                                    'Buscar por nome ou e-mail',
-                                                prefixIcon: Icon(
-                                                  Icons.person_search_outlined,
-                                                ),
-                                              ),
-                                            ),
-                                      ),
-                                    );
-                                  },
+                                _AdminNotificationUserPicker(
+                                  api: ref.read(apiClientProvider),
+                                  initialLabel: targetUserLabel,
+                                  onSelected: (item) => setState(() {
+                                    targetUserId = int.tryParse(item.id);
+                                    targetUserLabel =
+                                        '${item.title} · ${item.subtitle}';
+                                  }),
                                 ),
                               ],
                             ],
@@ -4139,67 +4538,47 @@ Future<void> _showNotificationComposer(
                                 ),
                               ),
                               const SizedBox(height: 12),
-                              TextField(
-                                controller: targetUrl,
-                                decoration: const InputDecoration(
-                                  labelText: 'Link ao clicar (opcional)',
-                                  prefixIcon: Icon(Icons.open_in_new),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const Divider(height: 24),
-                          ExpansionTile(
-                            tilePadding: EdgeInsets.zero,
-                            childrenPadding: EdgeInsets.zero,
-                            title: const Text(
-                              'Programação',
-                              style: TextStyle(fontWeight: FontWeight.w700),
-                            ),
-                            leading: const Icon(Icons.schedule_outlined),
-                            children: [
-                              TextField(
-                                controller: startsAt,
-                                readOnly: true,
-                                onTap: () async {
-                                  final value = await _pickNotificationDateTime(
-                                    context,
-                                  );
-                                  if (value != null)
-                                    setState(() {
-                                      startsAt.text = value;
-                                      sendNow = false;
-                                    });
-                                },
-                                decoration: const InputDecoration(
-                                  labelText: 'Exibir em (opcional)',
-                                  hintText: 'Agora, ou escolha uma data',
-                                  prefixIcon: Icon(Icons.schedule),
-                                ),
-                              ),
-                              const SizedBox(height: 12),
-                              TextField(
-                                controller: expiresAt,
-                                readOnly: true,
-                                onTap: () async {
-                                  final value = await _pickNotificationDateTime(
-                                    context,
-                                  );
-                                  if (value != null) expiresAt.text = value;
-                                },
-                                decoration: const InputDecoration(
-                                  labelText: 'Encerrar em (opcional)',
-                                  prefixIcon: Icon(Icons.event_busy_outlined),
-                                ),
-                              ),
-                              SwitchListTile.adaptive(
+                              ListTile(
                                 contentPadding: EdgeInsets.zero,
-                                value: sendNow,
-                                onChanged: (value) =>
-                                    setState(() => sendNow = value),
-                                title: const Text('Enviar imediatamente'),
+                                leading: const Icon(
+                                  Icons.smart_button_outlined,
+                                ),
+                                title: Text(
+                                  actionType.isEmpty
+                                      ? 'Sem botão de ação'
+                                      : '$actionLabel · ${switch (actionType) {
+                                          'app_route' => 'página do app',
+                                          'function' => 'função',
+                                          _ => 'página do site',
+                                        }}',
+                                ),
                                 subtitle: const Text(
-                                  'Desative para deixar agendado ou como rascunho.',
+                                  'Ao abrir a notificação, exiba mídia, texto e um botão fixo.',
+                                ),
+                                trailing: TextButton(
+                                  onPressed: () async {
+                                    final result =
+                                        await _showNotificationActionDialog(
+                                          context,
+                                          type: actionType.isEmpty
+                                              ? 'url'
+                                              : actionType,
+                                          label: actionLabel,
+                                          value: actionValue,
+                                        );
+                                    if (!context.mounted) return;
+                                    setState(() {
+                                      actionType = result?.type ?? '';
+                                      actionLabel =
+                                          result?.label ?? 'Saiba mais';
+                                      actionValue = result?.value ?? '';
+                                    });
+                                  },
+                                  child: Text(
+                                    actionType.isEmpty
+                                        ? 'Configurar'
+                                        : 'Editar',
+                                  ),
                                 ),
                               ),
                             ],
@@ -4237,7 +4616,19 @@ Future<void> _showNotificationComposer(
                                   if (inferredType != null)
                                     'mediaType': inferredType,
                                   'mediaUrl': mediaUrl.text,
-                                  'targetUrl': targetUrl.text,
+                                  if (actionType == 'url' &&
+                                      actionValue.isNotEmpty)
+                                    'targetUrl': actionValue,
+                                  'contentJson': {
+                                    ...message.toContentJson(),
+                                    if (actionType.isNotEmpty &&
+                                        actionValue.isNotEmpty)
+                                      'action': {
+                                        'type': actionType,
+                                        'label': actionLabel,
+                                        'value': actionValue,
+                                      },
+                                  },
                                   'targetType': targetType,
                                   if (targetType == 'user' &&
                                       targetUserId != null)
@@ -4276,6 +4667,148 @@ Future<void> _showNotificationComposer(
       );
     },
   );
+}
+
+class _AdminNotificationUserPicker extends StatefulWidget {
+  const _AdminNotificationUserPicker({
+    required this.api,
+    required this.onSelected,
+    this.initialLabel,
+  });
+
+  final BotAdminApiClient api;
+  final ValueChanged<_AdminRecord> onSelected;
+  final String? initialLabel;
+
+  @override
+  State<_AdminNotificationUserPicker> createState() =>
+      _AdminNotificationUserPickerState();
+}
+
+class _AdminNotificationUserPickerState
+    extends State<_AdminNotificationUserPicker> {
+  final _controller = TextEditingController();
+  Timer? _debounce;
+  List<_AdminRecord> _results = const [];
+  bool _loading = false;
+  bool _showResults = false;
+  int _request = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller.text = widget.initialLabel ?? '';
+    _search('');
+  }
+
+  @override
+  void dispose() {
+    _debounce?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _scheduleSearch(String query) {
+    _debounce?.cancel();
+    _debounce = Timer(const Duration(milliseconds: 280), () => _search(query));
+  }
+
+  Future<void> _search(String query) async {
+    final request = ++_request;
+    setState(() {
+      _loading = true;
+      _showResults = true;
+    });
+    try {
+      final results = await _loadAdminUsers(widget.api, query: query);
+      if (!mounted || request != _request) return;
+      setState(() => _results = results);
+    } catch (_) {
+      if (mounted && request == _request) setState(() => _results = const []);
+    } finally {
+      if (mounted && request == _request) setState(() => _loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final wa = WaTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _controller,
+          onChanged: _scheduleSearch,
+          onTap: () => setState(() => _showResults = true),
+          decoration: const InputDecoration(
+            labelText: 'Buscar usuário por nome, e-mail ou ID',
+            prefixIcon: Icon(Icons.person_search_outlined),
+            suffixIcon: Icon(Icons.keyboard_arrow_down_rounded),
+          ),
+        ),
+        if (_showResults)
+          DecoratedBox(
+            decoration: BoxDecoration(
+              color: wa.panel,
+              border: Border.all(color: wa.border),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 190),
+              child: _loading
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: LinearProgressIndicator(),
+                    )
+                  : _results.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(14),
+                      child: Text('Nenhum usuário encontrado.'),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: _results.length,
+                      separatorBuilder: (_, _) => const Divider(height: 1),
+                      itemBuilder: (context, index) {
+                        final item = _results[index];
+                        return ListTile(
+                          dense: true,
+                          leading: CircleAvatar(
+                            radius: 16,
+                            backgroundColor: wa.accentSoft,
+                            child: Icon(
+                              Icons.person_outline,
+                              color: wa.accent,
+                              size: 18,
+                            ),
+                          ),
+                          title: Text(
+                            item.title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Text(
+                            item.subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          onTap: () {
+                            _controller.text =
+                                '${item.title} · ${item.subtitle}';
+                            _controller.selection = TextSelection.collapsed(
+                              offset: _controller.text.length,
+                            );
+                            setState(() => _showResults = false);
+                            widget.onSelected(item);
+                          },
+                        );
+                      },
+                    ),
+            ),
+          ),
+      ],
+    );
+  }
 }
 
 class _AdminRecordsWorkspace extends ConsumerStatefulWidget {

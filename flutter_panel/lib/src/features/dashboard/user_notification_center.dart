@@ -5,6 +5,7 @@ import 'package:lottie/lottie.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:video_player/video_player.dart';
 import '../../core/api_client.dart';
+import '../../core/app_config.dart';
 import '../../core/wa_theme.dart';
 
 class UserNotificationBell extends ConsumerStatefulWidget {
@@ -36,20 +37,32 @@ class _UserNotificationBellState extends ConsumerState<UserNotificationBell> {
     try {
       final data = await ref.read(apiClientProvider).loadUserNotifications();
       if (mounted) {
-        final shouldAutoOpen =
-            !_autoOpened &&
-            data.items.any(
-              (item) =>
-                  item['type'] == 'admin_panel_notification' &&
-                  item['isRead'] != true,
-            );
+        Map<String, dynamic>? autoOpenItem;
+        if (!_autoOpened) {
+          for (final item in data.items) {
+            if (item['type'] == 'admin_panel_notification' &&
+                item['isRead'] != true) {
+              autoOpenItem = item;
+              break;
+            }
+          }
+        }
         setState(() {
           _items = data.items;
           _unread = data.unreadCount;
-          if (shouldAutoOpen) _autoOpened = true;
+          if (autoOpenItem != null) _autoOpened = true;
         });
-        if (shouldAutoOpen) {
-          WidgetsBinding.instance.addPostFrameCallback((_) => _open());
+        if (autoOpenItem != null) {
+          final item = autoOpenItem;
+          WidgetsBinding.instance.addPostFrameCallback((_) async {
+            if (!mounted) return;
+            await _openNotificationDetail(context, item);
+            final id = int.tryParse('${item['id']}');
+            if (id != null) {
+              await ref.read(apiClientProvider).markUserNotificationsRead([id]);
+              await _load();
+            }
+          });
         }
       }
     } catch (_) {}
@@ -168,19 +181,11 @@ class _NotificationDialog extends StatelessWidget {
                           final mediaUrl = metadata is Map
                               ? metadata['mediaUrl']?.toString()
                               : null;
-                          final mediaType = metadata is Map
-                              ? metadata['mediaType']?.toString()
-                              : null;
                           final targetUrl = metadata is Map
                               ? metadata['targetUrl']?.toString()
                               : null;
                           return ListTile(
-                            onTap: targetUrl != null && targetUrl.isNotEmpty
-                                ? () {
-                                    final uri = Uri.tryParse(targetUrl);
-                                    if (uri != null) launchUrl(uri);
-                                  }
-                                : null,
+                            onTap: () => _openNotificationDetail(context, item),
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 8,
                             ),
@@ -213,28 +218,24 @@ class _NotificationDialog extends StatelessWidget {
                                 const SizedBox(height: 4),
                                 _RichNotificationText(
                                   text: item['message']?.toString() ?? '',
+                                  contentJson:
+                                      metadata is Map &&
+                                          metadata['contentJson'] is Map
+                                      ? Map<String, dynamic>.from(
+                                          metadata['contentJson'] as Map,
+                                        )
+                                      : null,
                                 ),
-                                if (mediaUrl != null &&
-                                    mediaUrl.isNotEmpty) ...[
-                                  const SizedBox(height: 8),
-                                  _NotificationMedia(
-                                    url: mediaUrl,
-                                    type: mediaType ?? 'image',
-                                  ),
-                                ],
-                                if (targetUrl != null && targetUrl.isNotEmpty)
-                                  Padding(
-                                    padding: const EdgeInsets.only(top: 8),
-                                    child: TextButton.icon(
-                                      onPressed: () {
-                                        final uri = Uri.tryParse(targetUrl);
-                                        if (uri != null) launchUrl(uri);
-                                      },
-                                      icon: const Icon(
-                                        Icons.open_in_new,
-                                        size: 17,
+                                if ((mediaUrl?.isNotEmpty ?? false) ||
+                                    (targetUrl?.isNotEmpty ?? false))
+                                  const Padding(
+                                    padding: EdgeInsets.only(top: 6),
+                                    child: Text(
+                                      'Toque para abrir a notificação completa',
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Colors.grey,
                                       ),
-                                      label: const Text('Abrir link'),
                                     ),
                                   ),
                               ],
@@ -251,12 +252,247 @@ class _NotificationDialog extends StatelessWidget {
   }
 }
 
-class _RichNotificationText extends StatelessWidget {
-  const _RichNotificationText({required this.text});
-  final String text;
+Future<void> _openNotificationDetail(
+  BuildContext context,
+  Map<String, dynamic> item,
+) async {
+  final metadata = item['metadata'];
+  final meta = metadata is Map
+      ? Map<String, dynamic>.from(metadata)
+      : <String, dynamic>{};
+  final content = meta['contentJson'] is Map
+      ? Map<String, dynamic>.from(meta['contentJson'] as Map)
+      : null;
+  final mediaUrl = meta['mediaUrl']?.toString() ?? '';
+  final mediaType = meta['mediaType']?.toString() ?? 'image';
+  final action = content?['action'] is Map
+      ? Map<String, dynamic>.from(content!['action'] as Map)
+      : (meta['targetUrl']?.toString().isNotEmpty == true
+            ? <String, dynamic>{
+                'type': 'url',
+                'label': 'Abrir link',
+                'value': meta['targetUrl'],
+              }
+            : null);
+  await showDialog<void>(
+    context: context,
+    builder: (dialogContext) => _NotificationDetailDialog(
+      title: item['title']?.toString() ?? 'BotAdmin',
+      message: item['message']?.toString() ?? '',
+      contentJson: content,
+      mediaUrl: mediaUrl,
+      mediaType: mediaType,
+      action: action,
+      onAction: action == null
+          ? null
+          : () => _runNotificationAction(
+              dialogContext,
+              action['type']?.toString() ?? 'url',
+              action['value']?.toString() ?? '',
+            ),
+    ),
+  );
+}
+
+Future<void> _runNotificationAction(
+  BuildContext context,
+  String type,
+  String value,
+) async {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return;
+  if (type == 'function') {
+    Navigator.of(context).pop();
+    if (normalized == 'open_support') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Abra a área de suporte pelo menu principal.'),
+        ),
+      );
+    } else if (normalized == 'refresh_notifications') {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Notificações atualizadas.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Função "$normalized" solicitada.')),
+      );
+    }
+    return;
+  }
+  if (type == 'app_route') {
+    Navigator.of(context).pop();
+    try {
+      await Navigator.of(context).pushNamed(normalized);
+    } catch (_) {
+      await launchUrl(
+        Uri.parse(AppConfig.publicInviteUrl(normalized)),
+        mode: LaunchMode.externalApplication,
+      );
+    }
+    return;
+  }
+  final uri = Uri.tryParse(AppConfig.publicInviteUrl(normalized));
+  if (uri != null) await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+class _NotificationDetailDialog extends StatelessWidget {
+  const _NotificationDetailDialog({
+    required this.title,
+    required this.message,
+    required this.contentJson,
+    required this.mediaUrl,
+    required this.mediaType,
+    required this.action,
+    required this.onAction,
+  });
+
+  final String title;
+  final String message;
+  final Map<String, dynamic>? contentJson;
+  final String mediaUrl;
+  final String mediaType;
+  final Map<String, dynamic>? action;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
+    final wa = WaTheme.of(context);
+    final size = MediaQuery.sizeOf(context);
+    return Dialog(
+      backgroundColor: wa.panel,
+      surfaceTintColor: Colors.transparent,
+      insetPadding: const EdgeInsets.all(16),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: 620,
+          maxHeight: size.height * .84,
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 14),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: wa.accentSoft,
+                    child: Icon(Icons.campaign_outlined, color: wa.accent),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            Divider(height: 1, color: wa.border),
+            if (mediaUrl.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+                child: _NotificationMedia(url: mediaUrl, type: mediaType),
+              ),
+            Expanded(
+              child: Container(
+                margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: wa.panelElevated,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: wa.border),
+                ),
+                child: SingleChildScrollView(
+                  child: _RichNotificationText(
+                    text: message,
+                    contentJson: contentJson,
+                  ),
+                ),
+              ),
+            ),
+            if (action != null && onAction != null)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                child: SizedBox(
+                  width: double.infinity,
+                  child: FilledButton.icon(
+                    onPressed: onAction,
+                    icon: const Icon(Icons.open_in_new),
+                    label: Text(action!['label']?.toString() ?? 'Abrir'),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RichNotificationText extends StatelessWidget {
+  const _RichNotificationText({required this.text, this.contentJson});
+  final String text;
+  final Map<String, dynamic>? contentJson;
+
+  @override
+  Widget build(BuildContext context) {
+    final marks = contentJson?['marks'];
+    if (marks is List && marks.isNotEmpty) {
+      final ranges = marks
+          .whereType<Map>()
+          .map((raw) {
+            final map = Map<String, dynamic>.from(raw);
+            return (
+              start: int.tryParse('${map['start']}') ?? 0,
+              end: int.tryParse('${map['end']}') ?? 0,
+              bold: map['bold'] == true,
+              italic: map['italic'] == true,
+            );
+          })
+          .where((range) => range.end > range.start)
+          .toList();
+      final points = <int>{0, text.length};
+      for (final range in ranges) {
+        points
+          ..add(range.start.clamp(0, text.length))
+          ..add(range.end.clamp(0, text.length));
+      }
+      final sorted = points.toList()..sort();
+      final rich = <InlineSpan>[];
+      for (var i = 0; i < sorted.length - 1; i++) {
+        final start = sorted[i];
+        final end = sorted[i + 1];
+        final active = ranges.where(
+          (range) => range.start <= start && range.end >= end,
+        );
+        var bold = false;
+        var italic = false;
+        for (final range in active) {
+          bold = bold || range.bold;
+          italic = italic || range.italic;
+        }
+        rich.add(
+          TextSpan(
+            text: text.substring(start, end),
+            style: TextStyle(
+              fontWeight: bold ? FontWeight.w700 : null,
+              fontStyle: italic ? FontStyle.italic : null,
+            ),
+          ),
+        );
+      }
+      return SelectableText.rich(
+        TextSpan(style: DefaultTextStyle.of(context).style, children: rich),
+      );
+    }
     final spans = <InlineSpan>[];
     final pattern = RegExp(r'(\*\*[^*]+\*\*|\*[^*]+\*)');
     var cursor = 0;
