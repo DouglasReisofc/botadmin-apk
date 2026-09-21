@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 90696095,
-    "updatedAt": "2026-09-21T02:14:32.000Z",
+    "sizeBytes": 90699673,
+    "updatedAt": "2026-09-21T04:04:39.000Z",
     "buildType": "release",
-    "versionName": "0.1.313",
-    "versionCode": 319
+    "versionName": "0.1.314",
+    "versionCode": 320
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.313 (319): conversa interna sem falso chamado, modal branco e notificações de pagamento com animação Lottie."
+  "details": "APK Flutter nativo 0.1.314 (320): modal de pagamento com confetes, texto centralizado, acesso rápido aos perfis WhatsApp, aviso de conexão e histórico de cobranças pagas."
 }

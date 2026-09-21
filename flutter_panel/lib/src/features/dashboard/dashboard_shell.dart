@@ -415,6 +415,12 @@ class DashboardShell extends ConsumerWidget {
                   data.instances,
                   selectedInstanceId,
                 );
+                _scheduleProfileOnboardingPrompt(
+                  context,
+                  ref,
+                  data.instances,
+                  session?.user.id,
+                );
                 _scheduleProfileExpiryPrompt(
                   context,
                   ref,
@@ -1090,7 +1096,6 @@ void _scheduleProfileOnboardingPrompt(
     return;
   final hasConnectedProfile = instances.any((instance) => instance.isConnected);
   if (hasConnectedProfile) return;
-  if (instances.any((instance) => !_profileValidity(instance).active)) return;
 
   final userKey = userId ?? 0;
   final shownFor = _profileOnboardingPromptShownForUser;
@@ -1103,16 +1108,17 @@ void _scheduleProfileOnboardingPrompt(
       return;
     }
     _profileOnboardingPromptShownForUser = userKey;
-    ref
-        .read(dashboardSectionProvider.notifier)
-        .select(DashboardSection.profiles);
-    ref.read(selectedThreadProvider.notifier).select(null);
-    ref.read(selectedGroupProvider.notifier).select(null);
-
-    await _showProfileOnboardingDialog(
+    final connectNow = await _showProfileOnboardingDialog(
       context,
       hasProfile: instances.isNotEmpty,
     );
+    if (connectNow == true && context.mounted) {
+      ref
+          .read(dashboardSectionProvider.notifier)
+          .select(DashboardSection.profiles);
+      ref.read(selectedThreadProvider.notifier).select(null);
+      ref.read(selectedGroupProvider.notifier).select(null);
+    }
     _profileOnboardingPromptScheduledForUser.remove(userKey);
   });
 }
@@ -1202,6 +1208,9 @@ void _scheduleProfileExpiryPrompt(
   int? userId,
 ) {
   if (instance == null) return;
+  // When the WhatsApp session is disconnected, the connection prompt is the
+  // useful first action. Do not stack the billing/expiry dialog over it.
+  if (!instance.isConnected) return;
   final validity = _profileValidity(instance);
   if (!validity.shouldWarn) return;
   final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
@@ -1342,7 +1351,7 @@ Future<bool> _ensureProfileAvailable(
   return false;
 }
 
-Future<void> _showProfileOnboardingDialog(
+Future<bool?> _showProfileOnboardingDialog(
   BuildContext context, {
   required bool hasProfile,
 }) {
@@ -1353,7 +1362,7 @@ Future<void> _showProfileOnboardingDialog(
   final message = hasProfile
       ? 'Você já tem um perfil, mas nenhum WhatsApp está conectado. Para liberar automações, grupos, respostas e proteção, conecte o número desse perfil.'
       : 'Para começar, crie um perfil e conecte seu WhatsApp. É esse perfil que libera as automações, grupos, mensagens e proteções do BotAdmin.';
-  return showDialog<void>(
+  return showDialog<bool>(
     context: context,
     barrierDismissible: true,
     builder: (context) => AlertDialog(
@@ -1379,11 +1388,11 @@ Future<void> _showProfileOnboardingDialog(
       ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(false),
           child: const Text('Depois'),
         ),
         FilledButton.icon(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: () => Navigator.of(context).pop(true),
           icon: const Icon(Icons.arrow_forward_rounded),
           label: Text(hasProfile ? 'Conectar agora' : 'Criar perfil'),
         ),
@@ -2742,7 +2751,7 @@ _DashboardNavigationCategory _navigationCategoryFor(DashboardSection section) {
     DashboardSection.store ||
     DashboardSection.affiliates ||
     DashboardSection.payments => _DashboardNavigationCategory.business,
-    DashboardSection.profiles ||
+    DashboardSection.profiles => _DashboardNavigationCategory.chats,
     DashboardSection.apiRest ||
     DashboardSection.webhooks => _DashboardNavigationCategory.connections,
     DashboardSection.settings => _DashboardNavigationCategory.settings,
@@ -2768,6 +2777,11 @@ List<_CategoryDestination> _destinationsFor(
         label: 'Chamadas',
         icon: Icons.call_outlined,
         section: DashboardSection.calls,
+      ),
+      _CategoryDestination(
+        label: 'Perfis WhatsApp',
+        icon: Icons.qr_code_scanner_rounded,
+        section: DashboardSection.profiles,
       ),
     ],
     _DashboardNavigationCategory.automation => const [
@@ -2822,11 +2836,6 @@ List<_CategoryDestination> _destinationsFor(
       ),
     ],
     _DashboardNavigationCategory.connections => const [
-      _CategoryDestination(
-        label: 'Perfis WhatsApp',
-        icon: Icons.qr_code_scanner_rounded,
-        section: DashboardSection.profiles,
-      ),
       _CategoryDestination(
         label: 'API REST',
         icon: Icons.api_outlined,
@@ -3831,6 +3840,102 @@ class _ConversationProfileMenuHeader extends StatelessWidget {
         ),
         Icon(Icons.swap_horiz_rounded, color: wa.icon, size: 20),
       ],
+    );
+  }
+}
+
+class _ConversationProfileAccessCard extends StatelessWidget {
+  const _ConversationProfileAccessCard({
+    required this.instance,
+    required this.onOpen,
+  });
+
+  final BotInstance? instance;
+  final VoidCallback onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final wa = WaTheme.of(context);
+    final connected = instance?.isConnected == true;
+    final waiting = instance?.isAwaitingPair == true;
+    final title = instance == null ? 'Conecte seu WhatsApp' : instance!.name;
+    final status = instance == null
+        ? 'Crie um perfil para começar a conversar'
+        : connected
+        ? 'WhatsApp conectado'
+        : waiting
+        ? 'Aguardando conexão'
+        : 'WhatsApp desconectado';
+    final color = connected
+        ? const Color(0xFF138A4B)
+        : waiting
+        ? const Color(0xFFD97706)
+        : const Color(0xFFB42318);
+    return Material(
+      color: wa.panel,
+      child: InkWell(
+        onTap: onOpen,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: connected ? wa.accentSoft : color.withValues(alpha: .07),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: connected ? wa.accent : color.withValues(alpha: .28),
+            ),
+          ),
+          child: Row(
+            children: [
+              CircleAvatar(
+                radius: 19,
+                backgroundColor: connected
+                    ? wa.panel
+                    : color.withValues(alpha: .12),
+                child: Icon(
+                  connected
+                      ? Icons.verified_rounded
+                      : Icons.qr_code_scanner_rounded,
+                  size: 20,
+                  color: connected ? wa.accent : color,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: wa.textPrimary,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      status,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: onOpen,
+                child: Text(instance == null ? 'Conectar' : 'Gerenciar'),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -6090,6 +6195,18 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                   hint: 'Pesquisar ou começar uma nova conversa',
                   searchProvider: conversationSearchProvider,
                 ),
+                if (filter != ConversationListFilter.internalGroups) ...[
+                  const SizedBox(height: 10),
+                  _ConversationProfileAccessCard(
+                    instance: activeInstance,
+                    onOpen: () {
+                      ref.read(selectedThreadProvider.notifier).select(null);
+                      ref
+                          .read(dashboardSectionProvider.notifier)
+                          .select(DashboardSection.profiles);
+                    },
+                  ),
+                ],
                 SizedBox(height: 10),
                 _WhatsAppFilterBar(
                   filter: filter,

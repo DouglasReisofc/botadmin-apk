@@ -406,6 +406,7 @@ class _NotificationDetailDialog extends StatelessWidget {
           maxHeight: size.height * .84,
         ),
         child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 16, 12, 14),
@@ -442,64 +443,49 @@ class _NotificationDetailDialog extends StatelessWidget {
             Divider(height: 1, color: wa.border),
             if (isPayment)
               Padding(
-                padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
-                child: Container(
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    gradient: const LinearGradient(
-                      colors: [Color(0xFFF0FBF5), Color(0xFFEAF4FF)],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                padding: const EdgeInsets.fromLTRB(20, 12, 20, 0),
+                child: Column(
+                  children: [
+                    SizedBox(
+                      height: size.width < 480 ? 132 : 156,
+                      child: Lottie.asset(
+                        'assets/brand/payment-success-confetti.json',
+                        fit: BoxFit.contain,
+                        repeat: false,
+                        errorBuilder: (_, __, ___) => const Icon(
+                          Icons.verified_rounded,
+                          size: 68,
+                          color: Color(0xFF138A4B),
+                        ),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: const Color(0xFFCBEAD8)),
-                  ),
-                  child: Column(
-                    children: [
-                      SizedBox(
-                        height: size.width < 480 ? 112 : 138,
-                        child: Lottie.network(
-                          AppConfig.publicInviteUrl(
-                            '/animations/botadmin/PayInvoiceBlue.json',
-                          ),
-                          fit: BoxFit.contain,
-                          repeat: false,
-                          errorBuilder: (_, __, ___) => const Icon(
-                            Icons.payments_rounded,
-                            size: 64,
+                    Transform.translate(
+                      offset: const Offset(0, -4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(
+                            Icons.check_circle_rounded,
+                            size: 20,
                             color: Color(0xFF138A4B),
                           ),
-                        ),
-                      ),
-                      Transform.translate(
-                        offset: const Offset(0, -6),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            const Icon(
-                              Icons.check_circle_rounded,
-                              size: 20,
-                              color: Color(0xFF138A4B),
-                            ),
-                            const SizedBox(width: 7),
-                            Flexible(
-                              child: Text(
-                                amountLabel == null
-                                    ? 'Pagamento confirmado'
-                                    : 'Pagamento confirmado • $amountLabel',
-                                textAlign: TextAlign.center,
-                                style: const TextStyle(
-                                  color: Color(0xFF11623A),
-                                  fontWeight: FontWeight.w800,
-                                ),
+                          const SizedBox(width: 7),
+                          Flexible(
+                            child: Text(
+                              amountLabel == null
+                                  ? 'Pagamento confirmado'
+                                  : 'Pagamento confirmado • $amountLabel',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Color(0xFF11623A),
+                                fontWeight: FontWeight.w800,
                               ),
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 8),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             if (mediaUrl.isNotEmpty)
@@ -507,30 +493,14 @@ class _NotificationDetailDialog extends StatelessWidget {
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                 child: _NotificationMedia(url: mediaUrl, type: mediaType),
               ),
-            Expanded(
-              child: Container(
-                margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: wa.panel,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isPayment ? const Color(0xFFDCE7E1) : wa.border,
-                  ),
-                  boxShadow: wa.isDark
-                      ? null
-                      : const [
-                          BoxShadow(
-                            color: Color(0x0A000000),
-                            blurRadius: 12,
-                            offset: Offset(0, 4),
-                          ),
-                        ],
-                ),
-                child: SingleChildScrollView(
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.fromLTRB(24, 14, 24, 18),
+                child: Center(
                   child: _RichNotificationText(
                     text: message,
                     contentJson: contentJson,
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ),
@@ -555,9 +525,14 @@ class _NotificationDetailDialog extends StatelessWidget {
 }
 
 class _RichNotificationText extends StatelessWidget {
-  const _RichNotificationText({required this.text, this.contentJson});
+  const _RichNotificationText({
+    required this.text,
+    this.contentJson,
+    this.textAlign = TextAlign.start,
+  });
   final String text;
   final Map<String, dynamic>? contentJson;
+  final TextAlign textAlign;
 
   @override
   Widget build(BuildContext context) {
@@ -608,6 +583,7 @@ class _RichNotificationText extends StatelessWidget {
       }
       return SelectableText.rich(
         TextSpan(style: DefaultTextStyle.of(context).style, children: rich),
+        textAlign: textAlign,
       );
     }
     final spans = <InlineSpan>[];
@@ -637,6 +613,7 @@ class _RichNotificationText extends StatelessWidget {
     if (cursor < text.length) spans.add(TextSpan(text: text.substring(cursor)));
     return SelectableText.rich(
       TextSpan(style: DefaultTextStyle.of(context).style, children: spans),
+      textAlign: textAlign,
     );
   }
 }
