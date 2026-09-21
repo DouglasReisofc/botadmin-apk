@@ -7,6 +7,7 @@ import {
   markNotificationsAsRead,
   deleteAllNotificationsForUser,
   deleteNotificationForUser,
+  deleteMisclassifiedInternalSupportNotificationsForUser,
 } from "lib/user-notifications";
 
 export async function GET() {
@@ -16,6 +17,10 @@ export async function GET() {
     if (!user) {
       return NextResponse.json({ message: "Não autenticado." }, { status: 401 });
     }
+
+    // Remove registros legados criados quando a primeira mensagem do admin
+    // era confundida com a abertura de um chamado por um contato externo.
+    await deleteMisclassifiedInternalSupportNotificationsForUser(user.id);
 
     const [notifications, unreadCount] = await Promise.all([
       getNotificationsForUser(user.id),

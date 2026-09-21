@@ -181,6 +181,22 @@ export const getUnreadCountForUser = async (userId: number): Promise<number> => 
   return typeof raw === "number" ? raw : Number.parseInt(String(raw ?? 0), 10) || 0;
 };
 
+export const deleteMisclassifiedInternalSupportNotificationsForUser = async (
+  userId: number,
+): Promise<void> => {
+  await ensureUserNotificationTable();
+  const db = getDb();
+  await db.query(
+    `
+      DELETE FROM user_notifications
+      WHERE user_id = ?
+        AND type = 'support_opened'
+        AND metadata LIKE '%"whatsappId":"__admin__"%'
+    `,
+    [userId],
+  );
+};
+
 export const markNotificationsAsRead = async (
   userId: number,
   notificationIds: number[] | "all",

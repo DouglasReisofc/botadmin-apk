@@ -3,6 +3,7 @@ import { ResultSetHeader, RowDataPacket } from "mysql2";
 import { ensureCustomerTable, getDb } from "lib/db";
 import { getAdminWebhookRow } from "./admin-webhooks";
 import { findCustomerByPhoneForUser } from "lib/customers";
+import { shouldNotifySupportOpened } from "./support-notification-policy";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 
@@ -464,7 +465,6 @@ export const recordSupportMessage = async (options: {
   const { canonical: normalizedWhatsappId } = await resolveCanonicalWhatsappId(trimmedWhatsappId);
   const thread = await getOrCreateSupportThread(userId, normalizedWhatsappId);
   const db = getDb();
-  const isFirstInboundMessage = direction === "inbound" && (!thread.lastMessageAt);
   const isAdminThread = thread.whatsappId === "__admin__";
   const normalizedSenderRole: SupportMessageSenderRole = (() => {
     const incoming = options.senderRole;
@@ -482,6 +482,12 @@ export const recordSupportMessage = async (options: {
     }
     return null;
   })();
+  const shouldEmitSupportOpened = shouldNotifySupportOpened({
+    direction,
+    hasPreviousMessage: Boolean(thread.lastMessageAt),
+    isAdminThread,
+    senderRole: normalizedSenderRole,
+  });
 
   const [insert] = await db.query<ResultSetHeader>(
     `
@@ -588,7 +594,7 @@ export const recordSupportMessage = async (options: {
   );
 
   // Dispara notificação ao abrir uma nova conversa de suporte (primeira mensagem do cliente)
-  if (isFirstInboundMessage) {
+  if (shouldEmitSupportOpened) {
     try {
       const { createUserNotification } = await import("./user-notifications");
       const { emitUserNotificationCreated } = await import("./realtime");

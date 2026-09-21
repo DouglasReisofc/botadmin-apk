@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 90679711,
-    "updatedAt": "2026-09-21T00:36:38.000Z",
+    "sizeBytes": 90696095,
+    "updatedAt": "2026-09-21T02:14:32.000Z",
     "buildType": "release",
-    "versionName": "0.1.312",
-    "versionCode": 318
+    "versionName": "0.1.313",
+    "versionCode": 319
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.312 (318): editor visual de texto, emoji/GIF/figurinha, busca remota de usuários, ações e programação em modal."
+  "details": "APK Flutter nativo 0.1.313 (319): conversa interna sem falso chamado, modal branco e notificações de pagamento com animação Lottie."
 }

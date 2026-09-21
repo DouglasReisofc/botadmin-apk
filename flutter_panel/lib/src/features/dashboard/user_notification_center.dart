@@ -8,6 +8,25 @@ import '../../core/api_client.dart';
 import '../../core/app_config.dart';
 import '../../core/wa_theme.dart';
 
+bool _isPaymentNotification(String? rawType) {
+  final type = rawType?.trim().toLowerCase() ?? '';
+  return type.contains('payment') ||
+      type.contains('purchase') ||
+      type.contains('request_package') ||
+      type == 'bot_sale' ||
+      type == 'admin_plan_addon' ||
+      type == 'customer_balance_credit';
+}
+
+String? _paymentAmountLabel(Map<String, dynamic> metadata) {
+  final explicit = metadata['amountLabel']?.toString().trim() ?? '';
+  if (explicit.isNotEmpty) return explicit;
+  final raw = metadata['amount'];
+  final amount = raw is num ? raw.toDouble() : double.tryParse('$raw');
+  if (amount == null) return null;
+  return 'R\$ ${amount.toStringAsFixed(2).replaceFirst('.', ',')}';
+}
+
 class UserNotificationBell extends ConsumerStatefulWidget {
   const UserNotificationBell({super.key});
   @override
@@ -184,16 +203,26 @@ class _NotificationDialog extends StatelessWidget {
                           final targetUrl = metadata is Map
                               ? metadata['targetUrl']?.toString()
                               : null;
+                          final notificationType = item['type']?.toString();
+                          final isPayment = _isPaymentNotification(
+                            notificationType,
+                          );
                           return ListTile(
                             onTap: () => _openNotificationDetail(context, item),
                             contentPadding: const EdgeInsets.symmetric(
                               vertical: 8,
                             ),
                             leading: CircleAvatar(
-                              backgroundColor: wa.accent.withOpacity(.12),
+                              backgroundColor: isPayment
+                                  ? const Color(0xFFE7F8EE)
+                                  : wa.accent.withOpacity(.12),
                               child: Icon(
-                                Icons.campaign_outlined,
-                                color: wa.accent,
+                                isPayment
+                                    ? Icons.check_circle_outline_rounded
+                                    : Icons.campaign_outlined,
+                                color: isPayment
+                                    ? const Color(0xFF138A4B)
+                                    : wa.accent,
                               ),
                             ),
                             trailing: IconButton(
@@ -282,6 +311,8 @@ Future<void> _openNotificationDetail(
       contentJson: content,
       mediaUrl: mediaUrl,
       mediaType: mediaType,
+      notificationType: item['type']?.toString() ?? '',
+      metadata: meta,
       action: action,
       onAction: action == null
           ? null
@@ -343,6 +374,8 @@ class _NotificationDetailDialog extends StatelessWidget {
     required this.contentJson,
     required this.mediaUrl,
     required this.mediaType,
+    required this.notificationType,
+    required this.metadata,
     required this.action,
     required this.onAction,
   });
@@ -352,6 +385,8 @@ class _NotificationDetailDialog extends StatelessWidget {
   final Map<String, dynamic>? contentJson;
   final String mediaUrl;
   final String mediaType;
+  final String notificationType;
+  final Map<String, dynamic> metadata;
   final Map<String, dynamic>? action;
   final VoidCallback? onAction;
 
@@ -359,6 +394,8 @@ class _NotificationDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
     final size = MediaQuery.sizeOf(context);
+    final isPayment = _isPaymentNotification(notificationType);
+    final amountLabel = _paymentAmountLabel(metadata);
     return Dialog(
       backgroundColor: wa.panel,
       surfaceTintColor: Colors.transparent,
@@ -375,8 +412,15 @@ class _NotificationDetailDialog extends StatelessWidget {
               child: Row(
                 children: [
                   CircleAvatar(
-                    backgroundColor: wa.accentSoft,
-                    child: Icon(Icons.campaign_outlined, color: wa.accent),
+                    backgroundColor: isPayment
+                        ? const Color(0xFFE7F8EE)
+                        : wa.accentSoft,
+                    child: Icon(
+                      isPayment
+                          ? Icons.verified_rounded
+                          : Icons.campaign_outlined,
+                      color: isPayment ? const Color(0xFF138A4B) : wa.accent,
+                    ),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -396,6 +440,68 @@ class _NotificationDetailDialog extends StatelessWidget {
               ),
             ),
             Divider(height: 1, color: wa.border),
+            if (isPayment)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
+                child: Container(
+                  width: double.infinity,
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFFF0FBF5), Color(0xFFEAF4FF)],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    border: Border.all(color: const Color(0xFFCBEAD8)),
+                  ),
+                  child: Column(
+                    children: [
+                      SizedBox(
+                        height: size.width < 480 ? 112 : 138,
+                        child: Lottie.network(
+                          AppConfig.publicInviteUrl(
+                            '/animations/botadmin/PayInvoiceBlue.json',
+                          ),
+                          fit: BoxFit.contain,
+                          repeat: false,
+                          errorBuilder: (_, __, ___) => const Icon(
+                            Icons.payments_rounded,
+                            size: 64,
+                            color: Color(0xFF138A4B),
+                          ),
+                        ),
+                      ),
+                      Transform.translate(
+                        offset: const Offset(0, -6),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(
+                              Icons.check_circle_rounded,
+                              size: 20,
+                              color: Color(0xFF138A4B),
+                            ),
+                            const SizedBox(width: 7),
+                            Flexible(
+                              child: Text(
+                                amountLabel == null
+                                    ? 'Pagamento confirmado'
+                                    : 'Pagamento confirmado • $amountLabel',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: Color(0xFF11623A),
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
+                ),
+              ),
             if (mediaUrl.isNotEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
@@ -406,9 +512,20 @@ class _NotificationDetailDialog extends StatelessWidget {
                 margin: const EdgeInsets.fromLTRB(20, 8, 20, 12),
                 padding: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: wa.panelElevated,
+                  color: wa.panel,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: wa.border),
+                  border: Border.all(
+                    color: isPayment ? const Color(0xFFDCE7E1) : wa.border,
+                  ),
+                  boxShadow: wa.isDark
+                      ? null
+                      : const [
+                          BoxShadow(
+                            color: Color(0x0A000000),
+                            blurRadius: 12,
+                            offset: Offset(0, 4),
+                          ),
+                        ],
                 ),
                 child: SingleChildScrollView(
                   child: _RichNotificationText(
