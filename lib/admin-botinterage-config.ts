@@ -100,6 +100,9 @@ const mapRowToRuntimeConfig = (row: AdminBotInterageConfigRow | null): BotIntera
   baseUrl: (row?.api_base_url && row.api_base_url.trim()) || DEFAULT_BASE_URL,
   token: row?.api_token ?? null,
   model: row?.model?.trim() || DEFAULT_MODEL,
+  webhookId: row?.webhook_id?.trim() || null,
+  webhookSecret: row?.webhook_secret?.trim() || null,
+  clientId: row?.client_id?.trim() || null,
 });
 
 let runtimeCache: { expiresAt: number; value: BotInterageRuntimeConfig } | null = null;

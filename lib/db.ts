@@ -1252,6 +1252,9 @@ export const ensureAdminBotInterageConfigTables = async () =>
     ensureConfigColumn("api_base_url", "api_base_url VARCHAR(500) NULL"),
     ensureConfigColumn("api_token", "api_token LONGTEXT NULL"),
     ensureConfigColumn("model", "model VARCHAR(120) NOT NULL DEFAULT 'qwen2.5:7b'"),
+    ensureConfigColumn("webhook_id", "webhook_id VARCHAR(191) NULL"),
+    ensureConfigColumn("webhook_secret", "webhook_secret LONGTEXT NULL"),
+    ensureConfigColumn("client_id", "client_id VARCHAR(191) NULL"),
   ]);
 
   await db.query(
@@ -4556,6 +4559,9 @@ export type AdminBotInterageConfigRow = {
   api_base_url: string | null;
   api_token: string | null;
   model: string;
+  webhook_id: string | null;
+  webhook_secret: string | null;
+  client_id: string | null;
   created_at: Date;
   updated_at: Date;
 };

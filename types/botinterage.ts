@@ -11,6 +11,9 @@ export type BotInterageRuntimeConfig = {
   baseUrl: string | null;
   token: string | null;
   model: string;
+  webhookId: string | null;
+  webhookSecret: string | null;
+  clientId: string | null;
 };
 
 export type AdminBotInterageAllowedUser = {
