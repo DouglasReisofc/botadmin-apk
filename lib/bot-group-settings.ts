@@ -52,6 +52,22 @@ import {
   getDb,
 } from "./db";
 
+// Toda escrita de configurações deve invalidar o cache de forma centralizada.
+// O endpoint de toggles e alguns fluxos internos chamam upsertGroupSettings
+// diretamente; deixar a invalidação apenas nas rotas permitia que Redis/local
+// continuassem servindo flags, prompts e textos antigos por vários segundos.
+const invalidatePersistedGroupSettingsCache = async (groupId: number) => {
+  try {
+    const { invalidateGroupSettingsCache } = await import("lib/bot-events/cache");
+    invalidateGroupSettingsCache(groupId);
+  } catch (error) {
+    console.warn("[bot-group-settings] falha ao invalidar cache após gravação", {
+      groupId,
+      error,
+    });
+  }
+};
+
 const DEFAULT_COMMAND_TOGGLES: BotGroupCommandToggles = {
   autoresposta: false,
   botinterage: false,
@@ -4602,6 +4618,7 @@ export const upsertGroupSettings = async (
     }
   }
 
+  await invalidatePersistedGroupSettingsCache(groupId);
   return getGroupSettings(groupId);
 };
 

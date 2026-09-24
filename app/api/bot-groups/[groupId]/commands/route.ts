@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "lib/auth";
 import { getGroupByIdForUser } from "lib/bot-groups";
 import { upsertGroupSettings } from "lib/bot-group-settings";
+import { invalidateGroupSettingsCache } from "lib/bot-events/cache";
 
 // Lista de toggles válidos (espelha BotGroupCommandToggles)
 const COMMAND_TOGGLE_KEYS = new Set([
@@ -74,6 +75,9 @@ export async function PATCH(
     const settings = await upsertGroupSettings(groupId, {
       commandToggles: { [command]: value } as Record<string, boolean>,
     });
+    // Mantém compatibilidade explícita para instalações antigas e garante
+    // que a resposta realtime não sobreviva ao valor recém-gravado.
+    invalidateGroupSettingsCache(groupId);
 
     return NextResponse.json({
       message: "Toggle atualizado com sucesso.",

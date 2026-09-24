@@ -20625,7 +20625,17 @@ const convertStickerSourceToWebp = async (
 
     let sentVoice = false;
     let assistantWhatsappMessageId: string | null = null;
-    if (settings.commandToggles.vozbotinterage) {
+    const botInterageVoiceEnabled =
+      settings.commandToggles.vozbotinterage === true ||
+      settings.featureFlags.botInterageVoice === true;
+    console.info("[bot-events] botinterage voice decision", {
+      groupId: group.id,
+      enabled: botInterageVoiceEnabled,
+      commandToggle: settings.commandToggles.vozbotinterage === true,
+      featureFlag: settings.featureFlags.botInterageVoice === true,
+      configuredVoice: settings.aiVoice?.trim() || null,
+    });
+    if (botInterageVoiceEnabled) {
       const voiceStartedAt = Date.now();
       try {
         const configuredGroupVoice = settings.aiVoice?.trim() || "";
@@ -20713,7 +20723,10 @@ const convertStickerSourceToWebp = async (
               const url = new URL("/api/tts", getAppBaseUrl());
               url.searchParams.set("texto", replyText);
               url.searchParams.set("voz", voice);
-              const resp = await fetch(url.toString(), { headers: { accept: "audio/mpeg" } });
+              const resp = await fetch(url.toString(), {
+                headers: { accept: "audio/mpeg" },
+                cache: "no-store",
+              });
               if (!resp.ok) {
                 continue;
               }

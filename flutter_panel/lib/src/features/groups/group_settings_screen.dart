@@ -699,6 +699,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             'featureFlags': {
               ...settings.featureFlags,
               'botInterageMentionOnly': draft.mentionOnly,
+              // Mantém a intenção de resposta por voz também em uma flag
+              // explícita, para que versões antigas do endpoint de ativações
+              // não descartem o estado do seletor de voz.
+              'botInterageVoice': draft.enabled && draft.voiceEnabled,
               // Mantém grupos legados coerentes e evita que clientes antigos
               // reativem o modo de menção ao salvar outra configuração.
               'iaSomenteMencao': draft.mentionOnly,
@@ -2191,16 +2195,20 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
     setState(() => _voicePreviewLoading = true);
     try {
       await _voicePreviewPlayer.stop();
-      final uri = Uri.parse(AppConfig.apiBaseUrl).resolve('/api/tts').replace(
-        queryParameters: {
-          'texto': 'Esse é o BotAdmin, o melhor robô para gerenciar grupos.',
-          'voz': _voiceId,
-        },
-      );
+      final uri = Uri.parse(AppConfig.apiBaseUrl)
+          .resolve('/api/tts')
+          .replace(
+            queryParameters: {
+              'texto':
+                  'Esse é o BotAdmin, o melhor robô para gerenciar grupos.',
+              'voz': _voiceId,
+            },
+          );
       await _voicePreviewPlayer.setUrl(uri.toString());
       await _voicePreviewPlayer.play();
     } catch (_) {
-      if (mounted) showErrorToast(context, 'Não foi possível reproduzir a prévia da voz.');
+      if (mounted)
+        showErrorToast(context, 'Não foi possível reproduzir a prévia da voz.');
     } finally {
       if (mounted) setState(() => _voicePreviewLoading = false);
     }
@@ -2295,7 +2303,9 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
                 contentPadding: EdgeInsets.zero,
                 secondary: const Icon(Icons.record_voice_over_rounded),
                 title: const Text('Responder com IA por voz'),
-                subtitle: const Text('A resposta da IA será enviada como áudio no grupo.'),
+                subtitle: const Text(
+                  'A resposta da IA será enviada como áudio no grupo.',
+                ),
                 value: _voiceEnabled,
                 onChanged: _enabled
                     ? (value) => setState(() => _voiceEnabled = value)
@@ -2312,10 +2322,14 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
                           labelText: 'Voz da IA',
                           helperText: 'Escolha a voz usada nas respostas.',
                         ),
-                        items: _botInterageVoices.entries.map((entry) => DropdownMenuItem(
-                          value: entry.key,
-                          child: Text(entry.value),
-                        )).toList(),
+                        items: _botInterageVoices.entries
+                            .map(
+                              (entry) => DropdownMenuItem(
+                                value: entry.key,
+                                child: Text(entry.value),
+                              ),
+                            )
+                            .toList(),
                         onChanged: (value) {
                           if (value != null) setState(() => _voiceId = value);
                         },
@@ -2326,7 +2340,11 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
                       tooltip: 'Ouvir prévia',
                       onPressed: _voicePreviewLoading ? null : _previewVoice,
                       icon: _voicePreviewLoading
-                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : const Icon(Icons.play_arrow_rounded),
                     ),
                   ],
