@@ -6626,6 +6626,11 @@ const normalizeMessage = (payload: NormalizedWebhookPayload): NormalizedMessage 
       eventMessageQuoted.fromMe,
       eventMessageQuoted.isFromMe,
       eventMessageQuoted.fromInstance,
+      toRecord(combinedRaw.quotedMessageRecord).isFromInstance,
+      toRecord(combinedRaw.quotedMessageRecord).fromMe,
+      toRecord(combinedRaw.quotedMessageRecord).isFromMe,
+      toRecord(combinedRaw.quotedKeyRecord).fromMe,
+      toRecord(combinedRaw.quotedKeyRecord).isFromMe,
       data.quotedInstance,
       data.quotedFromInstance,
       raw.quotedInstance,
@@ -18872,9 +18877,24 @@ const convertStickerSourceToWebp = async (
           ? [normalizeJid(message.quotedParticipant)].filter(Boolean)
           : [];
         const quotedMessageId = message.quotedMessageId?.trim() || null;
+        const botIdentityCandidates = [
+          botNorm,
+          normalizeJid(context.instance.phone),
+          ...extractSessionSelfDigits(payload, message) ? [extractSessionSelfDigits(payload, message)] : [],
+        ].filter(Boolean);
+        const messageTextForMention = String(message.text ?? message.caption ?? "");
+        const textualBotMentioned = botIdentityCandidates.some((digits) =>
+          new RegExp(`(^|\\s)@\\+?${String(digits).replace(/\\D/g, "")}(?=\\s|$|[.,:;!?])`, "i").test(messageTextForMention),
+        ) || [
+          context.instance.name,
+          firstString(toRecord(payload.instance).name, toRecord(payload.instance).pushName, toRecord(payload.instance).profileName),
+        ].filter(Boolean).some((name) =>
+          new RegExp(`(^|\\s)@${String(name).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?=\\s|$|[.,:;!?])`, "iu").test(messageTextForMention),
+        );
         const botMentioned =
           message.mentionsInstance === true ||
-          (botNorm ? mentionedDigits.some((digits) => phoneDigitsOverlap(digits, botNorm)) : false);
+          (botNorm ? mentionedDigits.some((digits) => phoneDigitsOverlap(digits, botNorm)) : false) ||
+          textualBotMentioned;
         const botQuotedByParticipant = botNorm && quotedMessageId
           ? quotedDigits.some((digits) => phoneDigitsOverlap(digits, botNorm))
           : false;
