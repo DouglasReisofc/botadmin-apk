@@ -2743,12 +2743,20 @@ export const isLikelyChatGptPhoneMediaRequest = (text: string): boolean => {
     !/\b(resumo|resumida|resumido|texto|mensagem|frase|copy|codigo|code|script|explica|explique|explicar|calcula|calcule|calcular)\b/.test(
       normalized,
     );
+  // Depois de uma primeira imagem, os usuários costumam pedir apenas
+  // "faz outra" ou "mais uma". Essas frases não repetem a palavra imagem,
+  // mas continuam sendo uma solicitação visual e não devem cair no endpoint
+  // de texto (que pode retornar 502 do relay).
+  const visualContinuation =
+    /\b(?:faz|fa[çc]a|gera|gere|cria|crie|manda|mande|quero)\s+(?:mais\s+uma|outra|outra\s+vez|uma\s+nova|de\s+novo)\b/.test(normalized) ||
+    /\b(?:mais\s+uma|outra|uma\s+nova|segunda)\s+(?:imagem|foto|arte|ilustra[çc][aã]o|figura)\b/.test(normalized);
   return (
     directImageCommand ||
     (mentionsImage && asksGeneration) ||
     referenceImage ||
     visualCreationWithoutImageWord ||
-    visualCreationBySubject
+    visualCreationBySubject ||
+    visualContinuation
   );
 };
 

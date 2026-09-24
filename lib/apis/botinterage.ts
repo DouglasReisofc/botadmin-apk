@@ -193,46 +193,48 @@ export const createBotInterageChatCompletion = async (
     };
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
-
-  try {
-    const endpoint = botInterageV1Endpoint(baseUrl, "/chat/completions");
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        model,
-        messages: options.messages,
-        ...(options.tools && options.tools.length > 0 ? { tools: options.tools } : {}),
-        stream: false,
-        temperature: options.temperature ?? DEFAULT_TEMPERATURE,
-      }),
-    });
-
-    if (!response.ok) {
-      return { content: null, error: await parseErrorResponse(response) };
-    }
-
-    const payload: any = await response.json().catch(() => null);
-    const content = extractTextContent(payload);
-    const toolCalls = extractToolCalls(payload);
-    return { content, toolCalls };
-  } catch (error) {
-    return {
-      content: null,
-      error: {
+  const endpoint = botInterageV1Endpoint(baseUrl, "/chat/completions");
+  let lastError: BotInterageChatErrorInfo | undefined;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
+    try {
+      const response = await fetch(endpoint, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          model,
+          messages: options.messages,
+          ...(options.tools && options.tools.length > 0 ? { tools: options.tools } : {}),
+          stream: false,
+          temperature: options.temperature ?? DEFAULT_TEMPERATURE,
+        }),
+      });
+      if (response.ok) {
+        const payload: any = await response.json().catch(() => null);
+        return { content: extractTextContent(payload), toolCalls: extractToolCalls(payload) };
+      }
+      const parsed = await parseErrorResponse(response);
+      lastError = parsed;
+      const retryable = parsed.type === "unavailable" || parsed.type === "rate_limit";
+      if (!retryable || attempt === 2) return { content: null, error: parsed };
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    } catch (error) {
+      lastError = {
         type: "network",
         message: error instanceof Error ? error.message : "Falha de rede na API do BotInterage.",
-      },
-    };
-  } finally {
-    clearTimeout(timeout);
+      };
+      if (attempt === 2) return { content: null, error: lastError };
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    } finally {
+      clearTimeout(timeout);
+    }
   }
+  return { content: null, error: lastError ?? { type: "unknown", message: "Falha na API do BotInterage." } };
 };
 
 /**

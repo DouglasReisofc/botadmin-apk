@@ -18790,6 +18790,16 @@ const convertStickerSourceToWebp = async (
       return { text: raw, commandLike: false };
     }
 
+    // Comandos de imagem precisam chegar ao classificador com seus argumentos.
+    // Antes eles eram zerados aqui e, em uma segunda solicitação, o fluxo
+    // acabava no completion de texto e mostrava "provedor indisponível".
+    const normalizedCommand = canonicalizeCommandText(commandName ?? "");
+    if (
+      ["imgai", "imagegen", "text2img", "txt2img", "criarimagem", "gerarimagem"].includes(normalizedCommand) &&
+      commandArgs.trim()
+    ) {
+      return { text: `${normalizedCommand} ${commandArgs.trim()}`, commandLike: true };
+    }
     return { text: "", commandLike: true };
   };
 
