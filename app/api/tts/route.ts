@@ -162,6 +162,26 @@ const fetchWithRetry = async (payload: { text: string; voice: string }) => {
 const callUpstream = (payload: { text: string; voice: string }) =>
   enqueue(() => fetchWithRetry(payload));
 
+const fetchGoogleFallback = async (text: string): Promise<Buffer | null> => {
+  try {
+    const url = new URL("https://translate.google.com/translate_tts");
+    url.searchParams.set("ie", "UTF-8");
+    url.searchParams.set("client", "tw-ob");
+    url.searchParams.set("tl", "pt-BR");
+    url.searchParams.set("q", text);
+    const response = await fetch(url, {
+      headers: { Accept: "audio/mpeg", "User-Agent": "BotAdmin/1.0" },
+      cache: "no-store",
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!response.ok) return null;
+    const buffer = Buffer.from(await response.arrayBuffer());
+    return buffer.length > 0 ? buffer : null;
+  } catch {
+    return null;
+  }
+};
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -207,6 +227,31 @@ export async function GET(request: NextRequest) {
       | null;
 
     if (!upstream.ok || !data?.success || !data.data) {
+      const fallback = await fetchGoogleFallback(texto);
+      if (fallback) {
+        setCache(cacheKey, fallback);
+        if (format === "json") {
+          return Response.json({
+            success: true,
+            voice: voz,
+            provider: "google-fallback",
+            mime: "audio/mpeg",
+            data: fallback.toString("base64"),
+          });
+        }
+        return new Response(fallback, {
+          status: 200,
+          headers: {
+            "Content-Type": "audio/mpeg",
+            "Content-Length": String(fallback.length),
+            "Content-Disposition": 'inline; filename="voz.mp3"',
+            "Cache-Control": "private, max-age=60, must-revalidate",
+            "Accept-Ranges": "bytes",
+            "Access-Control-Allow-Origin": "*",
+            "X-TTS-Provider": "google-fallback",
+          },
+        });
+      }
       return Response.json(
         {
           status: false,
