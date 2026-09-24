@@ -850,30 +850,114 @@ export const markChatGptPhoneJobRunning = async (input: {
   });
 };
 
+const parseStructuredResponseValue = (value: unknown): unknown => {
+  if (typeof value !== "string") return value;
+  const text = value.trim().replace(/^```(?:json|javascript|text)?\s*/i, "").replace(/\s*```$/i, "");
+  if (!text || !/^[\[{]/.test(text)) return value;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return value;
+  }
+};
+
+const artifactSourceKeys = ["path", "url", "base64", "dataUrl", "data_url"] as const;
+
+const normalizeArtifactRecord = (value: unknown): ChatGptPhoneArtifact | null => {
+  const record = asPlainRecord(value);
+  if (!record) return null;
+  const pathValue = trimOptional(record.path);
+  const url = trimOptional(record.url);
+  const rawData = trimOptional(record.data);
+  const dataUrl = trimOptional(record.dataUrl) ?? trimOptional(record.data_url) ??
+    (rawData?.startsWith("data:") ? rawData : null);
+  const base64 = trimOptional(record.base64) ?? trimOptional(record.b64_json) ??
+    (rawData && !rawData.startsWith("data:") && trimOptional(record.mimeType ?? record.mime_type ?? record.mime)
+      ? rawData
+      : null);
+  const fileName = trimOptional(record.fileName) ?? trimOptional(record.filename);
+  const hasSource = Boolean(pathValue || url || base64 || dataUrl);
+  if (!hasSource) return null;
+  const mimeType = trimOptional(record.mimeType) ?? trimOptional(record.mime_type) ?? trimOptional(record.mime) ?? undefined;
+  // Do not turn arbitrary links from an assistant answer into media. A
+  // filename, MIME type, binary payload or a known file extension is required.
+  if (!mimeType && !fileName && !pathValue?.match(/\.[a-z0-9]{2,8}(?:\?|$)/i) && !url?.match(/\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|ogg|wav|pdf|docx?|xlsx?|zip)(?:\?|$)/i)) {
+    return null;
+  }
+  return {
+    mimeType,
+    width: typeof record.width === "number" ? record.width : null,
+    height: typeof record.height === "number" ? record.height : null,
+    path: pathValue,
+    url,
+    base64,
+    dataUrl,
+    fileName,
+    name: trimOptional(record.name),
+  };
+};
+
 const extractArtifacts = (payload: Record<string, unknown> | null): ChatGptPhoneArtifact[] => {
-  const raw = payload?.artifacts;
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  const artifacts: ChatGptPhoneArtifact[] = [];
-  for (const entry of raw) {
-    if (!entry || typeof entry !== "object") {
-      continue;
+  if (!payload) return [];
+  const found: ChatGptPhoneArtifact[] = [];
+  const seenSources = new Set<string>();
+  const register = (artifact: ChatGptPhoneArtifact | null): void => {
+    if (!artifact) return;
+    const source = artifact.dataUrl || artifact.base64 || artifact.url || artifact.path || "";
+    const key = `${artifact.mimeType || ""}:${artifact.fileName || artifact.name || ""}:${source.slice(0, 240)}`;
+    if (seenSources.has(key)) return;
+    seenSources.add(key);
+    found.push(artifact);
+  };
+  const visit = (value: unknown, depth: number): void => {
+    if (depth > 6 || value == null) return;
+    const parsed = parseStructuredResponseValue(value);
+    if (parsed !== value) {
+      visit(parsed, depth + 1);
+      return;
     }
-    const record = entry as Record<string, unknown>;
-    artifacts.push({
-      mimeType: trimOptional(record.mimeType) ?? trimOptional(record.mime_type),
-      width: typeof record.width === "number" ? record.width : null,
-      height: typeof record.height === "number" ? record.height : null,
-      path: trimOptional(record.path),
-      url: trimOptional(record.url),
-      base64: trimOptional(record.base64),
-      dataUrl: trimOptional(record.dataUrl) ?? trimOptional(record.data_url),
-      fileName: trimOptional(record.fileName) ?? trimOptional(record.filename),
-      name: trimOptional(record.name),
+    if (typeof value === "string") {
+      const candidates = value.match(/(?:https?:\/\/|sandbox:|file:\/\/|\/(?:data|sdcard|mnt\/data|tmp)\/)[^\s`<>"']+\.(?:png|jpe?g|webp|gif|mp4|webm|mp3|ogg|wav|pdf|docx?|xlsx?|zip)(?:\?[^\s`<>"']*)?/gi) || [];
+      candidates.forEach((candidate) => {
+        const isUrl = /^(?:https?:|sandbox:|file:)/i.test(candidate);
+        const mimeType = candidate.toLowerCase().endsWith(".pdf") ? "application/pdf" : undefined;
+        register(normalizeArtifactRecord(isUrl ? { url: candidate, mimeType } : { path: candidate, mimeType }));
+      });
+      return;
+    }
+    if (Array.isArray(value)) {
+      value.forEach((entry) => visit(entry, depth + 1));
+      return;
+    }
+    const record = asPlainRecord(value);
+    if (!record) return;
+    register(normalizeArtifactRecord(record));
+    Object.entries(record).forEach(([key, child]) => {
+      if (key === "artifacts" || key === "attachments" || key === "files" || key === "file" ||
+          key === "media" || key === "images" || key === "videos" || key === "audio" ||
+          key === "outputs" || key === "output" || key === "result" || key === "response" ||
+          key === "data" || key === "content") {
+        visit(child, depth + 1);
+      }
     });
+  };
+  visit(payload, 0);
+  return found;
+};
+
+const extractResponseTextValue = (value: unknown, depth = 0): string | null => {
+  if (depth > 5 || value == null) return null;
+  const parsed = parseStructuredResponseValue(value);
+  if (parsed !== value) return extractResponseTextValue(parsed, depth + 1);
+  const direct = trimOptional(value);
+  if (direct) return direct;
+  const record = asPlainRecord(value);
+  if (!record) return null;
+  for (const key of ["text", "caption", "content", "message", "answer", "description", "result", "response"]) {
+    const text = extractResponseTextValue(record[key], depth + 1);
+    if (text) return text;
   }
-  return artifacts;
+  return null;
 };
 
 const normalizePdfText = (value: string): string =>
@@ -1470,7 +1554,7 @@ const buildMcpSafeFallbackFromNativePayload = (
     return null;
   }
 
-  const artifacts = Array.isArray(nativePayload.artifacts) ? nativePayload.artifacts : [];
+  const artifacts = extractArtifacts(nativePayload);
   const resultType = trimOptional(nativePayload.resultType)?.toLowerCase();
   if (resultType === "media" || artifacts.length > 0) {
     const originalPrompt = extractBotAdminJobUserPrompt(trimOptional(request.message));
@@ -1485,10 +1569,7 @@ const buildMcpSafeFallbackFromNativePayload = (
     };
   }
 
-  const responseText =
-    trimOptional(nativePayload.result) ??
-    trimOptional(nativePayload.response) ??
-    trimOptional(nativePayload.text);
+  const responseText = getNativePayloadText(nativePayload);
   if (looksLikeBotAdminJobPromptEcho(responseText)) {
     return null;
   }
@@ -1515,9 +1596,10 @@ const readPositiveEnvInt = (name: string, fallback: number): number => {
 };
 
 const getNativePayloadText = (payload: Record<string, unknown>): string | null =>
-  trimOptional(payload.result) ??
-  trimOptional(payload.response) ??
-  trimOptional(payload.text);
+  extractResponseTextValue(payload.result) ??
+  extractResponseTextValue(payload.response) ??
+  extractResponseTextValue(payload.text) ??
+  extractResponseTextValue(payload.message);
 
 const getExpectedResponseMarker = (request: Record<string, unknown> | null | undefined): string | null =>
   trimOptional(request?.responseMarker) ?? trimOptional(request?.response_marker);
@@ -1568,7 +1650,7 @@ const normalizePayloadForExpectedMarker = (
     return { payload, missingMarker: false, responsePreview: getNativePayloadText(payload)?.slice(0, 120) ?? null };
   }
 
-  const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts : [];
+  const artifacts = extractArtifacts(payload);
   const resultType = trimOptional(payload.resultType)?.toLowerCase();
   const responseText = getNativePayloadText(payload);
   if (resultType === "media" || artifacts.length > 0) {
@@ -1660,7 +1742,7 @@ const getNativeCromiteRetryDelayMs = (): number =>
 const shouldRetryIncompleteNativePayload = (
   payload: Record<string, unknown>,
 ): { retry: boolean; reason: string; responsePreview: string | null } => {
-  const artifacts = Array.isArray(payload.artifacts) ? payload.artifacts : [];
+  const artifacts = extractArtifacts(payload);
   const resultType = trimOptional(payload.resultType)?.toLowerCase();
   if (resultType === "media" || artifacts.length > 0) {
     return { retry: false, reason: "", responsePreview: null };
@@ -1679,7 +1761,7 @@ const shouldRetryIncompleteNativePayload = (
 };
 
 const getMcpGraceMs = (nativePayload: Record<string, unknown> | null): number => {
-  const artifacts = Array.isArray(nativePayload?.artifacts) ? nativePayload.artifacts : [];
+    const artifacts = nativePayload ? extractArtifacts(nativePayload) : [];
   const resultType = trimOptional(nativePayload?.resultType)?.toLowerCase();
   const fallback =
     resultType === "media" || artifacts.length > 0
@@ -2200,12 +2282,9 @@ export const completeChatGptPhoneJob = async (input: {
   const ok = payload.ok !== false;
   const resultType =
     trimOptional(payload.resultType) ??
-    (Array.isArray(payload.artifacts) && payload.artifacts.length > 0 ? "media" : "text");
+    (extractArtifacts(payload).length > 0 ? "media" : "text");
   const artifacts = extractArtifacts(payload);
-  const responseText =
-    trimOptional(payload.result) ??
-    trimOptional(payload.response) ??
-    trimOptional(payload.text);
+  const responseText = getNativePayloadText(payload);
   const materialized = materializeGeneratedDocumentArtifacts(job, responseText, resultType, artifacts);
   if (looksLikeBotAdminJobPromptEcho(responseText)) {
     return updateJob(input.jobId, {
@@ -2263,12 +2342,9 @@ const updateChatGptPhoneJobFromExecutorPayload = async (
   const ok = payload.ok !== false;
   const resultType =
     trimOptional(payload.resultType) ??
-    (Array.isArray(payload.artifacts) && payload.artifacts.length > 0 ? "media" : "text");
+    (extractArtifacts(payload).length > 0 ? "media" : "text");
   const artifacts = extractArtifacts(payload);
-  const responseText =
-    trimOptional(payload.result) ??
-    trimOptional(payload.response) ??
-    trimOptional(payload.text);
+  const responseText = getNativePayloadText(payload);
   const materialized = materializeGeneratedDocumentArtifacts(currentJob, responseText, resultType, artifacts);
   if (looksLikeBotAdminJobPromptEcho(responseText)) {
     return updateJob(jobId, {
@@ -2510,12 +2586,9 @@ export const runChatGptPhoneJob = async (
     const ok = payload.ok !== false;
     const resultType =
       trimOptional(payload.resultType) ??
-      (Array.isArray(payload.artifacts) && payload.artifacts.length > 0 ? "media" : "text");
+      (extractArtifacts(payload).length > 0 ? "media" : "text");
     const artifacts = extractArtifacts(payload);
-    const responseText =
-      trimOptional(payload.result) ??
-      trimOptional(payload.response) ??
-      trimOptional(payload.text);
+    const responseText = getNativePayloadText(payload);
     const materialized = materializeGeneratedDocumentArtifacts(current, responseText, resultType, artifacts);
     const errorMessage =
       ok ? null : trimOptional(payload.error) ?? trimOptional(payload.message) ?? GENERIC_GENERATION_FAILURE;
@@ -2556,12 +2629,9 @@ export const runChatGptPhoneJob = async (
         const ok = retryPayload.ok !== false;
         const resultType =
           trimOptional(retryPayload.resultType) ??
-          (Array.isArray(retryPayload.artifacts) && retryPayload.artifacts.length > 0 ? "media" : "text");
+          (extractArtifacts(retryPayload).length > 0 ? "media" : "text");
         const artifacts = extractArtifacts(retryPayload);
-        const responseText =
-          trimOptional(retryPayload.result) ??
-          trimOptional(retryPayload.response) ??
-          trimOptional(retryPayload.text);
+        const responseText = getNativePayloadText(retryPayload);
         const materialized = materializeGeneratedDocumentArtifacts(current, responseText, resultType, artifacts);
         const errorMessage =
           ok ? null : trimOptional(retryPayload.error) ?? trimOptional(retryPayload.message) ?? GENERIC_GENERATION_FAILURE;

@@ -19984,40 +19984,17 @@ const convertStickerSourceToWebp = async (
 	        let sentMedia = false;
 	        const sentMessageIds: string[] = [];
 	        const artifacts = job.artifacts.slice(0, 4);
-        const promptLooksDocument = isLikelyChatGptPhoneDocumentRequest(trimmedInput);
-        const promptHasFileAttachment = hasNonVisualChatGptPhoneInputAttachment(attachments);
-        const promptLooksDownload = heuristicDownloadIntent.shouldUseTools;
-        const shouldSendChatGptArtifact = (mediaType: SendMediaPayload["mediaType"]): boolean => {
-          if (mediaType === "image" || mediaType === "video") {
-            return promptLooksVisual;
-          }
-          if (mediaType === "document") {
-            return promptLooksDocument || promptHasFileAttachment;
-          }
-          if (mediaType === "audio") {
-            return promptLooksDownload || promptHasFileAttachment;
-          }
-          return promptLooksVisual || promptLooksDocument || promptHasFileAttachment || promptLooksDownload;
-        };
+	        // The assistant decides whether a turn produced an image, document,
+	        // audio or another file. Once an artifact is present, always deliver
+	        // it; inferring the type again from the user's words caused valid
+	        // files (especially PDFs requested in natural language) to be
+	        // discarded. The textual answer remains the first media caption.
 	        for (let index = 0; index < artifacts.length; index += 1) {
 	          const artifact = artifacts[index];
 	          try {
 	            const downloaded = await downloadChatGptPhoneArtifact(artifact, job.phoneApiUrl);
 	            await markReadIfNeeded();
 	            const mediaType = artifactMediaType(artifact, downloaded.mimeType);
-            if (!shouldSendChatGptArtifact(mediaType)) {
-              console.warn("[bot-events] artefato do ChatGPT Phone ignorado por nao bater com o pedido atual", {
-                groupId: group.id,
-                jobId: job.jobId,
-                mediaType,
-                mimeType: downloaded.mimeType,
-                promptLooksVisual,
-                promptLooksDocument,
-                promptHasFileAttachment,
-                promptLooksDownload,
-              });
-              continue;
-            }
 	            const caption = index === 0 ? text || buildGeneratedMediaCaption(trimmedInput, mediaType) : undefined;
 	            const sentMessageId = await sendMediaMessage(client, {
 	              to: message.chatId,
