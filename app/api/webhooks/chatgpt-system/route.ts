@@ -14,7 +14,12 @@ import { recordBotInterageContextEvent } from "lib/chatgpt-phone";
 import { getInstanceForUser } from "lib/bot-instances";
 import { dispatchInternalGroupAutomationMessage } from "lib/internal-groups";
 import { saveBufferAsUploadedFile } from "lib/uploads";
-import { sendMediaMessage, sendTextMessage, type WuzapiClient } from "lib/wuzapi";
+import {
+  sendMediaMessage,
+  sendReactionMessage,
+  sendTextMessage,
+  type WuzapiClient,
+} from "lib/wuzapi";
 
 export const runtime = "nodejs";
 
@@ -423,12 +428,35 @@ export async function POST(request: Request) {
           { status: 503 },
         );
       }
-      const body = terminalText || (isAudioJob && transcription
-        ? "⚠️ Entendi o áudio, mas não consegui concluir o pedido agora. Tente novamente em instantes."
-        : isAudioJob
-          ? "⚠️ Não consegui entender esse áudio agora. Envie novamente em instantes."
-          : "⚠️ Não consegui concluir essa solicitação agora. Tente novamente em instantes.");
-      const messageId = await sendJobText(body);
+      // A provider may classify the generation itself as failed while still
+      // returning a complete user-facing explanation (policy refusal, quota
+      // notice or a safe alternative). That text is a valid assistant reply
+      // and must not be discarded with the transport error.
+      if (terminalText) {
+        const messageId = await sendJobText(terminalText);
+        await completeBotInterageSystemJob({
+          jobId,
+          status: "delivered",
+          messageId,
+        });
+        return NextResponse.json({
+          ok: true,
+          delivered: true,
+          recovered_terminal_text: true,
+        });
+      }
+      // Do not pollute the conversation with a generic error bubble. The
+      // requester already receives the 🧠 acknowledgement; a terminal
+      // failure is represented only by a blocked reaction on the original
+      // message, so the chat remains a natural conversation.
+      if (client && job.whatsappMessageId) {
+        await sendReactionMessage(client, {
+          chatId: job.chatId,
+          messageId: job.whatsappMessageId,
+          emoji: "🚫",
+        }).catch(() => undefined);
+      }
+      const messageId = job.whatsappMessageId || null;
       await completeBotInterageSystemJob({
         jobId,
         status: "failed",
