@@ -181,13 +181,14 @@ const imageEndpoint = (baseUrl: string): string => {
 const submitSystemJobWithRetry = async (
   endpoint: string,
   init: RequestInit,
+  timeoutMs = 25_000,
 ): Promise<Response> => {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const response = await fetch(endpoint, {
         ...init,
-        signal: AbortSignal.timeout(25_000),
+        signal: AbortSignal.timeout(timeoutMs),
       });
       const retryable = response.status === 429 || response.status === 502 ||
         response.status === 503 || response.status === 504;
@@ -230,7 +231,7 @@ export const generateBotInterageSystemImage = async (prompt: string): Promise<{
       "Idempotency-Key": `wa-direct-img-${createHash("sha256").update(prompt).digest("hex")}`,
     },
     body: JSON.stringify({ prompt: prompt.trim(), model: "auto", provider: "chatgpt" }),
-  });
+  }, 180_000);
   let payload = (await response.json().catch(() => null)) as any;
   if (response.status === 202 && typeof payload?.job_id === "string") {
     const base = config.baseUrl.replace(/\/+$/, "");
