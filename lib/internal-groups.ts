@@ -10,6 +10,7 @@ import { getOrCreateUserApiKey } from "lib/user-api-keys";
 import { ytDlpSearch, ytSearch, type YtSearchItem } from "lib/apis/yt";
 import { createBotInterageChatCompletion } from "lib/apis/botinterage";
 import { getBotInterageRuntimeConfig } from "lib/admin-botinterage-config";
+import { submitBotInterageSystemAskJob } from "lib/botinterage-system";
 import {
   isLikelyChatGptPhoneMediaRequest,
 } from "lib/chatgpt-phone";
@@ -2435,6 +2436,23 @@ const callInternalGroupAi = async (
     baseUrl = runtime.baseUrl;
     token = runtime.token;
     model = model || runtime.model || "auto";
+    if (!context.group.bot_group_id) {
+      throw new Error("Grupo BotAdmin sem vínculo de automação para o BotInterage.");
+    }
+    await submitBotInterageSystemAskJob({
+      groupId: context.group.bot_group_id,
+      userId: context.group.owner_user_id,
+      instanceId: 0,
+      chatId: `internal-group:${context.group.id}`,
+      senderJid: `botadmin-user:${context.memberId}`,
+      internalGroupId: context.group.id,
+      internalMessageId: context.messageId,
+      prompt: `[${memberName}]: ${text}`,
+    });
+    return { content: null, deferredMedia: true, media: [] } satisfies AiResult;
+
+    /* Legacy synchronous image-only path retained temporarily for migration;
+       the unified async return above is authoritative. */
     if (isLikelyChatGptPhoneMediaRequest(text)) {
       const normalizedBase = baseUrl.replace(/\/+$/, "");
       const endpoint = `${normalizedBase.endsWith("/v1") ? normalizedBase : `${normalizedBase}/v1`}/images/generations`;
