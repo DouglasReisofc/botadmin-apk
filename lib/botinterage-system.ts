@@ -219,7 +219,9 @@ export const generateBotInterageSystemImage = async (prompt: string): Promise<{
   if (!config.enabled || !config.baseUrl || !config.token) {
     throw new Error("ChatGPT Sistema não está configurado.");
   }
-  const response = await submitSystemJobWithRetry(imageEndpoint(config.baseUrl), {
+  const normalizedBase = config.baseUrl.replace(/\/+$/, "");
+  const endpoint = `${normalizedBase.endsWith("/v1") ? normalizedBase : `${normalizedBase}/v1`}/images/generations`;
+  const response = await submitSystemJobWithRetry(endpoint, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${config.token}`,
@@ -264,7 +266,13 @@ export const generateBotInterageSystemImage = async (prompt: string): Promise<{
   let buffer: Buffer; let mimeType = item.mimeType || "image/png";
   if (item.dataUrl) { const m = item.dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s); if (!m) throw new Error("Imagem retornada inválida."); mimeType = m[1] || mimeType; buffer = Buffer.from(m[3], m[2] ? "base64" : "utf8"); }
   else if (item.base64) buffer = Buffer.from(item.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
-  else { const image = await fetch(item.url!, { headers: { Accept: "image/*", Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(60_000) }); if (!image.ok) throw new Error(`Falha ao baixar imagem: HTTP ${image.status}.`); buffer = Buffer.from(await image.arrayBuffer()); mimeType = image.headers.get("content-type")?.split(";")[0] || mimeType; }
+  else {
+    if (!item.url || !/^https?:\/\//i.test(item.url)) throw new Error("A API retornou uma URL de imagem inválida.");
+    const image = await fetch(item.url, { headers: { Accept: "image/*", Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(60_000) });
+    if (!image.ok) throw new Error(`Falha ao baixar imagem: HTTP ${image.status}.`);
+    buffer = Buffer.from(await image.arrayBuffer());
+    mimeType = image.headers.get("content-type")?.split(";")[0] || mimeType;
+  }
   if (!buffer.length) throw new Error("A imagem retornada está vazia.");
   return { buffer, mimeType, fileName: `botinterage-${Date.now()}.${mimeType.split("/")[1] || "png"}` };
 };
