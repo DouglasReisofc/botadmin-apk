@@ -16456,6 +16456,9 @@ export const handleMessageUpsert = async (
     ) ||
       (antilinkEnabled &&
         looksLikePromotionalInteractiveSpam(textContent, [message.raw, payload.data, payload.raw])));
+  // Preserve the sender's admin result for the automation stage. Admin links
+  // are exempt from moderation, but must still reach BotInterage/autorespostas.
+  let isGroupAdminForMessage = false;
   const languageAliasMap = new Map<string, string>([
     ["pt", "ptbr"],
     ["ptbr", "ptbr"],
@@ -20985,9 +20988,11 @@ const convertStickerSourceToWebp = async (
     }
   }
 
+  const automationBlockedByLinkGuard =
+    hasActionableLinkGuardViolation && !isGroupAdminForMessage;
   const autoResponseMatched =
-    canInteractWithBot && !hasActionableLinkGuardViolation ? await runAutoResponses() : false;
-  if (canInteractWithBot && !autoResponseMatched && !hasActionableLinkGuardViolation) {
+    canInteractWithBot && !automationBlockedByLinkGuard ? await runAutoResponses() : false;
+  if (canInteractWithBot && !autoResponseMatched && !automationBlockedByLinkGuard) {
     const botInterageHandled = await handleBotInterage();
     if (botInterageHandled) {
       return;
@@ -34016,6 +34021,7 @@ const convertStickerSourceToWebp = async (
 
       if (shouldBan || shouldBlockGeneralLink || shouldBlockInvite) {
         const isAdmin = await ensureAdminStatus();
+        isGroupAdminForMessage = isAdmin;
         const linkAuditBase = {
           reason: "link" as const,
           groupId: group.id,
