@@ -19063,10 +19063,10 @@ const convertStickerSourceToWebp = async (
     // executor.  Sending them to the generic completion endpoint makes the
     // response depend on the public tunnel and returns a text/502 instead of
     // an image whenever that tunnel is briefly unavailable.
-    const canUsePhoneExecutor =
-      aiProvider === "chatgpt_system" &&
-      runtimeConfig !== null &&
-      shouldUseChatGptPhoneForBotInterage(trimmedInput);
+    // Media generation is an executor capability, not an AI-provider choice:
+    // groups configured for Groq/OpenAI must still use the local ChatGPT
+    // browser for /imgai and natural image prompts.
+    const canUsePhoneExecutor = shouldUseChatGptPhoneForBotInterage(trimmedInput);
     const isImageEditRequest = false;
     const runtimeModel = runtimeConfig?.model || "";
     const primaryModel = configuredModel || runtimeModel;
