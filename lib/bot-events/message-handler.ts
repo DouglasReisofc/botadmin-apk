@@ -20090,7 +20090,14 @@ const convertStickerSourceToWebp = async (
 
     const handleChatGptPhoneBotInterage = async (): Promise<boolean> => {
       if (!canUsePhoneExecutor) {
-        if (!isLikelyChatGptPhoneMediaRequest(trimmedInput)) return false;
+        // Natural prompts such as "preciso de uma capa para Facebook" do not
+        // necessarily contain the word "imagem". Keep them on the managed
+        // image path so a temporary text-provider 502 cannot swallow the
+        // request before the image job is submitted.
+        const visualRequest =
+          isLikelyChatGptPhoneMediaRequest(trimmedInput) ||
+          looksLikeVisualGenerationPrompt(trimmedInput);
+        if (!visualRequest) return false;
         void (async () => {
           try {
             const webhookJob = await submitBotInterageSystemImageJob({
@@ -20122,7 +20129,6 @@ const convertStickerSourceToWebp = async (
             });
           }
           try {
-            await sendBotInterageText("🧠 Estou gerando a imagem e já envio aqui.");
             const generated = await generateBotInterageSystemImage(trimmedInput);
             await sendMediaMessage(client, {
               to: message.chatId,

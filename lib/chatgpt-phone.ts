@@ -2833,11 +2833,11 @@ export const isLikelyChatGptPhoneMediaRequest = (text: string): boolean => {
     return true;
   }
   const mentionsImage =
-    /\b(imagem|foto|midia|media|desenho|arte|avatar|logo|banner|figurinha|sticker|ilustracao|wallpaper|image|photo|picture|drawing|artwork|illustration)\b/.test(
+    /\b(imagem|foto|midia|media|desenho|arte|avatar|logo|banner|capa|cover|thumbnail|card|post|story|cartaz|flyer|figurinha|sticker|ilustracao|wallpaper|image|photo|picture|drawing|artwork|illustration)\b/.test(
       normalized,
     );
   const asksGeneration =
-    /\b(cria|crie|criar|gera|gere|gerar|desenha|desenhe|faca|fazer|monte|monta|edita|editar|transforma|transforme|melhora|melhore|melhorar|restaura|restaure|restaurar|upscale|upscaler|upscaling|create|generate|draw|make|render|design|edit|transform|enhance|restore)\b/.test(
+    /\b(cria|crie|criar|gera|gere|gerar|desenha|desenhe|faca|fazer|monte|monta|edita|editar|transforma|transforme|melhora|melhore|melhorar|restaura|restaure|restaurar|preciso|precisa|quero|queria|necessito|upscale|upscaler|upscaling|create|generate|draw|make|render|design|edit|transform|enhance|restore)\b/.test(
       normalized,
     );
   const directImageCommand =
