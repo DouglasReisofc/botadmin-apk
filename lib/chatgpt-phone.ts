@@ -1002,7 +1002,7 @@ const wrapPdfLine = (line: string, maxChars: number): string[] => {
   return lines.length ? lines : [""];
 };
 
-const buildTextPdfBuffer = (input: { title: string; body: string }): Buffer => {
+export const buildTextPdfBuffer = (input: { title: string; body: string }): Buffer => {
   const pageWidth = 595;
   const pageHeight = 842;
   const marginX = 48;

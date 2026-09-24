@@ -141,7 +141,11 @@ import { canAutoDownloadMessage, youtubeVideoThumbnail } from "./autodownload-in
 import { downloadChatMedia, downloadViewOnce } from "lib/wuzapi";
 import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } from "lib/sticker";
 import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
-import { createBotInterageChatCompletion, transcribeBotInterageAudio } from "lib/apis/botinterage";
+import {
+  createBotInterageChatCompletion,
+  transcribeBotInterageAudio,
+  type BotInterageArtifact,
+} from "lib/apis/botinterage";
 import {
   generateBotInterageSystemImage,
   submitBotInterageSystemImageJob,
@@ -149,6 +153,7 @@ import {
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
   createAndRunBotInterageChatGptPhoneJob,
+  buildTextPdfBuffer,
   downloadChatGptPhoneArtifact,
   isLikelyChatGptPhoneDocumentRequest,
   isLikelyChatGptPhoneImageEditRequest,
@@ -19290,6 +19295,79 @@ const convertStickerSourceToWebp = async (
         quoted,
       });
     };
+    const deliverCompletionArtifacts = async (
+      artifacts: BotInterageArtifact[],
+      responseText: string | null,
+    ): Promise<boolean> => {
+      if (!artifacts.length && !/(?:sandbox:|file:\/\/|\/mnt\/data\/)[^\s`<>]+\.(?:pdf|docx?|xlsx?|csv|txt)\b/i.test(responseText || "")) {
+        return false;
+      }
+      let delivered = false;
+      for (const rawArtifact of artifacts) {
+        const artifact = rawArtifact as ChatGptPhoneArtifact;
+        try {
+          let downloaded: { buffer: Buffer; mimeType: string; fileName: string };
+          try {
+            downloaded = await downloadChatGptPhoneArtifact(artifact, runtimeConfig?.baseUrl);
+          } catch (downloadError) {
+            // A ChatGPT provider may expose a sandbox path that is not
+            // reachable from the BotAdmin process. Preserve the generated
+            // document by materializing the assistant's final answer locally.
+            const mime = String(artifact.mimeType || "").toLowerCase();
+            const name = String(artifact.fileName || artifact.name || artifact.path || "").toLowerCase();
+            if (mime !== "application/pdf" && !name.endsWith(".pdf") && !/\.pdf(?:\b|$)/i.test(responseText || "")) {
+              throw downloadError;
+            }
+            downloaded = {
+              buffer: buildTextPdfBuffer({
+                title: String(artifact.fileName || artifact.name || "Documento BotAdmin").replace(/\.pdf$/i, ""),
+                body: String(responseText || "Documento gerado pelo BotInterage.")
+                  .replace(/(?:sandbox:|file:\/\/|\/mnt\/data\/)[^\s`<>]+/gi, "")
+                  .trim(),
+              }),
+              mimeType: "application/pdf",
+              fileName: String(artifact.fileName || artifact.name || `botinterage-${Date.now()}.pdf`),
+            };
+          }
+          await sendMediaMessage(client, {
+            to: message.chatId,
+            media: downloaded.buffer,
+            mediaType: downloaded.mimeType === "application/pdf" ? "document" : artifactMediaType(artifact, downloaded.mimeType),
+            mimeType: downloaded.mimeType,
+            filename: downloaded.fileName,
+            caption: delivered ? undefined : responseText || undefined,
+            quoted: delivered ? undefined : quoted,
+          });
+          delivered = true;
+        } catch (error) {
+          console.error("[bot-interage] falha ao entregar artefato da resposta", {
+            groupId: group.id,
+            artifact: { mimeType: rawArtifact.mimeType, fileName: rawArtifact.fileName, path: rawArtifact.path },
+            error,
+          });
+        }
+      }
+      // Some providers return only a sandbox link in the text. It is still a
+      // completed document request; materialize that answer instead of
+      // silently sending nothing.
+      if (!delivered && /(?:sandbox:|file:\/\/|\/mnt\/data\/)[^\s`<>]+\.pdf\b/i.test(responseText || "")) {
+        const body = String(responseText || "")
+          .replace(/(?:sandbox:|file:\/\/|\/mnt\/data\/)[^\s`<>]+/gi, "")
+          .replace(/\[([^\]]+)\]\s*\(\s*\s*\)/g, "$1")
+          .trim();
+        await sendMediaMessage(client, {
+          to: message.chatId,
+          media: buildTextPdfBuffer({ title: "Documento BotAdmin", body: body || "Documento gerado pelo BotInterage." }),
+          mediaType: "document",
+          mimeType: "application/pdf",
+          filename: `botinterage-${Date.now()}.pdf`,
+          caption: body || "Documento gerado pelo BotInterage.",
+          quoted,
+        });
+        delivered = true;
+      }
+      return delivered;
+    };
     const persistBotInterageMemory = async (replyText: string, userContent = trimmedInput) => {
       const nowIso = new Date().toISOString();
       const userEntry = {
@@ -20237,6 +20315,7 @@ const convertStickerSourceToWebp = async (
     }
 
     let completion: string | null = null;
+    let completionArtifacts: BotInterageArtifact[] = [];
     let toolCalls:
       | Array<{ name: string; arguments: Record<string, unknown> }>
       | undefined;
@@ -20256,7 +20335,7 @@ const convertStickerSourceToWebp = async (
       | undefined;
 
     if (canUsePrivateLlm) {
-      ({ content: completion, toolCalls, error: llmError } = await createBotInterageChatCompletion({
+      ({ content: completion, toolCalls, artifacts: completionArtifacts, error: llmError } = await createBotInterageChatCompletion({
         baseUrl: runtimeConfig!.baseUrl,
         token: runtimeConfig!.token,
         model: primaryModel,
@@ -20271,7 +20350,7 @@ const convertStickerSourceToWebp = async (
           runtimeModel,
           error: llmError,
         });
-        ({ content: completion, toolCalls, error: llmError } = await createBotInterageChatCompletion({
+        ({ content: completion, toolCalls, artifacts: completionArtifacts, error: llmError } = await createBotInterageChatCompletion({
           baseUrl: runtimeConfig!.baseUrl,
           token: runtimeConfig!.token,
           model: runtimeModel,
@@ -20341,6 +20420,17 @@ const convertStickerSourceToWebp = async (
         );
       }
       return true;
+    }
+
+    if (completionArtifacts.length > 0 || /(?:sandbox:|file:\/\/|\/mnt\/data\/)[^\s`<>]+\.pdf\b/i.test(completion || "")) {
+      const artifactsDelivered = await deliverCompletionArtifacts(completionArtifacts, completion);
+      if (artifactsDelivered) {
+        const memoryText = completion || "Arquivo gerado pelo BotInterage.";
+        await persistBotInterageMemory(memoryText);
+        await recordBotInterageContextSafe("assistant", memoryText, { contentType: "media" });
+        reactBotInterage("🧠");
+        return true;
+      }
     }
 
     if (!completion) {

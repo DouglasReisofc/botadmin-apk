@@ -44,7 +44,19 @@ export type BotInterageChatErrorInfo = {
 export type BotInterageChatResult = {
   content: string | null;
   toolCalls?: BotInterageToolCall[];
+  /** Structured files/media returned by providers that support artifacts. */
+  artifacts?: BotInterageArtifact[];
   error?: BotInterageChatErrorInfo;
+};
+
+export type BotInterageArtifact = {
+  url?: string | null;
+  path?: string | null;
+  base64?: string | null;
+  dataUrl?: string | null;
+  mimeType?: string | null;
+  fileName?: string | null;
+  name?: string | null;
 };
 
 export type BotInterageAudioTranscriptionOptions = {
@@ -139,6 +151,54 @@ const extractToolCalls = (payload: any): BotInterageToolCall[] => {
     .filter((call): call is BotInterageToolCall => call !== null);
 };
 
+const extractArtifacts = (payload: any): BotInterageArtifact[] => {
+  const found: BotInterageArtifact[] = [];
+  const seen = new Set<string>();
+  const visit = (value: unknown, depth = 0): void => {
+    if (depth > 6 || value == null) return;
+    if (Array.isArray(value)) {
+      value.forEach((item) => visit(item, depth + 1));
+      return;
+    }
+    if (typeof value !== "object") return;
+    const record = value as Record<string, unknown>;
+    const source = ["dataUrl", "data_url", "base64", "b64_json", "url", "path"]
+      .map((key) => typeof record[key] === "string" ? String(record[key]).trim() : "")
+      .find(Boolean);
+    const mimeType = typeof record.mimeType === "string"
+      ? record.mimeType
+      : typeof record.mime_type === "string"
+        ? record.mime_type
+        : typeof record.mime === "string" ? record.mime : null;
+    const fileName = typeof record.fileName === "string"
+      ? record.fileName
+      : typeof record.filename === "string"
+        ? record.filename
+        : typeof record.name === "string" ? record.name : null;
+    if (source && (mimeType || fileName || /\.(?:pdf|docx?|xlsx?|csv|txt|png|jpe?g|webp|gif|mp4|webm|mp3|wav)(?:[?#]|$)/i.test(source))) {
+      const artifact: BotInterageArtifact = {
+        url: typeof record.url === "string" ? record.url : null,
+        path: typeof record.path === "string" ? record.path : null,
+        base64: typeof record.base64 === "string" ? record.base64 : typeof record.b64_json === "string" ? record.b64_json : null,
+        dataUrl: typeof record.dataUrl === "string" ? record.dataUrl : typeof record.data_url === "string" ? record.data_url : null,
+        mimeType,
+        fileName,
+        name: typeof record.name === "string" ? record.name : null,
+      };
+      const key = `${artifact.mimeType || ""}:${artifact.fileName || artifact.name || ""}:${source.slice(0, 240)}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        found.push(artifact);
+      }
+    }
+    for (const key of ["artifacts", "attachments", "files", "file", "media", "images", "videos", "audio", "outputs", "output", "result", "response", "data", "content"]) {
+      if (key in record) visit(record[key], depth + 1);
+    }
+  };
+  visit(payload);
+  return found;
+};
+
 const parseErrorResponse = async (response: Response): Promise<BotInterageChatErrorInfo> => {
   let rawText = "";
   let parsed: any = null;
@@ -216,7 +276,11 @@ export const createBotInterageChatCompletion = async (
       });
       if (response.ok) {
         const payload: any = await response.json().catch(() => null);
-        return { content: extractTextContent(payload), toolCalls: extractToolCalls(payload) };
+        return {
+          content: extractTextContent(payload),
+          toolCalls: extractToolCalls(payload),
+          artifacts: extractArtifacts(payload),
+        };
       }
       const parsed = await parseErrorResponse(response);
       lastError = parsed;
