@@ -84,6 +84,83 @@ const collectImageUrls = (value: unknown, depth = 0): string[] => {
   return Array.from(new Set(urls));
 };
 
+type GeneratedMediaDescriptor = {
+  url?: string;
+  base64?: string;
+  mimeType?: string;
+  fileName?: string;
+};
+
+const MEDIA_URL_KEYS = [
+  "url", "image_url", "download_url", "signed_url", "content_url", "contentUrl",
+  "original_content_url", "originalContentUrl", "original_url", "originalUrl",
+  "file_url", "fileUrl", "media_url", "mediaUrl",
+];
+
+const MEDIA_BASE64_KEYS = ["data_url", "dataUrl", "b64_json", "base64"];
+
+const collectGeneratedMedia = (value: unknown, depth = 0): GeneratedMediaDescriptor[] => {
+  if (depth > 8 || value == null) return [];
+  if (Array.isArray(value)) {
+    return value.flatMap((entry) => collectGeneratedMedia(entry, depth + 1));
+  }
+  const record = asRecord(value);
+  if (!record) return [];
+  const url = MEDIA_URL_KEYS
+    .map((key) => record[key])
+    .find((candidate): candidate is string =>
+      typeof candidate === "string" && /^https?:\/\//i.test(candidate.trim()),
+    )?.trim();
+  const base64 = MEDIA_BASE64_KEYS
+    .map((key) => record[key])
+    .find((candidate): candidate is string =>
+      typeof candidate === "string" &&
+      (candidate.trim().startsWith("data:") || candidate.trim().length > 100),
+    )?.trim();
+  const mimeType = ["mime_type", "mimeType", "content_type", "contentType", "media_type", "mediaType", "type"]
+    .map((key) => record[key])
+    .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+    ?.trim();
+  const fileName = ["file_name", "fileName", "filename", "name", "title"]
+    .map((key) => record[key])
+    .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
+    ?.trim();
+  const own = (url || base64) && (mimeType || fileName || url || base64)
+    ? [{ url, base64, mimeType, fileName }]
+    : [];
+  const nested = Object.entries(record)
+    .filter(([key]) => !MEDIA_BASE64_KEYS.includes(key))
+    .flatMap(([, child]) => collectGeneratedMedia(child, depth + 1));
+  const seen = new Set<string>();
+  return [...own, ...nested].filter((entry) => {
+    const identity = entry.url || entry.base64?.slice(0, 96) || "";
+    if (!identity || seen.has(identity)) return false;
+    seen.add(identity);
+    return true;
+  });
+};
+
+const normalizeMediaMime = (mimeType?: string, fileName?: string): string => {
+  const declared = String(mimeType || "").split(";", 1)[0].trim().toLowerCase();
+  if (declared && declared !== "application/octet-stream") return declared;
+  const name = String(fileName || "").toLowerCase();
+  if (/\.gif(?:$|[?#])/.test(name)) return "image/gif";
+  if (/\.(?:jpe?g)(?:$|[?#])/.test(name)) return "image/jpeg";
+  if (/\.png(?:$|[?#])/.test(name)) return "image/png";
+  if (/\.webp(?:$|[?#])/.test(name)) return "image/webp";
+  if (/\.mp4(?:$|[?#])/.test(name)) return "video/mp4";
+  if (/\.(?:mp3|mpeg)(?:$|[?#])/.test(name)) return "audio/mpeg";
+  if (/\.pdf(?:$|[?#])/.test(name)) return "application/pdf";
+  return declared || "application/octet-stream";
+};
+
+const mediaTypeForMime = (mimeType: string): "image" | "video" | "audio" | "document" => {
+  if (mimeType.startsWith("image/")) return "image";
+  if (mimeType.startsWith("video/")) return "video";
+  if (mimeType.startsWith("audio/")) return "audio";
+  return "document";
+};
+
 const getString = (record: Record<string, unknown> | null, key: string): string | null => {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -184,6 +261,61 @@ const downloadImageWithRetry = async (
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Falha ao baixar imagem gerada.");
+};
+
+const downloadGeneratedMedia = async (
+  descriptor: GeneratedMediaDescriptor,
+): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
+  const rawBase64 = descriptor.base64?.trim() || "";
+  if (rawBase64) {
+    const dataMatch = rawBase64.match(/^data:([^;,]+)?(?:;base64)?,([\s\S]+)$/i);
+    const mimeType = normalizeMediaMime(dataMatch?.[1] || descriptor.mimeType, descriptor.fileName);
+    const encoded = dataMatch?.[2] || rawBase64;
+    const buffer = Buffer.from(encoded.replace(/\s+/g, ""), dataMatch?.[2] ? "base64" : "base64");
+    if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw new Error("Arquivo gerado vazio ou maior que 25 MB.");
+    return {
+      buffer,
+      mimeType,
+      filename: descriptor.fileName || `botinterage-${Date.now()}.${mimeType.split("/")[1] || "bin"}`,
+    };
+  }
+  if (!descriptor.url) throw new Error("Artefato sem URL ou conteúdo.");
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 60_000);
+  try {
+    const response = await fetch(descriptor.url, {
+      signal: controller.signal,
+      headers: { Accept: "*/*", "User-Agent": "BotAdmin/1.0" },
+      redirect: "follow",
+      cache: "no-store",
+    });
+    if (!response.ok) throw new Error(`Falha ao baixar artefato: HTTP ${response.status}`);
+    const buffer = Buffer.from(await response.arrayBuffer());
+    if (!buffer.length || buffer.length > MAX_IMAGE_BYTES) throw new Error("Arquivo gerado vazio ou maior que 25 MB.");
+    const mimeType = normalizeMediaMime(response.headers.get("content-type") || descriptor.mimeType, descriptor.fileName || descriptor.url);
+    let filename = descriptor.fileName || "";
+    if (!filename) {
+      try { filename = new URL(descriptor.url).pathname.split("/").filter(Boolean).pop() || ""; } catch { /* ignore */ }
+    }
+    if (!filename) filename = `botinterage-${Date.now()}.${mimeType.split("/")[1] || "bin"}`;
+    return { buffer, mimeType, filename };
+  } finally {
+    clearTimeout(timeout);
+  }
+};
+
+const downloadGeneratedMediaWithRetry = async (
+  descriptor: GeneratedMediaDescriptor,
+): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try { return await downloadGeneratedMedia(descriptor); }
+    catch (error) {
+      lastError = error;
+      if (attempt < 2) await wait(750 * (attempt + 1));
+    }
+  }
+  throw lastError instanceof Error ? lastError : new Error("Falha ao baixar artefato gerado.");
 };
 
 const prepareGeneratedImages = async (params: {
@@ -306,7 +438,9 @@ export async function POST(request: Request) {
         if (!messageId) throw new Error("Grupo BotAdmin não está disponível para receber a resposta.");
         return String(messageId);
       }
-      return sendTextMessage(client!, { to: job.chatId, body, quoted });
+      const messageId = await sendTextMessage(client!, { to: job.chatId, body, quoted });
+      if (!messageId) throw new Error("WhatsApp não retornou o ID da resposta de texto.");
+      return messageId;
     };
 
     const sendJobImage = async (
@@ -338,7 +472,7 @@ export async function POST(request: Request) {
         if (!messageId) throw new Error("Grupo BotAdmin não está disponível para receber a imagem.");
         return String(messageId);
       }
-      return sendMediaMessage(client!, {
+      const messageId = await sendMediaMessage(client!, {
         to: job.chatId,
         media: image.buffer,
         mediaType: "image",
@@ -347,6 +481,54 @@ export async function POST(request: Request) {
         caption,
         quoted: quoteOriginal ? quoted : undefined,
       });
+      if (!messageId) throw new Error("WhatsApp não retornou o ID da imagem gerada.");
+      return messageId;
+    };
+
+    const sendJobMedia = async (
+      media: { buffer: Buffer; mimeType: string; filename: string },
+      caption?: string,
+      quoteOriginal = false,
+    ): Promise<string> => {
+      const mediaType = mediaTypeForMime(media.mimeType);
+      const isGif = media.mimeType === "image/gif" || /\.gif$/i.test(media.filename);
+      if (isInternalDelivery) {
+        const storedPath = await saveBufferAsUploadedFile(
+          media.buffer,
+          `internal-groups/${job.internalGroupId}/botinterage`,
+          { fixedFileName: media.filename },
+        );
+        const messageId = await dispatchInternalGroupAutomationMessage(
+          job.groupId,
+          null,
+          {
+            mediaType,
+            path: storedPath,
+            mimeType: media.mimeType,
+            fileName: media.filename,
+            caption: caption ?? null,
+          },
+          {
+            replyToMessageId: quoteOriginal ? job.internalMessageId : null,
+            mentionedUserIds: internalMemberId ? [internalMemberId] : [],
+          },
+        );
+        if (!messageId) throw new Error("Grupo BotAdmin não está disponível para receber o arquivo.");
+        return String(messageId);
+      }
+      const messageId = await sendMediaMessage(client!, {
+        to: job.chatId,
+        media: media.buffer,
+        mediaType,
+        mimeType: media.mimeType,
+        filename: media.filename,
+        caption,
+        gifPlayback: isGif,
+        isAnimated: isGif,
+        quoted: quoteOriginal ? quoted : undefined,
+      });
+      if (!messageId) throw new Error("WhatsApp não retornou o ID do arquivo gerado.");
+      return messageId;
     };
 
     if (event === "job.failed") {
@@ -485,6 +667,9 @@ export async function POST(request: Request) {
     }
 
     const answer = getExactString(result, "answer") || getExactString(result, "text");
+    const artifactDescriptors = collectGeneratedMedia(result)
+      .filter((entry) => entry.url || entry.base64)
+      .slice(0, 8);
     let imageUrls = collectImageUrls(result);
     // Only reconcile the Library when the terminal payload is truly empty.
     // If ChatGPT returned a policy explanation, fetching here could resend an
@@ -492,18 +677,26 @@ export async function POST(request: Request) {
     if (imageUrls.length === 0 && !answer && conversationId) {
       imageUrls = await refreshConversationImages(conversationId, job.createdAt);
     }
-    if (!answer && imageUrls.length === 0) {
+    if (!answer && imageUrls.length === 0 && artifactDescriptors.length === 0) {
       throw new Error("Job concluído sem texto nem mídia.");
     }
 
     const images = imageUrls.length > 0
       ? await prepareGeneratedImages({ imageUrls, conversationId, createdAfter: job.createdAt })
       : [];
+    const generatedFiles = await Promise.all(
+      artifactDescriptors
+        .filter((entry) => !entry.url || !imageUrls.includes(entry.url))
+        .map((entry) => downloadGeneratedMediaWithRetry(entry)),
+    );
     let firstSentMessageId: string | null = null;
     let firstMediaMessageId: string | null = null;
 
-    if (answer) {
-      const sentMessageId = await sendJobText(answer);
+    const answerLooksLikePath = Boolean(answer && /(?:^|\s)(?:file:\/\/|\/tmp\/|\/data\/|\/storage\/|[A-Za-z]:\\)[^\s]+$/i.test(answer.trim()));
+    const visibleAnswer = answerLooksLikePath && (images.length > 0 || generatedFiles.length > 0) ? null : answer;
+
+    if (visibleAnswer) {
+      const sentMessageId = await sendJobText(visibleAnswer);
       firstSentMessageId = sentMessageId;
       await recordBotInterageContextEvent({
         groupId: job.groupId,
@@ -513,7 +706,7 @@ export async function POST(request: Request) {
         senderJid: job.senderJid,
         whatsappMessageId: sentMessageId,
         role: "assistant",
-        content: answer,
+        content: visibleAnswer,
         contentType: "text",
         jobId,
       }).catch((error) => {
@@ -534,7 +727,17 @@ export async function POST(request: Request) {
       firstMediaMessageId ??= sentMessageId;
     }
 
-    if (imageUrls.length > 0) {
+    for (const [index, media] of generatedFiles.entries()) {
+      const sentMessageId = await sendJobMedia(
+        media,
+        index === 0 && !visibleAnswer && images.length === 0 ? "📎 Arquivo gerado pelo BotInterage." : undefined,
+        index === 0 && !visibleAnswer && images.length === 0,
+      );
+      firstSentMessageId ??= sentMessageId;
+      firstMediaMessageId ??= sentMessageId;
+    }
+
+    if (imageUrls.length > 0 || generatedFiles.length > 0) {
       await recordBotInterageContextEvent({
         groupId: job.groupId,
         userId: job.userId,
@@ -543,9 +746,12 @@ export async function POST(request: Request) {
         senderJid: job.senderJid,
         whatsappMessageId: firstMediaMessageId,
         role: "assistant",
-        content: answer || "Mídia gerada pelo ChatGPT.",
+        content: visibleAnswer || "Arquivo gerado pelo ChatGPT.",
         contentType: "media",
-        media: { imageUrls },
+        media: {
+          imageUrls,
+          files: generatedFiles.map((entry) => ({ filename: entry.filename, mimeType: entry.mimeType })),
+        },
         jobId,
       }).catch((error) => {
         console.warn("[botinterage-system-webhook] mídia não entrou no histórico", {
@@ -564,8 +770,10 @@ export async function POST(request: Request) {
       ok: true,
       delivered: true,
       type: jobType,
-      responseMode: answer && images.length > 0 ? "text_and_media" : answer ? "text" : "media",
-      mediaCount: images.length,
+      responseMode: visibleAnswer && (images.length > 0 || generatedFiles.length > 0)
+        ? "text_and_media"
+        : visibleAnswer ? "text" : "media",
+      mediaCount: images.length + generatedFiles.length,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
