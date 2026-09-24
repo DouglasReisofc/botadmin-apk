@@ -34041,7 +34041,6 @@ const convertStickerSourceToWebp = async (
             shouldBan,
             links: violatingLinks,
           });
-          return;
         }
 
 		        if (!isAdmin) {
