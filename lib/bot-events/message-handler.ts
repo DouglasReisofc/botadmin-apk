@@ -19983,7 +19983,10 @@ const convertStickerSourceToWebp = async (
 	            : rawText;
 	        let sentMedia = false;
 	        const sentMessageIds: string[] = [];
-	        const artifacts = job.artifacts.slice(0, 4);
+	        // Keep every artifact returned by the assistant. A single turn can
+	        // contain a file plus preview images or multiple generated files;
+	        // truncating to four silently lost part of the response.
+	        const artifacts = job.artifacts;
 	        // The assistant decides whether a turn produced an image, document,
 	        // audio or another file. Once an artifact is present, always deliver
 	        // it; inferring the type again from the user's words caused valid
