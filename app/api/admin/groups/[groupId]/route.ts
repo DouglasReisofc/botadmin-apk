@@ -355,6 +355,7 @@ export async function PATCH(
     if (Object.keys(settingsUpdates).length > 0) {
       const settings = await upsertGroupSettings(groupId, settingsUpdates);
       invalidateGroupSettingsCache(groupId);
+      invalidateGroupByRemoteIdCache();
       return NextResponse.json({
         message: "Configurações atualizadas com sucesso.",
         settings,

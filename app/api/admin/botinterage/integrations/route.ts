@@ -18,6 +18,7 @@ type IntegrationRow = RowDataPacket & {
   openai_api_key: string | null;
   ai_prompt: string | null;
   ai_model: string | null;
+  ai_voice: string | null;
   updated_at: Date | string | null;
 };
 
@@ -68,6 +69,7 @@ export async function GET() {
         bgs.openai_api_key,
         bgs.ai_prompt,
         bgs.ai_model,
+        bgs.ai_voice,
         bgs.updated_at
       FROM bot_group_settings bgs
       INNER JOIN bot_groups bg ON bg.id = bgs.group_id
@@ -112,6 +114,7 @@ export async function GET() {
         hasKey: provider === "chatgpt_system" || maskedKeys.length > 0,
         maskedKeys,
         model: row.ai_model?.trim() || (provider === "openai" ? "gpt-4.1-mini" : "auto"),
+        aiVoice: row.ai_voice?.trim() || null,
         prompt: row.ai_prompt?.trim() || null,
         updatedAt:
           row.updated_at instanceof Date

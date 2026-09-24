@@ -4,7 +4,10 @@ import { getCurrentUser } from "lib/auth";
 import { getAdminSiteSettings } from "lib/admin-site";
 import { getBotMenuConfigForUser } from "lib/bot-config";
 import { getGroupAccessForUser } from "lib/bot-groups";
-import { invalidateGroupSettingsCache } from "lib/bot-events/cache";
+import {
+  invalidateGroupByRemoteIdCache,
+  invalidateGroupSettingsCache,
+} from "lib/bot-events/cache";
 import { publishBotGroupRealtimeUpdate } from "lib/bot-group-realtime";
 import {
   getGroupSettings,
@@ -1759,6 +1762,10 @@ export async function PATCH(
     // Invalidar localmente e publicar pelo Redis garante que o toggle de
     // menção e todas as demais ativações entrem em vigor imediatamente.
     invalidateGroupSettingsCache(groupId);
+    // Settings changes can also alter the group summary/name shown by the
+    // panel. Drop the remote-group cache at the same transaction boundary so
+    // another worker cannot serve stale metadata after a toggle.
+    invalidateGroupByRemoteIdCache();
     void publishBotGroupRealtimeUpdate(
       [auth.user.id, auth.ownerUserId],
       auth.group,

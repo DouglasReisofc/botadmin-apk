@@ -1608,12 +1608,6 @@ const List<_ActivationDefinition> _attentionActivationItems = [
     icon: Icons.psychology_alt_rounded,
   ),
   _ActivationDefinition(
-    keyName: 'vozbotinterage',
-    label: 'IA por voz',
-    description: 'Respostas em audio.',
-    icon: Icons.record_voice_over_rounded,
-  ),
-  _ActivationDefinition(
     keyName: 'lerimagem',
     label: 'Ler imagem',
     description: 'IA interpreta imagens.',

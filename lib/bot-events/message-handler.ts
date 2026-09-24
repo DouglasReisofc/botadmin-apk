@@ -10237,7 +10237,6 @@ export const buildBotAdminNativeMenuSections = (
         title: "🤖 IA do grupo",
         rows: [
           buildToggleRow(prefix, toggles, "botinterage"),
-          buildToggleRow(prefix, toggles, "vozbotinterage"),
           buildToggleRow(prefix, toggles, "ouviraudiobotinterage"),
           buildToggleRow(prefix, toggles, "moderacaocomia"),
           buildToggleRow(prefix, toggles, "lerimagem"),
@@ -20622,7 +20621,10 @@ const convertStickerSourceToWebp = async (
       const voiceStartedAt = Date.now();
       try {
         const configuredGroupVoice = settings.aiVoice?.trim() || "";
-        const userAllowedTts = false;
+        // The voice switch is controlled by the group BotInterage settings.
+        // This used to be hard-coded to false, so even an enabled voice mode
+        // always fell through to a text reply.
+        const userAllowedTts = true;
         if (userAllowedTts) {
           const ttsRuntime = await getBotInterageTtsRuntimeConfig();
           if (ttsRuntime.enabled && ttsRuntime.baseUrl && ttsRuntime.token) {

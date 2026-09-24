@@ -11288,6 +11288,7 @@ class _BotInterageGroupDialog extends StatefulWidget {
 
 class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
   late bool _enabled;
+  late bool _voiceEnabled;
   late bool _listenToAudio;
   late bool _mentionOnly;
   late bool _clearProviderKey;
@@ -11295,6 +11296,22 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
   late final TextEditingController _keys;
   late final TextEditingController _prompt;
   late final TextEditingController _model;
+  final AudioPlayer _voicePreviewPlayer = AudioPlayer();
+  bool _voicePreviewLoading = false;
+
+  static const _botInterageVoices = <String, String>{
+    'laizza': 'Laizza (feminina)',
+    'ludmilla': 'Ludmilla (feminina)',
+    'lhays': 'Lhays (feminina)',
+    'bueno': 'Bueno (masculina)',
+    'ivete': 'Ivete (feminina)',
+    'br001': 'Brasileira 01',
+    'br002': 'Brasileira 02',
+    'br003': 'Brasileira 03',
+    'br004': 'Brasileira 04',
+    'br005': 'Brasileira 05',
+  };
+  late String _voiceId;
 
   Map<String, dynamic> get _raw => widget.record.raw;
 
@@ -11302,6 +11319,13 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
   void initState() {
     super.initState();
     _enabled = _raw['enabled'] != false;
+    _voiceEnabled = _raw['commandToggles'] is Map
+        ? (_raw['commandToggles']['vozbotinterage'] == true)
+        : false;
+    final storedVoice = _display(_raw['aiVoice'], fallback: 'laizza').trim();
+    _voiceId = _botInterageVoices.containsKey(storedVoice)
+        ? storedVoice
+        : 'laizza';
     _listenToAudio = _raw['listenToAudio'] == true;
     _mentionOnly = _raw['mentionOnly'] != false;
     _clearProviderKey = false;
@@ -11320,10 +11344,35 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
 
   @override
   void dispose() {
+    unawaited(_voicePreviewPlayer.dispose());
     _keys.dispose();
     _prompt.dispose();
     _model.dispose();
     super.dispose();
+  }
+
+  Future<void> _previewVoice() async {
+    if (_voicePreviewLoading) return;
+    setState(() => _voicePreviewLoading = true);
+    try {
+      await _voicePreviewPlayer.stop();
+      final uri = Uri.parse(AppConfig.apiBaseUrl)
+          .resolve('/api/tts')
+          .replace(
+            queryParameters: {
+              'texto':
+                  'Esse é o BotAdmin, o melhor robô para gerenciar grupos.',
+              'voz': _voiceId,
+            },
+          );
+      await _voicePreviewPlayer.setUrl(uri.toString());
+      await _voicePreviewPlayer.play();
+    } catch (error) {
+      if (mounted)
+        showErrorToast(context, 'Não foi possível reproduzir a prévia da voz.');
+    } finally {
+      if (mounted) setState(() => _voicePreviewLoading = false);
+    }
   }
 
   void _selectProvider(String provider) {
@@ -11368,6 +11417,7 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
     final commandToggles = <String, dynamic>{
       ..._jsonMap(_raw['commandToggles']),
       'botinterage': _enabled,
+      'vozbotinterage': _enabled && _voiceEnabled,
       'ouviraudiobotinterage': _provider == 'chatgpt_system' && _listenToAudio,
     };
     final featureFlags = <String, dynamic>{
@@ -11382,6 +11432,7 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
         'featureFlags': featureFlags,
         'aiProvider': _provider,
         'aiPrompt': _prompt.text.trim(),
+        'aiVoice': _voiceEnabled ? _voiceId : null,
         'aiModel': _provider == 'chatgpt_system'
             ? 'auto'
             : (_model.text.trim().isEmpty
@@ -11417,6 +11468,57 @@ class _BotInterageGroupDialogState extends State<_BotInterageGroupDialog> {
                 value: _enabled,
                 onChanged: (value) => setState(() => _enabled = value),
               ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.record_voice_over_rounded),
+                title: const Text('Responder com IA por voz'),
+                subtitle: const Text(
+                  'A resposta da IA será enviada como áudio no grupo.',
+                ),
+                value: _voiceEnabled,
+                onChanged: _enabled
+                    ? (value) => setState(() => _voiceEnabled = value)
+                    : null,
+              ),
+              if (_voiceEnabled) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _voiceId,
+                        decoration: const InputDecoration(
+                          labelText: 'Voz da IA',
+                          helperText: 'Escolha a voz usada nas respostas.',
+                        ),
+                        items: _botInterageVoices.entries
+                            .map(
+                              (entry) => DropdownMenuItem(
+                                value: entry.key,
+                                child: Text(entry.value),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _voiceId = value);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Ouvir prévia',
+                      onPressed: _voicePreviewLoading ? null : _previewVoice,
+                      icon: _voicePreviewLoading
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.play_arrow_rounded),
+                    ),
+                  ],
+                ),
+              ],
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Responder somente quando chamado'),
