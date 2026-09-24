@@ -12,7 +12,10 @@ import {
 } from "lib/botinterage-system";
 import { recordBotInterageContextEvent } from "lib/chatgpt-phone";
 import { getInstanceForUser } from "lib/bot-instances";
-import { dispatchInternalGroupAutomationMessage } from "lib/internal-groups";
+import {
+  acknowledgeInternalBotFailure,
+  dispatchInternalGroupAutomationMessage,
+} from "lib/internal-groups";
 import { saveBufferAsUploadedFile } from "lib/uploads";
 import {
   sendMediaMessage,
@@ -455,6 +458,9 @@ export async function POST(request: Request) {
           messageId: job.whatsappMessageId,
           emoji: "🚫",
         }).catch(() => undefined);
+      }
+      if (isInternalDelivery && job.internalMessageId) {
+        await acknowledgeInternalBotFailure(job.groupId, job.internalMessageId).catch(() => false);
       }
       const messageId = job.whatsappMessageId || null;
       await completeBotInterageSystemJob({

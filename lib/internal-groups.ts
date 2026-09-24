@@ -2258,7 +2258,7 @@ const acknowledgeInternalBotInteraction = async (
   group: GroupRow,
   messageId: number,
   actorUserId: number,
-  emoji: "💬" | "🧠",
+  emoji: "💬" | "🧠" | "🚫",
 ) => {
   await getDb().query(
     `INSERT INTO internal_group_bot_reactions (message_id, emoji)
@@ -2271,8 +2271,27 @@ const acknowledgeInternalBotInteraction = async (
     actorUserId,
     type: "message.created",
     messageId,
-    action: emoji === "🧠" ? "botinterage.accepted" : "command.accepted",
+    action: emoji === "🧠"
+      ? "botinterage.accepted"
+      : emoji === "🚫"
+        ? "botinterage.blocked"
+        : "command.accepted",
   });
+};
+
+export const acknowledgeInternalBotFailure = async (
+  botGroupId: number,
+  messageId: number,
+) => {
+  await ensureInternalGroupTables();
+  const [rows] = await getDb().query<GroupRow[]>(
+    "SELECT * FROM internal_groups WHERE bot_group_id = ? AND is_active = 1 LIMIT 1",
+    [botGroupId],
+  );
+  const group = rows?.[0];
+  if (!group) return false;
+  await acknowledgeInternalBotInteraction(group, messageId, Number(group.owner_user_id), "🚫");
+  return true;
 };
 
 export const dispatchInternalGroupAutomationMessage = async (
