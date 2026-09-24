@@ -142,6 +142,7 @@ import { downloadChatMedia, downloadViewOnce } from "lib/wuzapi";
 import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } from "lib/sticker";
 import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
 import { createBotInterageChatCompletion, transcribeBotInterageAudio } from "lib/apis/botinterage";
+import { generateBotInterageSystemImage } from "lib/botinterage-system";
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
   createAndRunBotInterageChatGptPhoneJob,
@@ -152,7 +153,6 @@ import {
   isBotInterageAssistantWhatsappMessage,
   listBotInterageContextEvents,
   recordBotInterageContextEvent,
-  shouldUseChatGptPhoneForBotInterage,
   type ChatGptPhoneArtifact,
   type ChatGptPhoneInputAttachment,
   type ChatGptPhoneJob,
@@ -19066,7 +19066,7 @@ const convertStickerSourceToWebp = async (
     // Media generation is an executor capability, not an AI-provider choice:
     // groups configured for Groq/OpenAI must still use the local ChatGPT
     // browser for /imgai and natural image prompts.
-    const canUsePhoneExecutor = shouldUseChatGptPhoneForBotInterage(trimmedInput);
+    const canUsePhoneExecutor = false;
     const isImageEditRequest = false;
     const runtimeModel = runtimeConfig?.model || "";
     const primaryModel = configuredModel || runtimeModel;
@@ -19810,7 +19810,26 @@ const convertStickerSourceToWebp = async (
 
     const handleChatGptPhoneBotInterage = async (): Promise<boolean> => {
       if (!canUsePhoneExecutor) {
-        return false;
+        if (!isLikelyChatGptPhoneMediaRequest(trimmedInput)) return false;
+        void (async () => {
+          try {
+            await sendBotInterageText("🧠 Estou gerando a imagem e já envio aqui.");
+            const generated = await generateBotInterageSystemImage(trimmedInput);
+            await sendMediaMessage(client, {
+              to: message.chatId,
+              media: generated.buffer,
+              mediaType: "image",
+              mimeType: generated.mimeType,
+              filename: generated.fileName,
+              caption: "Imagem gerada pelo BotInterage",
+              quoted,
+            });
+          } catch (error) {
+            console.error("[bot-interage] falha na geração direta de imagem", { groupId: group.id, error });
+            await sendBotInterageText("⚠️ Não foi possível gerar a imagem agora. Tente novamente em instantes.");
+          }
+        })();
+        return true;
       }
 
 	      const formatChatGptPhoneFailure = (

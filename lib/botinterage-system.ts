@@ -209,6 +209,66 @@ const submitSystemJobWithRetry = async (
     : new Error("Não foi possível alcançar a API do ChatGPT Sistema.");
 };
 
+/** Generate one image directly through the managed BotInterage image API. */
+export const generateBotInterageSystemImage = async (prompt: string): Promise<{
+  buffer: Buffer;
+  mimeType: string;
+  fileName: string;
+}> => {
+  const config = await getBotInterageRuntimeConfig();
+  if (!config.enabled || !config.baseUrl || !config.token) {
+    throw new Error("ChatGPT Sistema não está configurado.");
+  }
+  const response = await submitSystemJobWithRetry(imageEndpoint(config.baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      "Idempotency-Key": `wa-direct-img-${createHash("sha256").update(prompt).digest("hex")}`,
+    },
+    body: JSON.stringify({ prompt: prompt.trim(), model: "auto", provider: "chatgpt" }),
+  });
+  let payload = (await response.json().catch(() => null)) as any;
+  if (response.status === 202 && typeof payload?.job_id === "string") {
+    const base = config.baseUrl.replace(/\/+$/, "");
+    const pollUrl = `${base.endsWith("/v1") ? base : `${base}/v1`}/jobs/${encodeURIComponent(payload.job_id)}`;
+    const deadline = Date.now() + 180_000;
+    while (Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+      const poll = await fetch(pollUrl, { headers: { Authorization: `Bearer ${config.token}`, Accept: "application/json" }, signal: AbortSignal.timeout(30_000) });
+      payload = await poll.json().catch(() => null) as any;
+      const status = String(payload?.status ?? payload?.result?.status ?? "").toLowerCase();
+      if (poll.ok && ["completed", "complete", "succeeded"].includes(status)) {
+        payload = payload?.result && typeof payload.result === "object" ? payload.result : payload;
+        break;
+      }
+      if (["failed", "cancelled", "canceled", "expired"].includes(status)) throw new Error("A geração de imagem falhou.");
+    }
+  }
+  const candidates: Array<{ url?: string; dataUrl?: string; base64?: string; mimeType?: string }> = [];
+  const collect = (value: unknown, depth = 0): void => {
+    if (depth > 5 || value == null) return;
+    if (Array.isArray(value)) { value.forEach((item) => collect(item, depth + 1)); return; }
+    if (typeof value !== "object") return;
+    const r = value as Record<string, unknown>;
+    const url = ["url", "image_url", "imageUrl", "download_url", "signed_url"].find((key) => typeof r[key] === "string" && /^https?:\/\//i.test(String(r[key]))) as string | undefined;
+    const dataUrl = ["data_url", "dataUrl"].find((key) => typeof r[key] === "string" && String(r[key]).startsWith("data:image/")) as string | undefined;
+    const base64 = ["b64_json", "base64"].find((key) => typeof r[key] === "string" && String(r[key]).length > 100) as string | undefined;
+    if (url || dataUrl || base64) candidates.push({ url, dataUrl, base64, mimeType: typeof r.mimeType === "string" ? r.mimeType : undefined });
+    for (const key of ["images", "data", "image", "items", "result", "artifacts"]) collect(r[key], depth + 1);
+  };
+  collect(payload);
+  const item = candidates[0];
+  if (!item) throw new Error(`A API de imagem retornou HTTP ${response.status} sem imagem.`);
+  let buffer: Buffer; let mimeType = item.mimeType || "image/png";
+  if (item.dataUrl) { const m = item.dataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s); if (!m) throw new Error("Imagem retornada inválida."); mimeType = m[1] || mimeType; buffer = Buffer.from(m[3], m[2] ? "base64" : "utf8"); }
+  else if (item.base64) buffer = Buffer.from(item.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+  else { const image = await fetch(item.url!, { headers: { Accept: "image/*", Authorization: `Bearer ${config.token}` }, signal: AbortSignal.timeout(60_000) }); if (!image.ok) throw new Error(`Falha ao baixar imagem: HTTP ${image.status}.`); buffer = Buffer.from(await image.arrayBuffer()); mimeType = image.headers.get("content-type")?.split(";")[0] || mimeType; }
+  if (!buffer.length) throw new Error("A imagem retornada está vazia.");
+  return { buffer, mimeType, fileName: `botinterage-${Date.now()}.${mimeType.split("/")[1] || "png"}` };
+};
+
 const audioAskEndpoint = (baseUrl: string): string => {
   const normalized = baseUrl.replace(/\/+$/, "");
   return normalized.endsWith("/v1")
