@@ -20335,7 +20335,7 @@ const convertStickerSourceToWebp = async (
       | undefined;
 
     if (canUsePrivateLlm) {
-      ({ content: completion, toolCalls, artifacts: completionArtifacts, error: llmError } = await createBotInterageChatCompletion({
+      ({ content: completion, toolCalls, artifacts: completionArtifacts = [], error: llmError } = await createBotInterageChatCompletion({
         baseUrl: runtimeConfig!.baseUrl,
         token: runtimeConfig!.token,
         model: primaryModel,
@@ -20350,7 +20350,7 @@ const convertStickerSourceToWebp = async (
           runtimeModel,
           error: llmError,
         });
-        ({ content: completion, toolCalls, artifacts: completionArtifacts, error: llmError } = await createBotInterageChatCompletion({
+        ({ content: completion, toolCalls, artifacts: completionArtifacts = [], error: llmError } = await createBotInterageChatCompletion({
           baseUrl: runtimeConfig!.baseUrl,
           token: runtimeConfig!.token,
           model: runtimeModel,
