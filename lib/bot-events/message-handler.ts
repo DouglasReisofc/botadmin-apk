@@ -19059,7 +19059,14 @@ const convertStickerSourceToWebp = async (
       }
     }
     const canUsePrivateLlm = runtimeConfig !== null;
-    const canUsePhoneExecutor = false;
+    // Requests that create media must go through the locally hosted Cromite
+    // executor.  Sending them to the generic completion endpoint makes the
+    // response depend on the public tunnel and returns a text/502 instead of
+    // an image whenever that tunnel is briefly unavailable.
+    const canUsePhoneExecutor =
+      aiProvider === "chatgpt_system" &&
+      runtimeConfig !== null &&
+      shouldUseChatGptPhoneForBotInterage(trimmedInput);
     const isImageEditRequest = false;
     const runtimeModel = runtimeConfig?.model || "";
     const primaryModel = configuredModel || runtimeModel;
