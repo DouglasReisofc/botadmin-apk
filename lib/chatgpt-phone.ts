@@ -2282,7 +2282,12 @@ export const runChatGptPhoneJob = async (
   if (!current) {
     throw new Error("Job do ChatGPT Phone não encontrado.");
   }
-  const phoneApiUrl = sanitizePhoneBaseUrl(current.phoneApiUrl) ?? getChatGptPhoneApiUrl();
+  // In cromite-direct mode the local executor is authoritative.  Do not let a
+  // stale CHATGPT_PHONE_API_URL (often the unavailable relay on :8792) take
+  // precedence, otherwise image jobs never reach the working local browser.
+  const phoneApiUrl = shouldUseDirectCromiteImport()
+    ? null
+    : sanitizePhoneBaseUrl(current.phoneApiUrl) ?? getChatGptPhoneApiUrl();
   const storedTimeoutMs = (() => {
     const value = Number(current.request?.timeoutMs);
     return Number.isFinite(value) && value > 0 ? value : DEFAULT_PHONE_TIMEOUT_MS;
