@@ -18846,6 +18846,39 @@ const convertStickerSourceToWebp = async (
       "",
     );
 
+    // Em alguns clientes o usuário digita o nome exibido do robô em vez de
+    // selecionar a menção nativa. Quando esse nome está no início do texto,
+    // ele é uma chamada direta válida; não o repasse como parte do pedido.
+    const normalizeBotCallName = (entry: unknown, collapseRuns = false): string => {
+      let normalized = String(entry ?? "")
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .toLocaleLowerCase("pt-BR")
+        .replace(/[^\p{L}\p{N}]/gu, "");
+      if (collapseRuns) {
+        normalized = normalized.replace(/(.)\1+/gu, "$1");
+      }
+      return normalized;
+    };
+    const botCallNames = [
+      context.instance.name,
+      firstString(
+        toRecord(payload.instance).name,
+        toRecord(payload.instance).pushName,
+        toRecord(payload.instance).profileName,
+      ),
+    ]
+      .flatMap((entry) => [normalizeBotCallName(entry), normalizeBotCallName(entry, true)])
+      .filter((entry, index, list) => entry.length >= 3 && list.indexOf(entry) === index);
+    const leadingName = output.match(/^\s*@?([^\s,;:!?.-]+)/u);
+    if (leadingName) {
+      const normalizedLeading = normalizeBotCallName(leadingName[1]);
+      const collapsedLeading = normalizeBotCallName(leadingName[1], true);
+      if (botCallNames.includes(normalizedLeading) || botCallNames.includes(collapsedLeading)) {
+        output = output.slice(leadingName[0].length).replace(/^[\s,;:!?.-]+/u, "");
+      }
+    }
+
     return output.replace(/^[\s,;:!?.-]+/u, "").trim();
   };
 
@@ -18883,6 +18916,30 @@ const convertStickerSourceToWebp = async (
           ...extractSessionSelfDigits(payload, message) ? [extractSessionSelfDigits(payload, message)] : [],
         ].filter(Boolean);
         const messageTextForMention = String(message.text ?? message.caption ?? "");
+        const normalizeBotCallName = (entry: unknown, collapseRuns = false): string => {
+          let normalized = String(entry ?? "")
+            .normalize("NFD")
+            .replace(/[\u0300-\u036f]/g, "")
+            .toLocaleLowerCase("pt-BR")
+            .replace(/[^\p{L}\p{N}]/gu, "");
+          if (collapseRuns) {
+            normalized = normalized.replace(/(.)\1+/gu, "$1");
+          }
+          return normalized;
+        };
+        const botCallNames = [
+          context.instance.name,
+          firstString(
+            toRecord(payload.instance).name,
+            toRecord(payload.instance).pushName,
+            toRecord(payload.instance).profileName,
+          ),
+        ]
+          .flatMap((entry) => [normalizeBotCallName(entry), normalizeBotCallName(entry, true)])
+          .filter((entry, index, list) => entry.length >= 3 && list.indexOf(entry) === index);
+        const leadingNameToken = messageTextForMention.trimStart().match(/^@?([^\s,;:!?.-]+)/u)?.[1] ?? "";
+        const isLeadingBotName = botCallNames.includes(normalizeBotCallName(leadingNameToken)) ||
+          botCallNames.includes(normalizeBotCallName(leadingNameToken, true));
         const textualBotMentioned = botIdentityCandidates.some((digits) =>
           new RegExp(`(^|\\s)@\\+?${String(digits).replace(/\\D/g, "")}(?=\\s|$|[.,:;!?])`, "i").test(messageTextForMention),
         ) || [
@@ -18890,7 +18947,7 @@ const convertStickerSourceToWebp = async (
           firstString(toRecord(payload.instance).name, toRecord(payload.instance).pushName, toRecord(payload.instance).profileName),
         ].filter(Boolean).some((name) =>
           new RegExp(`(^|\\s)@${String(name).replace(/[.*+?^${}()|[\\]\\\\]/g, "\\\\$&")}(?=\\s|$|[.,:;!?])`, "iu").test(messageTextForMention),
-        );
+        ) || isLeadingBotName;
         const botMentioned =
           message.mentionsInstance === true ||
           (botNorm ? mentionedDigits.some((digits) => phoneDigitsOverlap(digits, botNorm)) : false) ||
@@ -19040,6 +19097,12 @@ const convertStickerSourceToWebp = async (
       (!botInterageMentionOnlyEnabled || botInterageTargeting.targeted)
     ) {
       trimmedInput = "Ouça o audio anexado no ChatGPT e execute o pedido enviado por audio.";
+    }
+    // Uma chamada isolada (por exemplo, "@Alluka" ou "Aluka") é uma
+    // interação válida. Antes ela era reconhecida como menção, mas descartada
+    // ao remover o próprio nome do prompt, deixando o usuário sem retorno.
+    if (!trimmedInput && botInterageTargeting.targeted && botInteragePrompt.text.trim()) {
+      trimmedInput = "O usuário chamou o robô. Cumprimente brevemente e pergunte como pode ajudar.";
     }
     if (!trimmedInput) {
       return false;
