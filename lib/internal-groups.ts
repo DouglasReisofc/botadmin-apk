@@ -2447,40 +2447,115 @@ const callInternalGroupAi = async (
         },
         body: JSON.stringify({
           prompt: text,
+          // Image generation is routed by the managed ChatGPT API. Group
+          // settings may contain a text model slug that the image endpoint
+          // does not understand, so always use its supported auto lane.
           model: "auto",
           provider: "chatgpt",
         }),
         signal: AbortSignal.timeout(180_000),
       });
-      const payload = await generationResponse.json().catch(() => null) as any;
-      const images = Array.isArray(payload?.images) ? payload.images.slice(0, 4) : [];
-      if (!generationResponse.ok || images.length === 0) {
+
+      let payload = await generationResponse.json().catch(() => null) as any;
+      console.info("[internal-groups] BotInterage image generation response", {
+        groupId: context.group.id,
+        messageId: context.messageId,
+        status: generationResponse.status,
+        responseKeys: payload && typeof payload === "object" ? Object.keys(payload).slice(0, 24) : [],
+        jobId: typeof payload?.job_id === "string" ? payload.job_id : null,
+        imageCount: Array.isArray(payload?.images) ? payload.images.length : null,
+      });
+      // Some deployments use the queue even when the caller did not request
+      // async delivery.  Treat 202 as a normal accepted generation and poll
+      // its job instead of immediately showing an error in the group.
+      if (generationResponse.status === 202 || typeof payload?.job_id === "string") {
+        const jobId = typeof payload?.job_id === "string" ? payload.job_id.trim() : "";
+        const pollUrl = typeof payload?.poll_url === "string" && /^https?:\/\//i.test(payload.poll_url)
+          ? payload.poll_url
+          : `${normalizedBase.endsWith("/v1") ? normalizedBase : `${normalizedBase}/v1`}/jobs/${encodeURIComponent(jobId)}`;
+        if (!jobId) {
+          throw new Error("A API aceitou a geração, mas não retornou o identificador do job.");
+        }
+        const deadline = Date.now() + 180_000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1_000));
+          const pollResponse = await fetch(pollUrl, {
+            headers: { Authorization: `Bearer ${token}`, Accept: "application/json" },
+            signal: AbortSignal.timeout(30_000),
+          });
+          payload = await pollResponse.json().catch(() => null) as any;
+          const status = String(payload?.status ?? payload?.result?.status ?? "").toLowerCase();
+          if (pollResponse.ok && (status === "completed" || status === "complete" || status === "succeeded")) {
+            payload = payload?.result && typeof payload.result === "object" ? payload.result : payload;
+            break;
+          }
+          if (status === "failed" || status === "cancelled" || status === "canceled" || status === "expired") {
+            throw new Error(cleanText(payload?.error?.message ?? payload?.error ?? payload?.message, 500) || "A geração de imagem falhou.");
+          }
+        }
+      }
+
+      const imageCandidates: any[] = [];
+      const collectImages = (value: unknown, depth = 0): void => {
+        if (depth > 5 || value == null) return;
+        if (Array.isArray(value)) {
+          value.forEach((entry) => collectImages(entry, depth + 1));
+          return;
+        }
+        if (typeof value !== "object") return;
+        const record = value as Record<string, unknown>;
+        const url = ["url", "image_url", "imageUrl", "download_url", "signed_url"]
+          .map((key) => record[key])
+          .find((candidate): candidate is string => typeof candidate === "string" && /^https?:\/\//i.test(candidate.trim()));
+        const dataUrl = ["data_url", "dataUrl"]
+          .map((key) => record[key])
+          .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().startsWith("data:image/"));
+        const base64 = ["b64_json", "base64"]
+          .map((key) => record[key])
+          .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 100);
+        if (url || dataUrl || base64) imageCandidates.push({ ...record, url, dataUrl, base64 });
+        ["images", "data", "image", "items", "result", "artifacts"].forEach((key) => collectImages(record[key], depth + 1));
+      };
+      collectImages(payload);
+      const images = imageCandidates.slice(0, 4);
+      if (!generationResponse.ok && images.length === 0) {
         throw new Error(
-          cleanText(payload?.error ?? payload?.message, 500) ||
+          cleanText(payload?.error?.message ?? payload?.error ?? payload?.message, 500) ||
           `A API de imagem retornou HTTP ${generationResponse.status}.`,
         );
       }
+      if (images.length === 0) throw new Error("A geração terminou sem imagem utilizável.");
       const media: GeneratedMedia[] = [];
       let firstTitle: string | null = null;
       for (let index = 0; index < images.length; index += 1) {
         const generated = images[index];
-        const imageUrl = typeof generated?.url === "string" ? generated.url.trim() : "";
-        if (!imageUrl) continue;
-        const imageResponse = await fetch(imageUrl, {
-          headers: { Accept: "image/*" },
-          signal: AbortSignal.timeout(60_000),
-        });
-        if (!imageResponse.ok) {
-          throw new Error(`Falha ao baixar a imagem gerada: HTTP ${imageResponse.status}.`);
+        let downloaded: Buffer;
+        let mimeType = "image/png";
+        if (generated.dataUrl) {
+          const match = generated.dataUrl.match(/^data:(image\/[\w.+-]+);base64,([\s\S]+)$/i);
+          if (!match) continue;
+          mimeType = match[1].toLowerCase();
+          downloaded = Buffer.from(match[2], "base64");
+        } else if (generated.base64) {
+          downloaded = Buffer.from(generated.base64.replace(/^data:[^;]+;base64,/, ""), "base64");
+        } else {
+          const imageUrl = typeof generated.url === "string" ? generated.url.trim() : "";
+          if (!imageUrl) continue;
+          const imageResponse = await fetch(imageUrl, {
+            headers: { Accept: "image/*", "User-Agent": "BotAdmin/1.0" },
+            signal: AbortSignal.timeout(60_000),
+            redirect: "follow",
+          });
+          if (!imageResponse.ok) {
+            throw new Error(`Falha ao baixar a imagem gerada: HTTP ${imageResponse.status}.`);
+          }
+          downloaded = Buffer.from(await imageResponse.arrayBuffer());
+          mimeType = (imageResponse.headers.get("content-type") || "image/png")
+            .split(";")[0].trim().toLowerCase();
         }
-        const downloaded = Buffer.from(await imageResponse.arrayBuffer());
         if (downloaded.byteLength === 0 || downloaded.byteLength > 25 * 1024 * 1024) {
           throw new Error("A imagem gerada está vazia ou excede 25 MB.");
         }
-        const mimeType = (imageResponse.headers.get("content-type") || "image/png")
-          .split(";")[0]
-          .trim()
-          .toLowerCase();
         const mediaType = mimeType.startsWith("image/")
           ? "image"
           : mimeType.startsWith("video/")

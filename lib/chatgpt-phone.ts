@@ -2720,7 +2720,7 @@ export const isLikelyChatGptPhoneMediaRequest = (text: string): boolean => {
       normalized,
     );
   const directImageCommand =
-    /\b(criarimagem|createimage|imagegen|text2img|txt2img|gerar imagem|crie uma imagem|cria uma imagem|create an image|create image|generate an image|generate image|make an image|draw an image)\b/.test(
+    /(?:^|\s)\/?(?:imgai|imagegen|text2img|txt2img)\b|\b(criarimagem|createimage|gerar imagem|crie uma imagem|cria uma imagem|create an image|create image|generate an image|generate image|make an image|draw an image)\b/.test(
       normalized,
     );
   const referenceImage = /\b(baseado|com base|a partir|based on|from)\b.*\b(imagem|foto|image|photo|picture)\b/.test(
