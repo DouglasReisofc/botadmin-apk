@@ -4787,6 +4787,9 @@ export const sendMediaMessage = async (
   client: WuzapiClient,
   params: SendMediaPayload,
 ): Promise<string | null> => {
+  if (Buffer.isBuffer(params.media) && params.media.length === 0) {
+    throw new Error(`Não é possível enviar ${params.mediaType}: o arquivo está vazio.`);
+  }
   const endpoint = MEDIA_ENDPOINTS[params.mediaType];
   if (!endpoint) {
     throw new Error(`Unsupported media type: ${params.mediaType}`);

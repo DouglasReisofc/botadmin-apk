@@ -19431,6 +19431,30 @@ const convertStickerSourceToWebp = async (
             artifact: { mimeType: rawArtifact.mimeType, fileName: rawArtifact.fileName, path: rawArtifact.path },
             error,
           });
+          if (isPdfArtifact(rawArtifact)) {
+            try {
+              const fallback = buildBotInteragePdfFallback(responseText, rawArtifact.fileName || rawArtifact.name);
+              await sendMediaMessage(client, {
+                to: message.chatId,
+                media: fallback.buffer,
+                mediaType: "document",
+                mimeType: "application/pdf",
+                filename: fallback.fileName,
+                caption: responseText || "📄 Documento gerado pelo BotInterage.",
+                quoted: delivered ? undefined : quoted,
+              });
+              delivered = true;
+              console.info("[bot-interage] PDF fallback materializado e enviado", {
+                groupId: group.id,
+                bytes: fallback.buffer.length,
+              });
+            } catch (fallbackError) {
+              console.error("[bot-interage] falha ao enviar PDF fallback", {
+                groupId: group.id,
+                error: fallbackError,
+              });
+            }
+          }
         }
       }
       // Some providers return only a sandbox link in the text. It is still a
@@ -19645,6 +19669,21 @@ const convertStickerSourceToWebp = async (
       url: artifact.url ?? null,
       hasInlineData: Boolean(artifact.base64 || artifact.dataUrl),
     });
+
+    const isPdfArtifact = (artifact: ChatGptPhoneArtifact, mimeType?: string | null): boolean =>
+      String(mimeType || artifact.mimeType || "").toLowerCase().includes("pdf") ||
+      /\.pdf$/i.test(String(artifact.fileName || artifact.name || artifact.path || ""));
+
+    const buildBotInteragePdfFallback = (body: string | null | undefined, fileName?: string | null) => {
+      const safeBody = String(body || "").replace(/(?:sandbox:|file:\/\/|\/mnt\/data\/|\/data\/)[^\s`<>]+/gi, "").trim();
+      return {
+        buffer: buildTextPdfBuffer({
+          title: "Documento BotAdmin",
+          body: safeBody || "Documento gerado pelo BotInterage.",
+        }),
+        fileName: /\.pdf$/i.test(String(fileName || "")) ? String(fileName) : `botinterage-${Date.now()}.pdf`,
+      };
+    };
 
     const buildGeneratedMediaCaption = (prompt: string, mediaType: SendMediaPayload["mediaType"] = "image"): string => {
       const promptPreview = prompt.trim().slice(0, 700);
@@ -20184,14 +20223,45 @@ const convertStickerSourceToWebp = async (
 	              bytes: downloaded.buffer.byteLength,
 	            });
 	            sentMedia = true;
-	          } catch (error) {
-	            console.error("[bot-events] Falha ao enviar artefato do ChatGPT Phone", {
-	              groupId: group.id,
-	              jobId: job.jobId,
-	              artifact: describeChatGptPhoneArtifact(artifact),
-	              error,
-	            });
-	          }
+          } catch (error) {
+            console.error("[bot-events] Falha ao enviar artefato do ChatGPT Phone", {
+              groupId: group.id,
+              jobId: job.jobId,
+              artifact: describeChatGptPhoneArtifact(artifact),
+              error,
+            });
+            if (isPdfArtifact(artifact)) {
+              try {
+                const fallbackBody =
+                  text && !/pdf\s+gerado\s+com\s+sucesso/i.test(text) ? text : job.prompt;
+                const fallback = buildBotInteragePdfFallback(fallbackBody, artifact.fileName || artifact.name);
+                const fallbackMessageId = await sendMediaMessage(client, {
+                  to: message.chatId,
+                  media: fallback.buffer,
+                  mediaType: "document",
+                  mimeType: "application/pdf",
+                  filename: fallback.fileName,
+                  caption: text || "📄 Documento gerado pelo BotInterage.",
+                  quoted: index === 0 ? quoted : undefined,
+                });
+                if (fallbackMessageId) {
+                  sentMessageIds.push(fallbackMessageId);
+                }
+                sentMedia = true;
+                console.info("[bot-events] PDF fallback do ChatGPT Phone enviado", {
+                  groupId: group.id,
+                  jobId: job.jobId,
+                  bytes: fallback.buffer.length,
+                });
+              } catch (fallbackError) {
+                console.error("[bot-events] Falha ao enviar PDF fallback do ChatGPT Phone", {
+                  groupId: group.id,
+                  jobId: job.jobId,
+                  error: fallbackError,
+                });
+              }
+            }
+          }
 	        }
 
 	        let sentTextMessageId: string | null = null;

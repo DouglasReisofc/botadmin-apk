@@ -2676,6 +2676,17 @@ export const downloadChatGptPhoneArtifact = async (
   artifact: ChatGptPhoneArtifact,
   phoneApiUrl?: string | null,
 ): Promise<{ buffer: Buffer; mimeType: string; fileName: string }> => {
+  const assertArtifactBuffer = (buffer: Buffer, mimeType: string, fileName: string): Buffer => {
+    if (!buffer.length) {
+      throw new Error("Artefato gerado vazio.");
+    }
+    const normalizedMime = mimeType.toLowerCase();
+    const isPdf = normalizedMime.includes("pdf") || /\.pdf$/i.test(fileName);
+    if (isPdf && buffer.subarray(0, 5).toString("ascii") !== "%PDF-") {
+      throw new Error("A fonte do PDF retornou conteúdo inválido.");
+    }
+    return buffer;
+  };
   const inlineDataUrl = trimOptional(artifact.dataUrl);
   if (inlineDataUrl) {
     const match = inlineDataUrl.match(/^data:([^;,]+)?(;base64)?,(.*)$/s);
@@ -2689,7 +2700,7 @@ export const downloadChatGptPhoneArtifact = async (
       trimOptional(artifact.fileName) ??
       trimOptional(artifact.name) ??
       `chatgpt-phone-${Date.now()}.${mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "bin"}`;
-    return { buffer, mimeType, fileName };
+    return { buffer: assertArtifactBuffer(buffer, mimeType, fileName), mimeType, fileName };
   }
 
   const inlineBase64 = trimOptional(artifact.base64);
@@ -2699,7 +2710,11 @@ export const downloadChatGptPhoneArtifact = async (
       trimOptional(artifact.fileName) ??
       trimOptional(artifact.name) ??
       `chatgpt-phone-${Date.now()}.${mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "bin"}`;
-    return { buffer: Buffer.from(inlineBase64, "base64"), mimeType, fileName };
+    return {
+      buffer: assertArtifactBuffer(Buffer.from(inlineBase64, "base64"), mimeType, fileName),
+      mimeType,
+      fileName,
+    };
   }
 
   let url: URL;
@@ -2729,7 +2744,11 @@ export const downloadChatGptPhoneArtifact = async (
     throw new Error(`Falha ao baixar artefato gerado: HTTP ${response.status}.`);
   }
 
-  const mimeType = response.headers.get("content-type")?.split(";")[0]?.trim() || artifact.mimeType || "image/png";
+  const responseMimeType = response.headers.get("content-type")?.split(";")[0]?.trim() || "";
+  if (responseMimeType.includes("json") || responseMimeType.startsWith("text/")) {
+    throw new Error("A fonte do artefato retornou uma resposta de erro em texto.");
+  }
+  const mimeType = responseMimeType || artifact.mimeType || "image/png";
   const buffer = Buffer.from(await response.arrayBuffer());
   const fileName =
     trimOptional(artifact.fileName) ??
@@ -2737,7 +2756,7 @@ export const downloadChatGptPhoneArtifact = async (
     trimOptional(artifact.path?.split("/").pop()) ??
     `chatgpt-phone-${Date.now()}.${mimeType.includes("jpeg") ? "jpg" : mimeType.split("/")[1] || "bin"}`;
 
-  return { buffer, mimeType, fileName };
+  return { buffer: assertArtifactBuffer(buffer, mimeType, fileName), mimeType, fileName };
 };
 
 export const getChatGptPhoneJobMcpContext = async (input: {
