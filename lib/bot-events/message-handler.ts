@@ -143,12 +143,11 @@ import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } fr
 import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
 import {
   createBotInterageChatCompletion,
-  transcribeBotInterageAudio,
   type BotInterageArtifact,
 } from "lib/apis/botinterage";
 import {
-  generateBotInterageSystemImage,
-  submitBotInterageSystemImageJob,
+  submitBotInterageSystemAskJob,
+  submitBotInterageSystemAudioJob,
 } from "lib/botinterage-system";
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
@@ -20002,105 +20001,57 @@ const convertStickerSourceToWebp = async (
         }).catch(() => undefined);
       }
 
-      // Não aguarda o job na rotina que recebe mensagens do WhatsApp. A fila da
-      // instância continua livre enquanto o módulo autenticado no ChatGPT processa o áudio.
+      // O endpoint nativo já faz transcrição + conversa em uma única operação
+      // e também preserva eventuais arquivos gerados pela IA. Não transcreva
+      // localmente e depois envie para /chat/completions: isso perdia contexto,
+      // PDFs/imagens e falhava quando a primeira chamada demorava.
       void (async () => {
-        const transcription = await transcribeBotInterageAudio({
-          baseUrl: runtimeConfig.baseUrl,
-          token: runtimeConfig.token,
-          audioBase64: audio.base64,
-          mimeType: audio.mimeType,
-          filename: audio.name,
-          language: settings.language,
-          timeoutMs: 180_000,
-        });
-        const transcript = transcription.text?.trim();
-        if (!transcript) {
-          console.error("[bot-interage] transcrição de áudio falhou", {
+        try {
+          const references = attachments.filter((entry) => entry !== audio);
+          const job = await submitBotInterageSystemAudioJob({
+            groupId: group.id,
+            userId: group.userId,
+            instanceId: context.instance.id,
+            chatId: message.chatId,
+            senderJid: message.senderJid ?? senderNorm,
+            whatsappMessageId: message.id,
+            prompt: trimmedInput,
+            audio: {
+              name: audio.name,
+              mimeType: audio.mimeType || "audio/ogg",
+              base64: audio.base64,
+            },
+            references,
+            language: settings.language,
+          });
+          console.info("[bot-interage] áudio enviado para /v1/audio/native/ask", {
             groupId: group.id,
             messageId: message.id ?? null,
-            error: transcription.error,
+            jobId: job.jobId,
+            status: job.status,
           });
-          const body = "⚠️ Não consegui transcrever esse áudio agora. Envie novamente em instantes.";
-          const sentId = await sendBotInterageText(body).catch(() => null);
-          await recordBotInterageContextSafe("assistant", body, {
-            contentType: "error",
-            whatsappMessageId: sentId ?? undefined,
-          });
-          return;
-        }
-
-        const isOnlyAudioInstruction =
-          trimmedInput === "Ouça o audio anexado no ChatGPT e execute o pedido enviado por audio.";
-        const audioUserContent = isOnlyAudioInstruction
-          ? transcript
-          : `${trimmedInput}\n\n[Transcrição da nota de voz]\n${transcript}`;
-        const audioMessages = [
-          ...chatMessages.slice(0, -1),
-          { role: "user" as const, content: audioUserContent },
-        ];
-        await recordBotInterageContextSafe("user", audioUserContent, {
-          contentType: "audio_transcription",
-          media: {
-            mimeType: audio.mimeType,
-            filename: audio.name,
-            conversationId: transcription.conversationId ?? null,
-          },
-        });
-
-        const completionResult = await createBotInterageChatCompletion({
-          baseUrl: runtimeConfig.baseUrl,
-          token: runtimeConfig.token,
-          model: primaryModel,
-          messages: audioMessages,
-          temperature: 0,
-        });
-        const replyText = completionResult.content?.trim();
-        if (!replyText) {
-          console.error("[bot-interage] ChatGPT Sistema não respondeu ao áudio", {
+        } catch (error) {
+          console.error("[bot-interage] falha ao encaminhar áudio ao módulo nativo", {
             groupId: group.id,
             messageId: message.id ?? null,
-            error: completionResult.error,
+            error,
           });
-          const body = "⚠️ Transcrevi o áudio, mas não consegui gerar a resposta agora. Tente novamente em instantes.";
-          const sentId = await sendBotInterageText(body).catch(() => null);
-          await recordBotInterageContextSafe("assistant", body, {
-            contentType: "error",
-            whatsappMessageId: sentId ?? undefined,
-          });
-          return;
+          reactBotInterage("⚠️");
         }
-
-        const sentId = await sendBotInterageText(replyText).catch(() => null);
-        await persistBotInterageMemory(replyText, audioUserContent);
-        await recordBotInterageContextSafe("assistant", replyText, {
-          contentType: "text",
-          whatsappMessageId: sentId ?? undefined,
-        });
-      })().catch((error) => {
-        console.error("[bot-interage] erro inesperado no fluxo de áudio", {
-          groupId: group.id,
-          messageId: message.id ?? null,
-          error,
-        });
-      });
+      })();
 
       return true;
     };
 
     const handleChatGptPhoneBotInterage = async (): Promise<boolean> => {
       if (!canUsePhoneExecutor) {
-        // Natural prompts such as "preciso de uma capa para Facebook" do not
-        // necessarily contain the word "imagem". Keep them on the managed
-        // image path so a temporary text-provider 502 cannot swallow the
-        // request before the image job is submitted.
-        const visualRequest =
-          isLikelyChatGptPhoneMediaRequest(trimmedInput) ||
-          looksLikeVisualGenerationPrompt(trimmedInput);
-        if (!visualRequest) return false;
+        // BotInterage é uma conversa multimodal única. Nunca escolha o
+        // endpoint pela palavra "imagem" ou "PDF": a própria IA decide o tipo
+        // de resposta e o webhook entrega texto e artefatos juntos.
         void (async () => {
           try {
-            const webhookJob = await submitBotInterageSystemImageJob({
+            const attachments = await resolveChatGptPhoneInputAttachments();
+            const webhookJob = await submitBotInterageSystemAskJob({
               groupId: group.id,
               userId: group.userId,
               instanceId: context.instance.id,
@@ -20108,6 +20059,7 @@ const convertStickerSourceToWebp = async (
               senderJid: message.senderJid ?? senderNorm,
               whatsappMessageId: message.id,
               prompt: trimmedInput,
+              attachments,
             });
             if (message.id) {
               await sendReactionMessage(client, {
@@ -20116,31 +20068,16 @@ const convertStickerSourceToWebp = async (
                 emoji: "🧠",
               }).catch(() => undefined);
             }
-            console.info("[bot-interage] geração de imagem entregue ao webhook", {
+            console.info("[bot-interage] solicitação multimodal entregue ao /v1/ask", {
               groupId: group.id,
               jobId: webhookJob.jobId,
               status: webhookJob.status,
             });
-            return;
           } catch (webhookError) {
-            console.warn("[bot-interage] webhook de imagem indisponível; usando fallback síncrono", {
+            console.error("[bot-interage] falha ao enviar solicitação multimodal ao módulo", {
               groupId: group.id,
               error: webhookError,
             });
-          }
-          try {
-            const generated = await generateBotInterageSystemImage(trimmedInput);
-            await sendMediaMessage(client, {
-              to: message.chatId,
-              media: generated.buffer,
-              mediaType: "image",
-              mimeType: generated.mimeType,
-              filename: generated.fileName,
-              caption: "Imagem gerada pelo BotInterage",
-              quoted,
-            });
-          } catch (error) {
-            console.error("[bot-interage] falha na geração direta de imagem", { groupId: group.id, error });
             reactBotInterage("⚠️");
           }
         })();

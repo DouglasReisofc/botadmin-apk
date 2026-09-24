@@ -292,6 +292,93 @@ const askEndpoint = (baseUrl: string): string => {
     : `${normalized}/v1/ask?delivery=webhook`;
 };
 
+/**
+ * Submit every normal BotInterage turn to the same multimodal assistant
+ * endpoint. The assistant decides whether the answer is text, an image, a
+ * document, audio or another artifact; the WhatsApp layer only delivers the
+ * webhook result. Do not classify prompts locally (that used to lose natural
+ * requests such as "faça uma capa" or PDF requests).
+ */
+export const submitBotInterageSystemAskJob = async (params: {
+  groupId: number;
+  userId: number;
+  instanceId: number;
+  chatId: string;
+  senderJid: string;
+  whatsappMessageId?: string | null;
+  internalGroupId?: number | null;
+  internalMessageId?: number | null;
+  prompt: string;
+  attachments?: Array<{ name: string; mimeType: string; base64: string }>;
+}): Promise<{ jobId: string; status: string }> => {
+  const config = await getBotInterageRuntimeConfig();
+  if (!config.enabled || !config.baseUrl || !config.token) {
+    throw new Error("ChatGPT Sistema não está configurado.");
+  }
+  if (!config.webhookSecret || !config.webhookId) {
+    throw new Error("Webhook do ChatGPT Sistema não está configurado.");
+  }
+  const conversation = await getBotInterageSystemConversation(params.groupId, params.senderJid);
+  const idempotencyKey = `wa-ask-${createHash("sha256")
+    .update(`${params.groupId}:${params.whatsappMessageId || params.prompt}`)
+    .digest("hex")}`;
+  const response = await submitSystemJobWithRetry(askEndpoint(config.baseUrl), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+      Prefer: "respond-async",
+      "Idempotency-Key": idempotencyKey,
+    },
+    body: JSON.stringify({
+      prompt: params.prompt.trim(),
+      model: "auto",
+      provider: "chatgpt",
+      ...(params.attachments?.length ? { attachments: params.attachments } : {}),
+      ...(conversation?.conversationId
+        ? {
+            conversation_id: conversation.conversationId,
+            ...(conversation.lastMessageId ? { parent_message_id: conversation.lastMessageId } : {}),
+          }
+        : {}),
+    }),
+  });
+  const payload = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  const jobId = typeof payload?.job_id === "string" ? payload.job_id.trim() : "";
+  if (!response.ok || !jobId) {
+    const message = typeof payload?.error === "string"
+      ? payload.error
+      : `A API do BotInterage retornou HTTP ${response.status}.`;
+    throw new Error(message);
+  }
+  await ensureBotInterageSystemTables();
+  const db = getDb();
+  await db.query(
+    `INSERT INTO botinterage_system_jobs (
+      job_id, group_id, user_id, instance_id, chat_id, sender_jid,
+      whatsapp_message_id, internal_group_id, internal_message_id, prompt, status
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'accepted')
+    ON DUPLICATE KEY UPDATE updated_at = CURRENT_TIMESTAMP`,
+    [
+      jobId,
+      params.groupId,
+      params.userId,
+      params.instanceId,
+      params.chatId.slice(0, 191),
+      normalizeSenderJid(params.senderJid),
+      params.whatsappMessageId?.trim().slice(0, 191) || null,
+      Number(params.internalGroupId) > 0 ? Number(params.internalGroupId) : null,
+      Number(params.internalMessageId) > 0 ? Number(params.internalMessageId) : null,
+      params.prompt.trim(),
+    ],
+  );
+  return {
+    jobId,
+    status: typeof payload?.status === "string" ? payload.status : "queued",
+  };
+};
+
 export const submitBotInterageSystemVideoAnalysisJob = async (params: {
   groupId: number;
   userId: number;

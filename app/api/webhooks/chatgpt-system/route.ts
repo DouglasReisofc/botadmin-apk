@@ -257,7 +257,9 @@ export async function POST(request: Request) {
     const jobType = getString(data, "type") || getString(failedResult, "type");
     const isAudioJob = jobType === "audio_ask" || jobType === "audio_transcription" ||
       jobType === "native_audio_ask" || jobType === "native_audio_transcription";
-    const isMediaAnalysisJob = jobType === "ask";
+    // `/v1/ask` is the general multimodal BotInterage contract. It is not an
+    // image or video-only job: the result may contain text and any artifacts
+    // returned by the assistant.
     const isInternalDelivery = Boolean(job.internalGroupId);
     const internalMemberId = Number(job.senderJid.match(/^botadmin-user:(\d+)$/)?.[1] ?? 0) || null;
     let client: WuzapiClient | null = null;
@@ -344,9 +346,7 @@ export async function POST(request: Request) {
       const error = getString(result, "error") ||
         (isAudioJob
           ? "O processamento do áudio falhou."
-          : isMediaAnalysisJob
-            ? "A análise da mídia falhou."
-            : "A geração de imagem falhou.");
+          : "O processamento do BotInterage falhou.");
       const transcription = getString(result, "transcription") || getString(result, "text");
       const terminalText = getExactString(result, "answer") || getExactString(result, "text");
       const recoverableAudioTimeout = isAudioJob && Boolean(transcription) &&
@@ -409,9 +409,7 @@ export async function POST(request: Request) {
         ? "⚠️ Entendi o áudio, mas não consegui concluir o pedido agora. Tente novamente em instantes."
         : isAudioJob
           ? "⚠️ Não consegui entender esse áudio agora. Envie novamente em instantes."
-          : isMediaAnalysisJob
-            ? "⚠️ Não consegui concluir a análise desse vídeo agora. Tente novamente em instantes."
-            : "⚠️ Não consegui gerar a imagem agora. Tente novamente em instantes.");
+          : "⚠️ Não consegui concluir essa solicitação agora. Tente novamente em instantes.");
       const messageId = await sendJobText(body);
       await completeBotInterageSystemJob({
         jobId,
