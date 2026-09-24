@@ -1,8 +1,19 @@
 import { NextRequest } from "next/server";
+import { Agent } from "undici";
 
 const UPSTREAM_URL =
   process.env.TIKTOK_TTS_UPSTREAM_URL ||
   "https://tiktok-tts-extension.mobisharksdev.com/api/v1/generate";
+// O provedor principal pode responder 502 durante atualizações. Este endpoint
+// compatível mantém as vozes selecionadas funcionando como fallback. O TLS
+// legado do host é isolado neste dispatcher e não altera o comportamento de
+// nenhuma outra URL externa.
+const SECONDARY_UPSTREAM_URL =
+  process.env.TIKTOK_TTS_SECONDARY_URL ||
+  "https://tiktok-tts.weilnet.workers.dev/api/generation";
+const SECONDARY_TLS_DISPATCHER = new Agent({
+  connect: { rejectUnauthorized: false },
+});
 const MAX_TEXT_BYTES = Number(process.env.TIKTOK_TTS_MAX_TEXT_BYTES || 300);
 const DEFAULT_VOICE = (process.env.TIKTOK_TTS_DEFAULT_VOICE || "br_005").trim();
 const UPSTREAM_CONCURRENCY = Number(process.env.TIKTOK_TTS_UPSTREAM_CONCURRENCY || 3);
@@ -123,13 +134,17 @@ const runNext = () => {
   }
 };
 
-const fetchWithRetry = async (payload: { text: string; voice: string }) => {
+const fetchWithRetry = async (
+  payload: { text: string; voice: string },
+  endpoint = UPSTREAM_URL,
+  dispatcher?: Agent,
+) => {
   let lastResponse: Response | null = null;
   let lastError: unknown = null;
 
   for (let attempt = 0; attempt <= UPSTREAM_RETRIES; attempt += 1) {
     try {
-      const response = await fetch(UPSTREAM_URL, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -137,6 +152,7 @@ const fetchWithRetry = async (payload: { text: string; voice: string }) => {
         },
         body: JSON.stringify(payload),
         cache: "no-store",
+        ...(dispatcher ? { dispatcher } : {}),
       });
       lastResponse = response;
       if (response.ok || attempt === UPSTREAM_RETRIES) {
@@ -160,7 +176,20 @@ const fetchWithRetry = async (payload: { text: string; voice: string }) => {
 };
 
 const callUpstream = (payload: { text: string; voice: string }) =>
-  enqueue(() => fetchWithRetry(payload));
+  enqueue(async () => {
+    const primary = await fetchWithRetry(payload);
+    if (primary.ok) return primary;
+
+    try {
+      const secondaryUrl = new URL(SECONDARY_UPSTREAM_URL);
+      if (secondaryUrl.hostname !== "tiktok-tts.weilnet.workers.dev") {
+        return primary;
+      }
+      return await fetchWithRetry(payload, secondaryUrl.toString(), SECONDARY_TLS_DISPATCHER);
+    } catch {
+      return primary;
+    }
+  });
 
 const fetchGoogleFallback = async (text: string): Promise<Buffer | null> => {
   try {
