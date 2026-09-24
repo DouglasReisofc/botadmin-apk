@@ -4,6 +4,7 @@ import { getCurrentUser } from "lib/auth";
 import { getAdminSiteSettings } from "lib/admin-site";
 import { getBotMenuConfigForUser } from "lib/bot-config";
 import { getGroupAccessForUser } from "lib/bot-groups";
+import { invalidateGroupSettingsCache } from "lib/bot-events/cache";
 import { publishBotGroupRealtimeUpdate } from "lib/bot-group-realtime";
 import {
   getGroupSettings,
@@ -1754,6 +1755,10 @@ export async function PATCH(
 
   try {
     const settings = await upsertGroupSettings(groupId, updates);
+    // O webhook pode estar processando mensagens em outro slot/processo.
+    // Invalidar localmente e publicar pelo Redis garante que o toggle de
+    // menção e todas as demais ativações entrem em vigor imediatamente.
+    invalidateGroupSettingsCache(groupId);
     void publishBotGroupRealtimeUpdate(
       [auth.user.id, auth.ownerUserId],
       auth.group,
