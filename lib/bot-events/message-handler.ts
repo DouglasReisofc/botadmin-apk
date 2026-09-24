@@ -19797,6 +19797,12 @@ const convertStickerSourceToWebp = async (
       );
       const quotedFileRequest = Boolean(message.quotedMessageId && fileAnalysisRequest);
       const quotedAudioRequest = Boolean(message.quotedMessageId && audioQuestionRequest);
+      // Responder a uma mensagem com mídia já é uma instrução de contexto,
+      // mesmo quando o texto é genérico ("usa essa aqui", "analisa essa",
+      // "faz com esse arquivo"). Antes só tentávamos baixar a citação quando
+      // o texto continha palavras-chave de imagem/arquivo/áudio; nesses casos
+      // a IA recebia apenas o texto e a mídia citada era perdida.
+      const quotedReferenceRequest = Boolean(message.quotedMessageId);
       const shouldTryAttachment =
         hasCurrentVisualMedia ||
         hasCurrentAudioMedia ||
@@ -19804,6 +19810,7 @@ const convertStickerSourceToWebp = async (
         quotedVisualRequest ||
         quotedFileRequest ||
         quotedAudioRequest ||
+        quotedReferenceRequest ||
         looksLikeVisualGenerationPrompt(trimmedInput) ||
         isImageEditRequest ||
         /\b(imagem|foto|m[ií]dia|media|anexo|arquivo|documento|pdf|audio|áudio|voz|ptt|refer[eê]ncia|baseado|fundo|background|transparente|qualidade|resolu[cç][aã]o|nitidez|defini[cç][aã]o|4k|hd|upscale|restaura|restaure|restaurar|melhore|melhorar)\b/i.test(trimmedInput);
@@ -19822,6 +19829,7 @@ const convertStickerSourceToWebp = async (
           quotedVisualRequest ||
           quotedFileRequest ||
           quotedAudioRequest ||
+          quotedReferenceRequest ||
           hasCurrentVisualMedia ||
           hasCurrentAudioMedia
         ) {
