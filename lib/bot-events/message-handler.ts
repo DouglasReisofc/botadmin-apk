@@ -18989,6 +18989,30 @@ const convertStickerSourceToWebp = async (
     if (!trimmedInput) {
       return false;
     }
+
+    // Confirmações curtas continuam a intenção da solicitação anterior. Isso
+    // permite: "crie um PDF" -> "beleza, pode fazer" ou "gere a imagem" ->
+    // "pode fazer aí", sem reenviar o pedido inteiro e sem cair no fallback
+    // genérico do provedor de texto.
+    if (
+      !botInteragePrompt.commandLike &&
+      /^(?:beleza|blz|ok|okay|pode|faz|fa[çc]a|manda|mande|sim|isso|vai|vamos|perfeito)\b.*$/i.test(trimmedInput)
+    ) {
+      const previous = (await listBotInterageGroupMemory(group.id, message.id).catch(() => []))
+        .reverse()
+        .find((entry) =>
+          entry.role === "user" &&
+          (isLikelyChatGptPhoneMediaRequest(entry.content) ||
+            isLikelyChatGptPhoneDocumentRequest(entry.content)),
+        );
+      if (previous) {
+        console.info("[bot-interage] confirmação vinculada à solicitação anterior", {
+          groupId: group.id,
+          previousPrompt: previous.content.slice(0, 120),
+        });
+        trimmedInput = previous.content;
+      }
+    }
     if (botInteragePrompt.text.trim() && trimmedInput !== botInteragePrompt.text.trim()) {
       console.info("[bot-interage] menção do bot removida do prompt", {
         groupId: group!.id,
@@ -19052,6 +19076,15 @@ const convertStickerSourceToWebp = async (
       }
     };
 
+    const reactBotInterage = (emoji = "🧠") => {
+      if (!message.id) return;
+      void sendReactionMessage(client, {
+        chatId: message.chatId,
+        messageId: message.id,
+        emoji,
+      }).catch(() => undefined);
+    };
+
     const configuredModel = settings.aiModel?.trim() || "";
     const aiProvider = settings.aiProvider || "groq";
     let runtimeConfig: { baseUrl: string; token: string; model: string } | null = null;
@@ -19094,7 +19127,8 @@ const convertStickerSourceToWebp = async (
     }
     if (aiProvider === "chatgpt_system" && !runtimeConfig) {
       console.warn("[bot-interage] ChatGPT Sistema indisponível", { groupId: group.id });
-      return false;
+      reactBotInterage("🧠");
+      return true;
     }
     const isSystemAudioBotInterage =
       currentBotInterageMediaKind === "audio" &&
@@ -19862,7 +19896,7 @@ const convertStickerSourceToWebp = async (
             });
           } catch (error) {
             console.error("[bot-interage] falha na geração direta de imagem", { groupId: group.id, error });
-            await sendBotInterageText("⚠️ Não foi possível gerar a imagem agora. Tente novamente em instantes.");
+            reactBotInterage("⚠️");
           }
         })();
         return true;
@@ -20121,8 +20155,8 @@ const convertStickerSourceToWebp = async (
                 groupId: group.id,
                 error,
               });
-              const body = "Não foi possível gerar a imagem agora. Tente novamente em instantes.";
-              await sendBotInterageText(`⚠️ ${body}`);
+              const body = "Não foi possível gerar a imagem agora.";
+              reactBotInterage("⚠️");
               await recordBotInterageContextSafe("assistant", body, {
                 contentType: "error",
               });
@@ -20314,8 +20348,11 @@ const convertStickerSourceToWebp = async (
                 : "⚠️ A credencial do ChatGPT Sistema está indisponível. Contate o administrador.";
             break;
           case "unavailable":
-            fallbackMessage =
-              "⚠️ O provedor de IA está indisponível no momento. Tente novamente em instantes.";
+            // Não despejar detalhes de infraestrutura no grupo. A reação
+            // confirma que a mensagem foi processada; a retentativa já foi
+            // feita no cliente da API.
+            reactBotInterage("🧠");
+            fallbackMessage = null;
             break;
           default:
             fallbackMessage =
