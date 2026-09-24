@@ -1038,6 +1038,30 @@ const looksLikeOnlyGeneratedFileName = (value?: string | null): boolean => {
   return Boolean(text) && /^[\w .-]{1,120}\.(?:pdf|docx?|xlsx?|csv|txt)$/i.test(text);
 };
 
+/**
+ * The Android bridge sometimes returns the generated file location as part of
+ * the assistant text (for example `sandbox:/.../arquivo.pdf` or a local
+ * `/data/...` path) instead of placing it in `artifacts`.  Those locations
+ * are transport metadata and must never be shown in WhatsApp.  Keep the
+ * human-readable answer as the caption, but remove only metadata-looking
+ * lines; the same text is still used as the body of the fallback PDF.
+ */
+const stripGeneratedDocumentTransportMetadata = (value?: string | null): string | null => {
+  const source = String(value || "").trim();
+  if (!source) return null;
+  const cleaned = source
+    .split(/\r?\n/)
+    .filter((line) => {
+      const candidate = line.trim();
+      if (!candidate) return true;
+      return !/(?:sandbox:|file:\/\/|\/data\/|\/sdcard\/|\/mnt\/data\/|\/tmp\/|https?:\/\/|(?:^|\s)path\s*[:=])[^\n]*\.(?:pdf|docx?|xlsx?|csv|txt)(?:\b|$)/i.test(candidate);
+    })
+    .join("\n")
+    .replace(/```(?:json|text)?\s*```/gi, "")
+    .trim();
+  return cleaned || null;
+};
+
 const materializeGeneratedDocumentArtifacts = (
   job: Pick<ChatGptPhoneJob, "prompt" | "request"> | null | undefined,
   responseText: string | null,
@@ -1048,16 +1072,19 @@ const materializeGeneratedDocumentArtifacts = (
   const wantsPdf =
     artifactMode === "pdf" ||
     isLikelyChatGptPhoneDocumentRequest(String(job?.prompt || ""));
+  const cleanedResponseText = wantsPdf
+    ? stripGeneratedDocumentTransportMetadata(responseText)
+    : responseText;
   if (!wantsPdf || artifacts.length > 0) {
-    return { responseText, resultType, artifacts };
+    return { responseText: cleanedResponseText, resultType, artifacts };
   }
 
-  const title = inferDocumentTitle(job?.prompt, responseText);
-  const body = looksLikeOnlyGeneratedFileName(responseText)
+  const title = inferDocumentTitle(job?.prompt, cleanedResponseText);
+  const body = looksLikeOnlyGeneratedFileName(cleanedResponseText)
     ? fallbackDocumentBodyFromPrompt(job?.prompt, title)
-    : normalizePdfText(responseText || "") || fallbackDocumentBodyFromPrompt(job?.prompt, title);
+    : normalizePdfText(cleanedResponseText || "") || fallbackDocumentBodyFromPrompt(job?.prompt, title);
   if (!body) {
-    return { responseText, resultType, artifacts };
+    return { responseText: cleanedResponseText, resultType, artifacts };
   }
 
   const buffer = buildTextPdfBuffer({ title, body });
@@ -2767,12 +2794,13 @@ export const isLikelyChatGptPhoneDocumentRequest = (text: string): boolean => {
       normalized,
     );
   const asksCreation =
-    /\b(cria|crie|criar|gera|gere|gerar|monte|monta|faca|fazer|escreva|escrever|produza|produzir|salve|salvar|anexe|anexar|envie|mandar|transforme|transformar|create|generate|make|write|export)\b/.test(
+    /\b(cria|crie|criar|gera|gere|gerar|monte|monta|faca|fazer|escreva|escrever|produza|produzir|salve|salvar|anexe|anexar|envie|enviar|manda|mandar|me\s+manda|me\s+envia|pedi|pede|pedir|quero|preciso|transforme|transformar|create|generate|make|write|export)\b/.test(
       normalized,
     );
   const asksPdf =
     /\b(?:em|para|como|formato)\s+pdf\b/.test(normalized) ||
-    /\bpdf\b.{0,80}\b(cria|crie|gerar|gere|anexe|envie|salve|arquivo|documento)\b/.test(normalized);
+    /\bpdf\b.{0,100}\b(cria|crie|gerar|gere|anexe|envie|enviar|manda|mandar|salve|salvar|arquivo|documento|pedi|pedir|quero|preciso)\b/.test(normalized) ||
+    /\b(?:cria|crie|gera|gere|faz|faca|faca|manda|envia|pedi|quero|preciso)\b.{0,60}\b(?:um|o|um\s+novo)?\s*pdf\b/.test(normalized);
   return mentionsDocument && (asksCreation || asksPdf);
 };
 
