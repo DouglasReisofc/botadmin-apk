@@ -8,6 +8,7 @@ import {
   completeBotInterageSystemJob,
   getBotInterageSystemConversation,
   getBotInterageSystemJob,
+  botInterageGroupConversationKey,
   saveBotInterageSystemConversation,
 } from "lib/botinterage-system";
 import { recordBotInterageContextEvent } from "lib/chatgpt-phone";
@@ -551,7 +552,7 @@ export async function POST(request: Request) {
       if (recoverableAudioTimeout) {
         const conversation = await getBotInterageSystemConversation(
           job.groupId,
-          job.senderJid,
+          botInterageGroupConversationKey(job.groupId),
         );
         const recoveredUrls = conversation?.conversationId
           ? await refreshConversationImages(conversation.conversationId, job.createdAt)
@@ -660,7 +661,7 @@ export async function POST(request: Request) {
     if (conversationId) {
       await saveBotInterageSystemConversation({
         groupId: job.groupId,
-        senderJid: job.senderJid,
+        senderJid: botInterageGroupConversationKey(job.groupId),
         conversationId,
         messageId,
       });

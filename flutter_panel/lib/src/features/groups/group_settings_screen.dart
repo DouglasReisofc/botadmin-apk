@@ -2,6 +2,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:just_audio/just_audio.dart';
 
 import '../../core/api_client.dart';
 import '../../core/app_config.dart';
@@ -665,6 +666,8 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             enabled: _activationEnabled(settings, key),
             listenToAudio: settings.isEnabled('ouviraudiobotinterage'),
             provider: settings.aiProvider,
+            voiceEnabled: settings.isEnabled('vozbotinterage'),
+            voiceId: settings.aiVoice,
             groqKeys: settings.groqKeys,
             openAiApiKey: settings.openAiApiKey,
             prompt: settings.aiPrompt,
@@ -684,6 +687,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             'commandToggles': {
               ...settings.commandToggles,
               'botinterage': draft.enabled,
+              'vozbotinterage': draft.enabled && draft.voiceEnabled,
               'ouviraudiobotinterage': draft.listenToAudio,
             },
             'aiProvider': draft.provider,
@@ -691,6 +695,7 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
             'openAiApiKey': draft.openAiApiKey,
             'aiPrompt': draft.prompt,
             'aiModel': draft.model,
+            'aiVoice': draft.voiceEnabled ? draft.voiceId : null,
             'featureFlags': {
               ...settings.featureFlags,
               'botInterageMentionOnly': draft.mentionOnly,
@@ -2071,6 +2076,8 @@ class _BotInterageConfigDraft {
   const _BotInterageConfigDraft({
     required this.enabled,
     required this.listenToAudio,
+    required this.voiceEnabled,
+    required this.voiceId,
     required this.provider,
     required this.groqKeys,
     required this.openAiApiKey,
@@ -2081,6 +2088,8 @@ class _BotInterageConfigDraft {
 
   final bool enabled;
   final bool listenToAudio;
+  final bool voiceEnabled;
+  final String voiceId;
   final String provider;
   final List<String> groqKeys;
   final String? openAiApiKey;
@@ -2093,6 +2102,8 @@ class _BotInterageConfigDialog extends StatefulWidget {
   const _BotInterageConfigDialog({
     required this.enabled,
     required this.listenToAudio,
+    required this.voiceEnabled,
+    required this.voiceId,
     required this.provider,
     required this.groqKeys,
     required this.openAiApiKey,
@@ -2103,6 +2114,8 @@ class _BotInterageConfigDialog extends StatefulWidget {
 
   final bool enabled;
   final bool listenToAudio;
+  final bool voiceEnabled;
+  final String? voiceId;
   final String provider;
   final List<String> groqKeys;
   final String? openAiApiKey;
@@ -2118,18 +2131,39 @@ class _BotInterageConfigDialog extends StatefulWidget {
 class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
   late bool _enabled;
   late bool _listenToAudio;
+  late bool _voiceEnabled;
+  late String _voiceId;
   late String _provider;
   late final TextEditingController _groqKeys;
   late final TextEditingController _openAiKey;
   late final TextEditingController _prompt;
   late final TextEditingController _model;
   late bool _mentionOnly;
+  final AudioPlayer _voicePreviewPlayer = AudioPlayer();
+  bool _voicePreviewLoading = false;
+
+  static const _botInterageVoices = <String, String>{
+    'laizza': 'Laizza (feminina)',
+    'ludmilla': 'Ludmilla (feminina)',
+    'lhays': 'Lhays (feminina)',
+    'bueno': 'Bueno (masculina)',
+    'ivete': 'Ivete (feminina)',
+    'br001': 'Brasileira 01',
+    'br002': 'Brasileira 02',
+    'br003': 'Brasileira 03',
+    'br004': 'Brasileira 04',
+    'br005': 'Brasileira 05',
+  };
 
   @override
   void initState() {
     super.initState();
     _enabled = widget.enabled;
     _listenToAudio = widget.listenToAudio;
+    _voiceEnabled = widget.voiceEnabled;
+    _voiceId = _botInterageVoices.containsKey(widget.voiceId)
+        ? widget.voiceId!
+        : 'laizza';
     _provider =
         const {'groq', 'openai', 'chatgpt_system'}.contains(widget.provider)
         ? widget.provider
@@ -2144,11 +2178,32 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
 
   @override
   void dispose() {
+    _voicePreviewPlayer.dispose();
     _groqKeys.dispose();
     _openAiKey.dispose();
     _prompt.dispose();
     _model.dispose();
     super.dispose();
+  }
+
+  Future<void> _previewVoice() async {
+    if (_voicePreviewLoading) return;
+    setState(() => _voicePreviewLoading = true);
+    try {
+      await _voicePreviewPlayer.stop();
+      final uri = Uri.parse(AppConfig.apiBaseUrl).resolve('/api/tts').replace(
+        queryParameters: {
+          'texto': 'Esse é o BotAdmin, o melhor robô para gerenciar grupos.',
+          'voz': _voiceId,
+        },
+      );
+      await _voicePreviewPlayer.setUrl(uri.toString());
+      await _voicePreviewPlayer.play();
+    } catch (_) {
+      if (mounted) showErrorToast(context, 'Não foi possível reproduzir a prévia da voz.');
+    } finally {
+      if (mounted) setState(() => _voicePreviewLoading = false);
+    }
   }
 
   void _selectProvider(String value) {
@@ -2190,6 +2245,8 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
       _BotInterageConfigDraft(
         enabled: _enabled,
         listenToAudio: _provider == 'chatgpt_system' && _listenToAudio,
+        voiceEnabled: _voiceEnabled,
+        voiceId: _voiceId,
         provider: _provider,
         groqKeys: groqKeys,
         openAiApiKey: openAiKey.isEmpty ? null : openAiKey,
@@ -2234,6 +2291,47 @@ class _BotInterageConfigDialogState extends State<_BotInterageConfigDialog> {
                 value: _enabled,
                 onChanged: (value) => setState(() => _enabled = value),
               ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                secondary: const Icon(Icons.record_voice_over_rounded),
+                title: const Text('Responder com IA por voz'),
+                subtitle: const Text('A resposta da IA será enviada como áudio no grupo.'),
+                value: _voiceEnabled,
+                onChanged: _enabled
+                    ? (value) => setState(() => _voiceEnabled = value)
+                    : null,
+              ),
+              if (_voiceEnabled) ...[
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        value: _voiceId,
+                        decoration: const InputDecoration(
+                          labelText: 'Voz da IA',
+                          helperText: 'Escolha a voz usada nas respostas.',
+                        ),
+                        items: _botInterageVoices.entries.map((entry) => DropdownMenuItem(
+                          value: entry.key,
+                          child: Text(entry.value),
+                        )).toList(),
+                        onChanged: (value) {
+                          if (value != null) setState(() => _voiceId = value);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filledTonal(
+                      tooltip: 'Ouvir prévia',
+                      onPressed: _voicePreviewLoading ? null : _previewVoice,
+                      icon: _voicePreviewLoading
+                          ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.play_arrow_rounded),
+                    ),
+                  ],
+                ),
+              ],
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Responder somente quando chamado'),

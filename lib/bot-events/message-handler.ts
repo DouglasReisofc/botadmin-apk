@@ -20022,7 +20022,7 @@ const convertStickerSourceToWebp = async (
             chatId: message.chatId,
             senderJid: message.senderJid ?? senderNorm,
             whatsappMessageId: message.id,
-            prompt: trimmedInput,
+            prompt: `[${senderName || senderNorm || "Membro"}]: ${trimmedInput}`,
             audio: {
               name: audio.name,
               mimeType: audio.mimeType || "audio/ogg",
@@ -20065,7 +20065,7 @@ const convertStickerSourceToWebp = async (
               chatId: message.chatId,
               senderJid: message.senderJid ?? senderNorm,
               whatsappMessageId: message.id,
-              prompt: trimmedInput,
+              prompt: `[${senderName || senderNorm || "Membro"}]: ${trimmedInput}`,
               attachments,
             });
             if (message.id) {

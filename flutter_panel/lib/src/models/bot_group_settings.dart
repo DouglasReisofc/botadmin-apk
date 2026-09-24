@@ -46,6 +46,7 @@ class BotGroupSettings {
     required this.openAiApiKey,
     required this.aiPrompt,
     required this.aiModel,
+    required this.aiVoice,
     required this.autoResponses,
     required this.ads,
     required this.commandPrefixes,
@@ -71,6 +72,7 @@ class BotGroupSettings {
   final String? openAiApiKey;
   final String aiPrompt;
   final String? aiModel;
+  final String? aiVoice;
   final List<GroupAutoResponseConfig> autoResponses;
   final List<GroupScheduledAdConfig> ads;
   final List<String> commandPrefixes;
@@ -120,6 +122,7 @@ class BotGroupSettings {
           ?.toString(),
       aiPrompt: (json['aiPrompt'] ?? json['ai_prompt'] ?? '').toString(),
       aiModel: (json['aiModel'] ?? json['ai_model'])?.toString(),
+      aiVoice: (json['aiVoice'] ?? json['ai_voice'])?.toString(),
       autoResponses: _list(json['autoResponses'] ?? json['auto_responses'])
           .map((entry) => GroupAutoResponseConfig.fromJson(_map(entry)))
           .toList(),

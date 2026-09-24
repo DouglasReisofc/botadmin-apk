@@ -119,6 +119,13 @@ export const ensureBotInterageSystemTables = async (): Promise<void> => {
 const normalizeSenderJid = (value: string): string =>
   value.trim().slice(0, 191);
 
+// BotInterage is a shared assistant inside a group. Its conversation cursor
+// must belong to the group, not to the member who happened to send the last
+// message; otherwise another participant starts a fresh context and the AI
+// appears to forget the subject being discussed.
+export const botInterageGroupConversationKey = (groupId: number): string =>
+  `group:${Math.max(0, Math.trunc(groupId))}`;
+
 export const getBotInterageSystemConversation = async (
   groupId: number,
   senderJid: string,
@@ -134,7 +141,23 @@ export const getBotInterageSystemConversation = async (
     `,
     [groupId, normalizeSenderJid(senderJid)],
   );
-  const row = rows[0];
+  let row = rows[0];
+  // Seamlessly adopt the most recent legacy per-member conversation the first
+  // time a group switches to the shared context model. This avoids making the
+  // group forget an active subject after deployment.
+  if (!row?.conversation_id && senderJid.startsWith("group:")) {
+    const [legacyRows] = await db.query<ConversationRow[]>(
+      `
+        SELECT conversation_id, last_message_id
+        FROM botinterage_system_conversations
+        WHERE group_id = ? AND sender_jid <> ?
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `,
+      [groupId, normalizeSenderJid(senderJid)],
+    );
+    row = legacyRows[0];
+  }
   if (!row?.conversation_id) return null;
   return {
     conversationId: row.conversation_id,
@@ -318,7 +341,10 @@ export const submitBotInterageSystemAskJob = async (params: {
   if (!config.webhookSecret || !config.webhookId) {
     throw new Error("Webhook do ChatGPT Sistema não está configurado.");
   }
-  const conversation = await getBotInterageSystemConversation(params.groupId, params.senderJid);
+  const conversation = await getBotInterageSystemConversation(
+    params.groupId,
+    botInterageGroupConversationKey(params.groupId),
+  );
   const idempotencyKey = `wa-ask-${createHash("sha256")
     .update(`${params.groupId}:${params.whatsappMessageId || params.prompt}`)
     .digest("hex")}`;
@@ -401,7 +427,7 @@ export const submitBotInterageSystemVideoAnalysisJob = async (params: {
   }
   const conversation = await getBotInterageSystemConversation(
     params.groupId,
-    params.senderJid,
+    botInterageGroupConversationKey(params.groupId),
   );
   const idempotencyKey = `wa-video-analysis-${createHash("sha256")
     .update(`${params.groupId}:${params.whatsappMessageId || params.prompt}`)
@@ -487,7 +513,7 @@ export const submitBotInterageSystemAudioJob = async (params: {
   }
   const conversation = await getBotInterageSystemConversation(
     params.groupId,
-    params.senderJid,
+    botInterageGroupConversationKey(params.groupId),
   );
   const idempotencyKey = `wa-native-audio-${createHash("sha256")
     .update(`${params.groupId}:${params.whatsappMessageId || params.audio.base64.slice(0, 128)}`)
@@ -582,7 +608,7 @@ export const submitBotInterageSystemImageJob = async (params: {
   }
   const conversation = await getBotInterageSystemConversation(
     params.groupId,
-    params.senderJid,
+    botInterageGroupConversationKey(params.groupId),
   );
   const idempotencyKey = `wa-img-${createHash("sha256")
     .update(`${params.groupId}:${params.whatsappMessageId || params.prompt}`)
