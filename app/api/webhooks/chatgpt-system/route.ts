@@ -351,6 +351,8 @@ export async function POST(request: Request) {
       const terminalText = getExactString(result, "answer") || getExactString(result, "text");
       const recoverableAudioTimeout = isAudioJob && Boolean(transcription) &&
         /timeout|timed out|sockettimeoutexception/i.test(error);
+      const recoverableAskTimeout = !isAudioJob &&
+        /timeout|timed out|sockettimeoutexception/i.test(error);
 
       // Image generation can outlive the native audio request. In that case
       // ChatGPT has already understood the voice note, but its streaming call
@@ -404,6 +406,22 @@ export async function POST(request: Request) {
             { status: 503 },
           );
         }
+      }
+      // A normal BotInterage turn can also be persisted by ChatGPT after the
+      // native SSE socket times out (PDFs, files and long answers are the
+      // common cases). Keep the webhook idempotent and ask the module to
+      // retry delivery instead of posting a misleading failure bubble while
+      // the persisted turn is still settling.
+      if (recoverableAskTimeout && Date.now() - job.createdAt.getTime() < 3 * 60 * 1_000) {
+        await completeBotInterageSystemJob({
+          jobId,
+          status: "accepted",
+          error: `Resposta persistida; aguardando entrega após timeout: ${error}`,
+        });
+        return NextResponse.json(
+          { message: "Resposta ainda sendo processada; nova tentativa agendada." },
+          { status: 503 },
+        );
       }
       const body = terminalText || (isAudioJob && transcription
         ? "⚠️ Entendi o áudio, mas não consegui concluir o pedido agora. Tente novamente em instantes."
