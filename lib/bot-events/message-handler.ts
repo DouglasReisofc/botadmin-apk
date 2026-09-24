@@ -142,7 +142,10 @@ import { downloadChatMedia, downloadViewOnce } from "lib/wuzapi";
 import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } from "lib/sticker";
 import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
 import { createBotInterageChatCompletion, transcribeBotInterageAudio } from "lib/apis/botinterage";
-import { generateBotInterageSystemImage } from "lib/botinterage-system";
+import {
+  generateBotInterageSystemImage,
+  submitBotInterageSystemImageJob,
+} from "lib/botinterage-system";
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
   createAndRunBotInterageChatGptPhoneJob,
@@ -19812,6 +19815,29 @@ const convertStickerSourceToWebp = async (
       if (!canUsePhoneExecutor) {
         if (!isLikelyChatGptPhoneMediaRequest(trimmedInput)) return false;
         void (async () => {
+          try {
+            const webhookJob = await submitBotInterageSystemImageJob({
+              groupId: group.id,
+              userId: group.userId,
+              instanceId: context.instance.id,
+              chatId: message.chatId,
+              senderJid: message.senderJid ?? senderNorm,
+              whatsappMessageId: message.id,
+              prompt: trimmedInput,
+            });
+            await sendBotInterageText("🧠 Solicitação recebida. Vou enviar a imagem assim que a geração terminar.");
+            console.info("[bot-interage] geração de imagem entregue ao webhook", {
+              groupId: group.id,
+              jobId: webhookJob.jobId,
+              status: webhookJob.status,
+            });
+            return;
+          } catch (webhookError) {
+            console.warn("[bot-interage] webhook de imagem indisponível; usando fallback síncrono", {
+              groupId: group.id,
+              error: webhookError,
+            });
+          }
           try {
             await sendBotInterageText("🧠 Estou gerando a imagem e já envio aqui.");
             const generated = await generateBotInterageSystemImage(trimmedInput);
