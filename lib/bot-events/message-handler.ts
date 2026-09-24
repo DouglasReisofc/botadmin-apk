@@ -4731,7 +4731,10 @@ const resolveStickerSourceFromMessageOrQuote = async (
   options: { allowAnyDocument?: boolean } = {},
 ): Promise<StickerMediaSource | null> => {
   const direct = extractStickerSourceFromMessage(message, {
-    includeQuoted: false,
+    // A command sent as a reply must be allowed to read the quoted media
+    // already present in the webhook payload. The previous false flag forced
+    // a second lookup that often lacked the original sender JID.
+    includeQuoted: true,
     allowAnyDocument: options.allowAnyDocument === true,
   });
   if (direct) {
@@ -19869,7 +19872,13 @@ const convertStickerSourceToWebp = async (
               whatsappMessageId: message.id,
               prompt: trimmedInput,
             });
-            await sendBotInterageText("🧠 Solicitação recebida. Vou enviar a imagem assim que a geração terminar.");
+            if (message.id) {
+              await sendReactionMessage(client, {
+                chatId: message.chatId,
+                messageId: message.id,
+                emoji: "🧠",
+              }).catch(() => undefined);
+            }
             console.info("[bot-interage] geração de imagem entregue ao webhook", {
               groupId: group.id,
               jobId: webhookJob.jobId,
@@ -20139,12 +20148,13 @@ const convertStickerSourceToWebp = async (
             startedAt: Date.now(),
             prompt: trimmedInput.slice(0, 240),
           });
-          const ack =
-            "🧠 Estou gerando a imagem em segundo plano. O grupo pode continuar normal; quando finalizar eu envio aqui.";
-          await sendBotInterageText(ack);
-          await recordBotInterageContextSafe("assistant", ack, {
-            contentType: "status",
-          });
+          if (message.id) {
+            await sendReactionMessage(client, {
+              chatId: message.chatId,
+              messageId: message.id,
+              emoji: "🧠",
+            }).catch(() => undefined);
+          }
 
           void (async () => {
             try {
