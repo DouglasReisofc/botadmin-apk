@@ -18953,10 +18953,37 @@ const convertStickerSourceToWebp = async (
     }
 
     const botInterageTargeting = await resolveBotInterageTargeting();
+    let executorRequestWithoutMention =
+      isLikelyChatGptPhoneMediaRequest(botInteragePrompt.text) ||
+      isLikelyChatGptPhoneDocumentRequest(botInteragePrompt.text);
     if (
       botInterageMentionOnlyEnabled &&
       !botInterageTargeting.targeted &&
-      !botInteragePrompt.commandLike
+      !botInteragePrompt.commandLike &&
+      !executorRequestWithoutMention
+    ) {
+      // Uma confirmação curta depois de um pedido de arquivo também é parte
+      // da mesma solicitação. Sem esta consulta, o modo "somente menção"
+      // descartava silenciosamente frases como "pode fazer o PDF".
+      const confirmation = /^(?:beleza|blz|ok|okay|pode|faz|fa[çc]a|manda|mande|sim|isso|vai|vamos|perfeito)\b.*$/i.test(
+        botInteragePrompt.text.trim(),
+      );
+      if (confirmation) {
+        const previous = (await listBotInterageGroupMemory(group.id, message.id).catch(() => []))
+          .reverse()
+          .find((entry) =>
+            entry.role === "user" &&
+            (isLikelyChatGptPhoneMediaRequest(entry.content) ||
+              isLikelyChatGptPhoneDocumentRequest(entry.content)),
+          );
+        executorRequestWithoutMention = Boolean(previous);
+      }
+    }
+    if (
+      botInterageMentionOnlyEnabled &&
+      !botInterageTargeting.targeted &&
+      !botInteragePrompt.commandLike &&
+      !executorRequestWithoutMention
     ) {
       console.info("[bot-interage] ignorado pelo modo menção", {
         groupId: group!.id,
