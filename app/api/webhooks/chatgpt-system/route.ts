@@ -739,10 +739,11 @@ export async function POST(request: Request) {
     const images = imageUrls.length > 0
       ? await prepareGeneratedImages({ imageUrls, conversationId, createdAfter: job.createdAt })
       : [];
+    const runtimeConfig = await getBotInterageRuntimeConfig();
     const generatedFiles = await Promise.all(
       artifactDescriptors
         .filter((entry) => !entry.url || !imageUrls.includes(entry.url))
-        .map((entry) => downloadGeneratedMediaWithRetry(entry, (await getBotInterageRuntimeConfig()).token)),
+        .map((entry) => downloadGeneratedMediaWithRetry(entry, runtimeConfig.token)),
     );
     let firstSentMessageId: string | null = null;
     let firstMediaMessageId: string | null = null;
