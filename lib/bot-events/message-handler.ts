@@ -356,6 +356,9 @@ const GROUP_ADMIN_ERROR_TTL_MS = 30_000;
 const GROUP_ADMIN_RATE_LIMIT_TTL_MS = 15 * 60_000;
 const AI_MEMORY_LIMIT = 20;
 const AI_MEMORY_CONTEXT_LIMIT = 12;
+// "Pode fazer" só pode retomar um pedido acabado de fazer. Sem limite de
+// tempo, uma confirmação nova acabava ressuscitando uma imagem/PDF antigo.
+const BOT_INTERAGE_CONFIRMATION_CONTEXT_MAX_AGE_MS = 5 * 60 * 1_000;
 const BOT_INTERAGE_CONTEXT_LIMIT = 24;
 const BOT_INTERAGE_CONTEXT_TTL_MS = 2 * 60 * 60_000;
 const BOT_INTERAGE_CONTEXT_CACHE = new Map<number, BotGroupAiMemoryEntry[]>();
@@ -5019,6 +5022,46 @@ const findThumbnailDataUriFromRaw = (raw: Record<string, unknown>): string | nul
 
 const toRecord = (value: unknown): Record<string, unknown> =>
   value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+
+/**
+ * Produz uma representação humana da mensagem citada sem serializar metadados
+ * do WhatsApp (mediaKey, ids, thumbnails etc.). A citação é contexto explícito
+ * para o BotInterage: "use esta aqui" precisa carregar tanto o anexo quanto a
+ * legenda/texto que o usuário está apontando.
+ */
+const extractBotInterageQuotedText = (value: unknown, depth = 0): string => {
+  if (depth > 5 || value == null) return "";
+  if (typeof value === "string") return value.trim();
+  if (Array.isArray(value)) {
+    return value
+      .map((entry) => extractBotInterageQuotedText(entry, depth + 1))
+      .filter(Boolean)
+      .join("\n");
+  }
+  const record = toRecord(value);
+  if (Object.keys(record).length === 0) return "";
+
+  const values: string[] = [];
+  const add = (candidate: unknown) => {
+    if (typeof candidate !== "string") return;
+    const text = candidate.replace(/\s+/gu, " ").trim();
+    if (text && text.length <= 8_000 && !values.includes(text)) values.push(text);
+  };
+
+  // Campos visíveis que os provedores usam para texto, legenda e respostas.
+  for (const key of ["text", "Text", "conversation", "Conversation", "caption", "Caption", "body", "Body", "content", "Content", "description", "Description", "title", "Title"]) {
+    add(record[key]);
+  }
+  for (const key of [
+    "extendedTextMessage", "imageMessage", "videoMessage", "documentMessage",
+    "documentWithCaptionMessage", "audioMessage", "message", "Message",
+    "viewOnceMessage", "viewOnceMessageV2", "viewOnceMessageV2Extension",
+  ]) {
+    const nested = extractBotInterageQuotedText(record[key], depth + 1);
+    if (nested && !values.includes(nested)) values.push(nested);
+  }
+  return values.join("\n").slice(0, 8_000);
+};
 
 const firstString = (...candidates: unknown[]): string | null => {
   for (const candidate of candidates) {
@@ -19056,6 +19099,8 @@ const convertStickerSourceToWebp = async (
           .reverse()
           .find((entry) =>
             entry.role === "user" &&
+            Date.now() - toTimestamp(entry.createdAt) >= 0 &&
+            Date.now() - toTimestamp(entry.createdAt) <= BOT_INTERAGE_CONFIRMATION_CONTEXT_MAX_AGE_MS &&
             (isLikelyChatGptPhoneMediaRequest(entry.content) ||
               isLikelyChatGptPhoneDocumentRequest(entry.content)),
           );
@@ -19121,6 +19166,8 @@ const convertStickerSourceToWebp = async (
         .reverse()
         .find((entry) =>
           entry.role === "user" &&
+          Date.now() - toTimestamp(entry.createdAt) >= 0 &&
+          Date.now() - toTimestamp(entry.createdAt) <= BOT_INTERAGE_CONFIRMATION_CONTEXT_MAX_AGE_MS &&
           (isLikelyChatGptPhoneMediaRequest(entry.content) ||
             isLikelyChatGptPhoneDocumentRequest(entry.content)),
         );
@@ -19193,6 +19240,76 @@ const convertStickerSourceToWebp = async (
           error,
         });
       }
+    };
+
+    let quotedBotInterageContextPromise: Promise<string> | null = null;
+    const resolveQuotedBotInterageContext = async (): Promise<string> => {
+      if (!message.quotedMessageId || !message.chatId) return "";
+      if (!quotedBotInterageContextPromise) {
+        quotedBotInterageContextPromise = (async () => {
+          const rawCandidates = [
+            toRecord((message.raw as Record<string, unknown> | undefined)?.quotedMessageRecord),
+            toRecord((message.raw as Record<string, unknown> | undefined)?.RawMessage).quotedMessage,
+            toRecord(toRecord(toRecord(toRecord(payload.data).Message).extendedTextMessage).contextInfo).quotedMessage,
+            toRecord(toRecord(toRecord(toRecord(payload.raw).message).extendedTextMessage).contextInfo).quotedMessage,
+          ];
+          for (const candidate of rawCandidates) {
+            const text = extractBotInterageQuotedText(candidate);
+            if (text) return text;
+          }
+
+          // Alguns webhooks trazem apenas a chave da citação. Busca a
+          // mensagem original antes de montar o pedido para a IA.
+          const senders = Array.from(new Set([
+            message.quotedParticipant,
+            message.senderJid,
+            message.participant,
+            null,
+          ]));
+          for (const sender of senders) {
+            try {
+              const quotedMessage = await getChatMessage(client, {
+                chatId: message.chatId!,
+                messageId: message.quotedMessageId!,
+                sender: typeof sender === "string" ? sender : null,
+              });
+              const text = extractBotInterageQuotedText([
+                quotedMessage,
+                quotedMessage?.Message,
+                quotedMessage?.Media,
+              ]);
+              if (text) return text;
+            } catch (error) {
+              console.warn("[bot-interage] não foi possível ler texto da mensagem citada", {
+                groupId: group.id,
+                quotedMessageId: message.quotedMessageId,
+                error,
+              });
+            }
+          }
+          return "";
+        })();
+      }
+      return quotedBotInterageContextPromise;
+    };
+
+    const buildSystemBotInteragePrompt = async (): Promise<string> => {
+      const quotedText = await resolveQuotedBotInterageContext();
+      const recent = (await listBotInterageGroupMemory(group.id, message.id).catch(() => []))
+        .slice(-6)
+        .map((entry) => `${entry.role === "assistant" ? "Assistente" : entry.author || "Membro"}: ${entry.content}`)
+        .join("\n")
+        .slice(-4_000);
+      const quoteAuthor = message.quotedParticipant ? normalizeJid(message.quotedParticipant) : null;
+      return [
+        "Atenda exclusivamente a SOLICITAÇÃO ATUAL abaixo. Ela tem prioridade sobre qualquer assunto antigo do histórico.",
+        "Se existir uma mensagem citada, ela é o contexto direto desta solicitação; não a substitua por outro pedido antigo.",
+        recent ? `[Contexto recente do grupo — use somente se for pertinente]\n${recent}` : "",
+        quotedText
+          ? `[Mensagem citada${quoteAuthor ? ` por ${quoteAuthor}` : ""}]\n${quotedText}\n[Fim da mensagem citada]`
+          : "",
+        `[SOLICITAÇÃO ATUAL]\n${trimmedInput}`,
+      ].filter(Boolean).join("\n\n");
     };
 
     const reactBotInterage = (emoji = "🧠") => {
@@ -20022,7 +20139,10 @@ const convertStickerSourceToWebp = async (
             chatId: message.chatId,
             senderJid: message.senderJid ?? senderNorm,
             whatsappMessageId: message.id,
-            prompt: `[${senderName || senderNorm || "Membro"}]: ${trimmedInput}`,
+            // O endpoint nativo transcreve primeiro. Não acrescentamos uma
+            // frase decorativa ao áudio: a transcrição literal seguirá como
+            // uma mensagem comum para a IA no webhook.
+            prompt: trimmedInput,
             audio: {
               name: audio.name,
               mimeType: audio.mimeType || "audio/ogg",
@@ -20065,7 +20185,7 @@ const convertStickerSourceToWebp = async (
               chatId: message.chatId,
               senderJid: message.senderJid ?? senderNorm,
               whatsappMessageId: message.id,
-              prompt: `[${senderName || senderNorm || "Membro"}]: ${trimmedInput}`,
+              prompt: await buildSystemBotInteragePrompt(),
               attachments,
             });
             if (message.id) {

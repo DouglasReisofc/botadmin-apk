@@ -10,6 +10,7 @@ import {
   getBotInterageSystemJob,
   botInterageGroupConversationKey,
   saveBotInterageSystemConversation,
+  submitBotInterageSystemAskJob,
 } from "lib/botinterage-system";
 import { recordBotInterageContextEvent } from "lib/chatgpt-phone";
 import { getInstanceForUser } from "lib/bot-instances";
@@ -667,7 +668,54 @@ export async function POST(request: Request) {
       });
     }
 
-    const answer = getExactString(result, "answer") || getExactString(result, "text");
+    const transcription = isAudioJob ? getExactString(result, "transcription") : null;
+    // Em jobs de áudio, `text` pode ser apenas a transcrição. Ela não é uma
+    // resposta para o grupo: deve entrar como mensagem normal do usuário e
+    // seguir para o assistente. Só entregue texto quando o provedor declarar
+    // uma resposta de fato.
+    const answer = getExactString(result, "answer") ||
+      getExactString(result, "assistant_answer") ||
+      getExactString(result, "response") ||
+      (isAudioJob ? null : getExactString(result, "text"));
+    if (isAudioJob && transcription && !answer) {
+      await recordBotInterageContextEvent({
+        groupId: job.groupId,
+        userId: job.userId,
+        instanceId: job.instanceId,
+        groupRemoteId: job.chatId,
+        senderJid: job.senderJid,
+        whatsappMessageId: job.whatsappMessageId,
+        role: "user",
+        content: transcription,
+        contentType: "audio_transcription",
+        jobId,
+      });
+      const followUp = await submitBotInterageSystemAskJob({
+        groupId: job.groupId,
+        userId: job.userId,
+        instanceId: job.instanceId,
+        chatId: job.chatId,
+        senderJid: job.senderJid,
+        whatsappMessageId: job.whatsappMessageId,
+        internalGroupId: job.internalGroupId,
+        internalMessageId: job.internalMessageId,
+        // Sem prefixos nem texto de interface: a IA recebe exatamente o que
+        // foi entendido no áudio e responde como em uma mensagem normal.
+        prompt: transcription,
+      });
+      await completeBotInterageSystemJob({
+        jobId,
+        status: "delivered",
+        messageId: job.whatsappMessageId || null,
+      });
+      return NextResponse.json({
+        ok: true,
+        delivered: true,
+        type: jobType,
+        transcription_forwarded: true,
+        follow_up_job_id: followUp.jobId,
+      });
+    }
     const artifactDescriptors = collectGeneratedMedia(result)
       .filter((entry) => entry.url || entry.base64)
       .slice(0, 8);
