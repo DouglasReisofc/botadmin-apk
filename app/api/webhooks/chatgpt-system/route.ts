@@ -267,6 +267,7 @@ const downloadImageWithRetry = async (
 
 const downloadGeneratedMedia = async (
   descriptor: GeneratedMediaDescriptor,
+  authorizationToken?: string | null,
 ): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
   const rawBase64 = descriptor.base64?.trim() || "";
   if (rawBase64) {
@@ -287,7 +288,11 @@ const downloadGeneratedMedia = async (
   try {
     const response = await fetch(descriptor.url, {
       signal: controller.signal,
-      headers: { Accept: "*/*", "User-Agent": "BotAdmin/1.0" },
+      headers: {
+        Accept: "*/*",
+        "User-Agent": "BotAdmin/1.0",
+        ...(authorizationToken ? { Authorization: `Bearer ${authorizationToken}` } : {}),
+      },
       redirect: "follow",
       cache: "no-store",
     });
@@ -308,10 +313,11 @@ const downloadGeneratedMedia = async (
 
 const downloadGeneratedMediaWithRetry = async (
   descriptor: GeneratedMediaDescriptor,
+  authorizationToken?: string | null,
 ): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
   let lastError: unknown = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
-    try { return await downloadGeneratedMedia(descriptor); }
+    try { return await downloadGeneratedMedia(descriptor, authorizationToken); }
     catch (error) {
       lastError = error;
       if (attempt < 2) await wait(750 * (attempt + 1));
@@ -736,7 +742,7 @@ export async function POST(request: Request) {
     const generatedFiles = await Promise.all(
       artifactDescriptors
         .filter((entry) => !entry.url || !imageUrls.includes(entry.url))
-        .map((entry) => downloadGeneratedMediaWithRetry(entry)),
+        .map((entry) => downloadGeneratedMediaWithRetry(entry, (await getBotInterageRuntimeConfig()).token)),
     );
     let firstSentMessageId: string | null = null;
     let firstMediaMessageId: string | null = null;
