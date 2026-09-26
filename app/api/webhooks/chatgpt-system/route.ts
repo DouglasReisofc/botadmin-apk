@@ -744,7 +744,7 @@ export async function POST(request: Request) {
       });
     }
     const artifactDescriptors = collectGeneratedMedia(result)
-      .filter((entry) => entry.url || entry.base64)
+      .filter((entry) => entry.url || entry.base64 || entry.textContent)
       .slice(0, 8);
     let imageUrls = collectImageUrls(result);
     // Only reconcile the Library when the terminal payload is truly empty.
