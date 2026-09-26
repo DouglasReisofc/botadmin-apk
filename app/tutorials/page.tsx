@@ -6,7 +6,6 @@ import { getAdminSiteSettings } from "lib/admin-site";
 import { getGeneratedCommandTutorialSections } from "lib/command-tutorials";
 import { getPublicFieldTutorials } from "lib/tutorials";
 import { getPublicAppBaseUrl } from "lib/meta";
-import { summarizeRichText } from "lib/terms";
 import TutorialsDirectory, {
   TutorialsSectionData,
 } from "components/site/TutorialsDirectory";
@@ -101,8 +100,6 @@ const TutorialsPage = async () => {
   const sections: TutorialsSectionData[] = [...configuredSections, ...commandSections];
 
   const hasTutorials = sections.some((section) => section.tutorials.length > 0);
-  const introDescription = summarizeRichText(settings.footerText ?? settings.tagline ?? "", 180);
-
   return (
     <PublicPageShell
       logoUrl={settings.logoUrl}
@@ -114,15 +111,9 @@ const TutorialsPage = async () => {
           ← Voltar para inicio
         </Link>
       </div>
-      <header className="mb-5 text-center">
-        <span className="badge bg-primary-subtle text-primary text-uppercase mb-3">
-          Tutoriais
-        </span>
-        <h1 className="fw-bold mb-3 landing-title">Guia completo do Bot Admin</h1>
-        <p className="text-secondary mb-0">
-          Configure webhooks, comandos, ativações e fluxos avançados com os materiais abaixo.
-          {introDescription ? ` ${introDescription}` : ""}
-        </p>
+      <header className="mb-4 text-center">
+        <h1 className="fw-bold mb-2 landing-title">Guias rápidos</h1>
+        <p className="text-secondary mb-0">Encontre uma instrução, abra e siga os passos.</p>
       </header>
 
       {hasTutorials ? (

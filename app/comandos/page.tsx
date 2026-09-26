@@ -173,27 +173,14 @@ const CommandsPage = async () => {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: jsonLdString(jsonLd) }}
       />
-      <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-4">
-        <Link href="/" className="landing-btn landing-btn--ghost">
-          Voltar para inicio
-        </Link>
-        <Link href="/tutorials" className="landing-btn landing-btn--neon">
-          Ver todos os tutoriais
-        </Link>
+      <div className="d-flex justify-content-between align-items-center flex-wrap gap-3 mb-3">
+        <Link href="/" className="landing-btn landing-btn--ghost">Voltar</Link>
+        <Link href="/tutorials" className="small fw-semibold text-decoration-none">Guias e tutoriais →</Link>
       </div>
 
-      <header className="text-center mb-5">
-        <span className="badge bg-primary-subtle text-primary text-uppercase mb-3">
-          Comandos do Bot Admin
-        </span>
-        <h1 className="fw-bold mb-3 landing-title">
-          Comandos do Bot Admin para administrar grupos de WhatsApp
-        </h1>
-        <p className="text-secondary mb-0">
-          Consulte {totalCommands} comandos organizados por categoria. Clique em
-          qualquer comando para abrir a explicacao completa e exemplos de uso
-          dentro do WhatsApp.
-        </p>
+      <header className="text-center mb-4">
+        <h1 className="fw-bold mb-2 landing-title">Comandos rápidos</h1>
+        <p className="text-secondary mb-0">Pesquise um comando e abra o guia completo. {totalCommands} disponíveis.</p>
       </header>
 
       <CommandsDirectory sections={sections} />

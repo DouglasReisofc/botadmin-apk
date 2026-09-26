@@ -89,6 +89,7 @@ const collectImageUrls = (value: unknown, depth = 0): string[] => {
 type GeneratedMediaDescriptor = {
   url?: string;
   base64?: string;
+  textContent?: string;
   mimeType?: string;
   fileName?: string;
 };
@@ -119,6 +120,9 @@ const collectGeneratedMedia = (value: unknown, depth = 0): GeneratedMediaDescrip
       typeof candidate === "string" &&
       (candidate.trim().startsWith("data:") || candidate.trim().length > 100),
     )?.trim();
+  const explicitTextContent = ["html", "html_content", "htmlContent", "text_content", "textContent", "content"]
+    .map((key) => record[key])
+    .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0);
   const mimeType = ["mime_type", "mimeType", "content_type", "contentType", "media_type", "mediaType", "type"]
     .map((key) => record[key])
     .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
@@ -127,8 +131,10 @@ const collectGeneratedMedia = (value: unknown, depth = 0): GeneratedMediaDescrip
     .map((key) => record[key])
     .find((candidate): candidate is string => typeof candidate === "string" && candidate.trim().length > 0)
     ?.trim();
-  const own = (url || base64) && (mimeType || fileName || url || base64)
-    ? [{ url, base64, mimeType, fileName }]
+  const looksLikeHtml = /(^\s*<!doctype\s+html\b|^\s*<html[\s>]|^\s*<head[\s>]|^\s*<body[\s>])/i.test(explicitTextContent || "");
+  const htmlFile = /\.html?$/i.test(fileName || "") || /text\/html/i.test(mimeType || "") || looksLikeHtml;
+  const own = (url || base64 || (htmlFile && explicitTextContent)) && (mimeType || fileName || url || base64 || explicitTextContent)
+    ? [{ url, base64, textContent: htmlFile ? explicitTextContent : undefined, mimeType: htmlFile ? (mimeType || "text/html") : mimeType, fileName: htmlFile ? (fileName || `botinterage-${Date.now()}.html`) : fileName }]
     : [];
   const nested = Object.entries(record)
     .filter(([key]) => !MEDIA_BASE64_KEYS.includes(key))
@@ -153,6 +159,7 @@ const normalizeMediaMime = (mimeType?: string, fileName?: string): string => {
   if (/\.mp4(?:$|[?#])/.test(name)) return "video/mp4";
   if (/\.(?:mp3|mpeg)(?:$|[?#])/.test(name)) return "audio/mpeg";
   if (/\.pdf(?:$|[?#])/.test(name)) return "application/pdf";
+  if (/\.html?(?:$|[?#])/.test(name)) return "text/html";
   return declared || "application/octet-stream";
 };
 
@@ -270,6 +277,15 @@ const downloadGeneratedMedia = async (
   authorizationToken?: string | null,
 ): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
   const rawBase64 = descriptor.base64?.trim() || "";
+  const rawTextContent = descriptor.textContent ?? "";
+  if (rawTextContent) {
+    const mimeType = normalizeMediaMime(descriptor.mimeType || "text/html", descriptor.fileName || "arquivo.html");
+    return {
+      buffer: Buffer.from(rawTextContent, "utf8"),
+      mimeType,
+      filename: descriptor.fileName || `botinterage-${Date.now()}.html`,
+    };
+  }
   if (rawBase64) {
     const dataMatch = rawBase64.match(/^data:([^;,]+)?(?:;base64)?,([\s\S]+)$/i);
     const mimeType = normalizeMediaMime(dataMatch?.[1] || descriptor.mimeType, descriptor.fileName);
@@ -292,6 +308,8 @@ const downloadGeneratedMedia = async (
         Accept: "*/*",
         "User-Agent": "BotAdmin/1.0",
         ...(authorizationToken ? { Authorization: `Bearer ${authorizationToken}` } : {}),
+        ...(authorizationToken ? { "x-api-key": authorizationToken } : {}),
+        ...(authorizationToken ? { "x-api-token": authorizationToken } : {}),
       },
       redirect: "follow",
       cache: "no-store",
@@ -313,14 +331,17 @@ const downloadGeneratedMedia = async (
 
 const downloadGeneratedMediaWithRetry = async (
   descriptor: GeneratedMediaDescriptor,
-  authorizationToken?: string | null,
+  authorizationTokens: Array<string | null | undefined> = [],
 ): Promise<{ buffer: Buffer; mimeType: string; filename: string }> => {
   let lastError: unknown = null;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
-    try { return await downloadGeneratedMedia(descriptor, authorizationToken); }
-    catch (error) {
-      lastError = error;
-      if (attempt < 2) await wait(750 * (attempt + 1));
+  const tokens = Array.from(new Set(authorizationTokens.filter((token): token is string => Boolean(token?.trim())).map((token) => token.trim())));
+  for (const token of [...tokens, null]) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      try { return await downloadGeneratedMedia(descriptor, token); }
+      catch (error) {
+        lastError = error;
+        if (attempt < 2) await wait(750 * (attempt + 1));
+      }
     }
   }
   throw lastError instanceof Error ? lastError : new Error("Falha ao baixar artefato gerado.");
@@ -740,10 +761,15 @@ export async function POST(request: Request) {
       ? await prepareGeneratedImages({ imageUrls, conversationId, createdAfter: job.createdAt })
       : [];
     const runtimeConfig = await getBotInterageRuntimeConfig();
+    const generatedArtifactTokens = [
+      runtimeConfig.token,
+      process.env.CHATGPT_PHONE_WORKER_TOKEN,
+      process.env.CHATGPT_PHONE_API_TOKEN,
+    ];
     const generatedFiles = await Promise.all(
       artifactDescriptors
         .filter((entry) => !entry.url || !imageUrls.includes(entry.url))
-        .map((entry) => downloadGeneratedMediaWithRetry(entry, runtimeConfig.token)),
+        .map((entry) => downloadGeneratedMediaWithRetry(entry, generatedArtifactTokens)),
     );
     let firstSentMessageId: string | null = null;
     let firstMediaMessageId: string | null = null;

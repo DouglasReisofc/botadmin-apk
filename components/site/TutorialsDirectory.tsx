@@ -34,7 +34,7 @@ const formatDate = (value: string) => {
   }
 };
 
-const buildSnippet = (text: string, maxLength = 160) => {
+const buildSnippet = (text: string, maxLength = 105) => {
   const normalized = text
     .replace(/^#{1,6}\s+/gm, "")
     .replace(/^[-*+]\s+/gm, "")
@@ -99,11 +99,11 @@ const TutorialsDirectory = ({ sections }: TutorialsDirectoryProps) => {
   return (
     <div className="d-flex flex-column gap-5">
       <section className="card border-0 shadow-sm">
-        <div className="card-body p-4 p-lg-5">
+        <div className="card-body p-3 p-lg-4">
           <label className="form-label text-secondary fw-semibold" htmlFor="tutorial-search">
             Buscar tutoriais
           </label>
-          <div className="input-group input-group-lg">
+          <div className="input-group">
             <span className="input-group-text bg-transparent border-end-0">
               <IconSearch size={20} className="text-secondary" />
             </span>
@@ -126,17 +126,17 @@ const TutorialsDirectory = ({ sections }: TutorialsDirectoryProps) => {
 
       {normalizedQuery ? (
         <section className="card border-0 shadow-sm">
-          <div className="card-body p-4 p-lg-5">
-            <h2 className="h4 mb-4">Resultados da busca</h2>
+          <div className="card-body p-3 p-lg-4">
+            <h2 className="h6 mb-3">Resultados da busca</h2>
             {filtered.length === 0 ? (
               <p className="text-secondary mb-0">
                 Nenhum tutorial corresponde ao termo pesquisado. Tente outras palavras-chave.
               </p>
             ) : (
-              <div className="row g-4">
+              <div className="row g-2">
                 {filtered.map((tutorial) => (
                   <div className="col-md-6" key={tutorial.slug}>
-                    <article className="h-100 border rounded-4 p-4 shadow-sm bg-white d-flex flex-column gap-3">
+                    <article className="h-100 border rounded-3 p-3 bg-white d-flex flex-column gap-2">
                       <div>
                         <span className="badge bg-primary-subtle text-primary me-2">
                           {tutorial.sectionTitle}
@@ -148,7 +148,7 @@ const TutorialsDirectory = ({ sections }: TutorialsDirectoryProps) => {
                         )}
                       </div>
                       <div className="flex-grow-1">
-                        <h3 className="h5 mb-2">
+                        <h3 className="h6 mb-1">
                           <Link href={`/tutorials/${tutorial.slug}`} className="text-decoration-none">
                             {tutorial.title}
                           </Link>
@@ -170,9 +170,9 @@ const TutorialsDirectory = ({ sections }: TutorialsDirectoryProps) => {
       ) : (
         groupBySection.map((section) => (
           <section key={section.id} className="card border-0 shadow-sm">
-            <div className="card-body p-4 p-lg-5">
+            <div className="card-body p-3 p-lg-4">
               <header className="mb-4">
-                <h2 className="h4 mb-2">{section.title}</h2>
+                <h2 className="h5 mb-1">{section.title}</h2>
                 <p className="text-secondary mb-0">{section.description}</p>
               </header>
               {section.tutorials.length === 0 ? (
@@ -180,16 +180,16 @@ const TutorialsDirectory = ({ sections }: TutorialsDirectoryProps) => {
                   Nenhum tutorial cadastrado para esta seção por enquanto.
                 </p>
               ) : (
-                <div className="row g-4">
+                <div className="row g-2">
                   {section.tutorials.map((tutorial) => {
                     const formattedUpdatedAt = formatDate(tutorial.updatedAt);
                     const snippet = buildSnippet(tutorial.description);
 
                     return (
                       <div className="col-md-6" key={tutorial.slug}>
-                        <article className="h-100 border rounded-4 p-4 shadow-sm bg-white d-flex flex-column gap-3">
+                        <article className="h-100 border rounded-3 p-3 bg-white d-flex flex-column gap-2">
                           <div className="flex-grow-1">
-                            <h3 className="h5 mb-2">
+                            <h3 className="h6 mb-1">
                               <Link
                                 href={`/tutorials/${tutorial.slug}`}
                                 className="text-decoration-none"
