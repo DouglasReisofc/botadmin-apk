@@ -156,6 +156,74 @@ type GroupLookupRow = RowDataPacket & {
 
 const MAX_CONTEXT_LIMIT = 80;
 const DEFAULT_CONTEXT_LIMIT = 12;
+
+const BOTADMIN_MCP_URL =
+  process.env.BOTADMIN_MCP_URL?.trim().replace(/\/+$/, "") || "https://botadmin.shop/mcp";
+
+const isExplicitMcpRequest = (message: string): boolean => {
+  const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas)/i.test(
+    normalized,
+  );
+};
+
+const callBotAdminMcpTool = async (name: string, args: Record<string, unknown>): Promise<unknown> => {
+  const response = await fetch(BOTADMIN_MCP_URL, {
+    method: "POST",
+    headers: {
+      accept: "application/json, text/event-stream",
+      "content-type": "application/json",
+      ...(process.env.BOTADMIN_MCP_TOKEN?.trim()
+        ? { authorization: `Bearer ${process.env.BOTADMIN_MCP_TOKEN.trim()}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: randomUUID(),
+      method: "tools/call",
+      params: { name, arguments: args },
+    }),
+    signal: AbortSignal.timeout(12_000),
+  });
+  if (!response.ok) {
+    throw new Error(`MCP HTTP ${response.status}`);
+  }
+  const payload = (await response.json()) as { result?: { structuredContent?: unknown; content?: unknown[] } };
+  return payload.result?.structuredContent ?? payload.result?.content ?? payload.result ?? null;
+};
+
+const resolveExplicitMcpContext = async (input: {
+  message: string;
+  groupId: number;
+  groupRemoteId: string;
+  senderJid?: string | null;
+}): Promise<string | null> => {
+  if (!isExplicitMcpRequest(input.message)) {
+    return null;
+  }
+  try {
+    const normalized = input.message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+    const tool = /historico|histórico|mensagens anteriores|contexto/.test(normalized)
+      ? "botadmin_get_botinterage_history"
+      : "fetch";
+    const args =
+      tool === "fetch"
+        ? { id: "botadmin_mcp_probe" }
+        : {
+            groupId: input.groupId,
+            groupRemoteId: input.groupRemoteId,
+            senderJid: input.senderJid ?? undefined,
+            limit: 20,
+          };
+    const result = await callBotAdminMcpTool(tool, args);
+    return `[MCP_RESULTADO_AUTORIZADO]\n${JSON.stringify(result).slice(0, 24_000)}\n[/MCP_RESULTADO_AUTORIZADO]`;
+  } catch (error) {
+    console.warn("[chatgpt-phone] MCP solicitado no grupo, mas indisponível", {
+      error: error instanceof Error ? error.message : String(error),
+    });
+    return "[MCP_RESULTADO_AUTORIZADO]\nO servidor MCP está temporariamente indisponível. Responda informando isso de forma objetiva.\n[/MCP_RESULTADO_AUTORIZADO]";
+  }
+};
 const DEFAULT_PHONE_TIMEOUT_MS = 240_000;
 const DEFAULT_PHONE_MEDIA_TIMEOUT_MS = (() => {
   const value = Number(process.env.CHATGPT_PHONE_MEDIA_TIMEOUT_MS);
@@ -3250,9 +3318,19 @@ export const createAndRunBotInterageChatGptPhoneJob = async (input: {
   }).catch(() => []);
   const attachmentPreparation = await prepareFileAttachmentsForChatGptPhone(input.attachments);
   const effectiveAttachments = attachmentPreparation.attachments;
-  const effectiveMessage = attachmentPreparation.extractedPromptBlock
-    ? `${input.message}\n\n${attachmentPreparation.extractedPromptBlock}`
-    : input.message;
+  const mcpContext = await resolveExplicitMcpContext({
+    message: input.message,
+    groupId: input.groupId,
+    groupRemoteId: input.groupRemoteId,
+    senderJid: input.senderJid,
+  });
+  const effectiveMessage = [
+    input.message,
+    mcpContext,
+    attachmentPreparation.extractedPromptBlock,
+  ]
+    .filter((part): part is string => Boolean(part?.trim()))
+    .join("\n\n");
   const hasNonVisualEffectiveAttachment = hasNonVisualChatGptPhoneAttachment(effectiveAttachments);
   const hasAudioEffectiveAttachment = hasAudioChatGptPhoneAttachment(effectiveAttachments);
   const mediaRequest =
