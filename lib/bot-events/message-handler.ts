@@ -140,7 +140,11 @@ import { sendReactionMessage } from "lib/wuzapi";
 import { canAutoDownloadMessage, youtubeVideoThumbnail } from "./autodownload-input";
 import { downloadChatMedia, downloadViewOnce } from "lib/wuzapi";
 import { ensureStickerWebp, ensureStickerWebpSquare, rebuildWebpStickerMeta } from "lib/sticker";
-import { convertMediaBufferToMp3, convertMediaBufferToVoiceReferenceWav } from "lib/media/audio";
+import {
+  convertMediaBufferToChatGptWav,
+  convertMediaBufferToMp3,
+  convertMediaBufferToVoiceReferenceWav,
+} from "lib/media/audio";
 import {
   createBotInterageChatCompletion,
   type BotInterageArtifact,
@@ -20135,6 +20139,69 @@ const convertStickerSourceToWebp = async (
         return false;
       }
 
+      // O endpoint native de voz é o responsável por transcrever todos os
+      // áudios. Notas do WhatsApp normalmente chegam como OGG/Opus; embora o
+      // endpoint aceite `audio/*`, alguns aparelhos/provedores entregam esse
+      // contêiner sem os metadados que o AudioRecord injetado consegue ler.
+      // Normalize antes de enviar, mantendo o áudio como a entrada principal
+      // da transcrição (e não como um anexo de contexto da conversa).
+      const rawAudioBuffer = Buffer.from(audio.base64, "base64");
+      if (rawAudioBuffer.length < MIN_VOICE_CLONE_AUDIO_BYTES) {
+        console.warn("[bot-interage] áudio recebido vazio ou truncado", {
+          groupId: group.id,
+          messageId: message.id ?? null,
+          quotedMessageId: message.quotedMessageId ?? null,
+          inputMimeType: audio.mimeType,
+          inputBytes: rawAudioBuffer.length,
+        });
+        return false;
+      }
+
+      let nativeAudio = audio;
+      try {
+        const normalized = await convertMediaBufferToChatGptWav({
+          buffer: rawAudioBuffer,
+          fileName: audio.name,
+          mimeType: audio.mimeType,
+        });
+        if (normalized.buffer.length <= 20 * 1024 * 1024) {
+          nativeAudio = {
+            name: normalized.fileName,
+            mimeType: normalized.mimeType,
+            base64: normalized.buffer.toString("base64"),
+          };
+        } else {
+          console.warn("[bot-interage] WAV normalizado excedeu o limite do endpoint; usando o áudio original", {
+            groupId: group.id,
+            messageId: message.id ?? null,
+            inputBytes: rawAudioBuffer.length,
+            normalizedBytes: normalized.buffer.length,
+          });
+        }
+      } catch (error) {
+        // O fallback só é permitido quando o contêiner recebido parece áudio;
+        // assim não enviamos um anexo corrompido e depois respondemos que não
+        // houve áudio.
+        if (!isLikelyValidAudioBuffer(rawAudioBuffer)) {
+          console.error("[bot-interage] não foi possível normalizar o áudio recebido", {
+            groupId: group.id,
+            messageId: message.id ?? null,
+            quotedMessageId: message.quotedMessageId ?? null,
+            inputMimeType: audio.mimeType,
+            inputBytes: rawAudioBuffer.length,
+            error,
+          });
+          return false;
+        }
+        console.warn("[bot-interage] normalização do áudio falhou; enviando o contêiner original", {
+          groupId: group.id,
+          messageId: message.id ?? null,
+          inputMimeType: audio.mimeType,
+          inputBytes: rawAudioBuffer.length,
+          error,
+        });
+      }
+
       if (message.id) {
         void sendReactionMessage(client, {
           chatId: message.chatId!,
@@ -20169,9 +20236,9 @@ const convertStickerSourceToWebp = async (
             // uma mensagem comum para a IA no webhook.
             prompt: audioPrompt,
             audio: {
-              name: audio.name,
-              mimeType: audio.mimeType || "audio/ogg",
-              base64: audio.base64,
+              name: nativeAudio.name,
+              mimeType: nativeAudio.mimeType || "audio/ogg",
+              base64: nativeAudio.base64,
             },
             references,
             language: settings.language,
@@ -20180,6 +20247,10 @@ const convertStickerSourceToWebp = async (
             groupId: group.id,
             messageId: message.id ?? null,
             quotedMessageId: message.quotedMessageId ?? null,
+            inputMimeType: audio.mimeType,
+            outputMimeType: nativeAudio.mimeType,
+            inputBytes: rawAudioBuffer.length,
+            outputBytes: Buffer.byteLength(nativeAudio.base64, "base64"),
             jobId: job.jobId,
             status: job.status,
           });

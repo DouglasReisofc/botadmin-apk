@@ -128,7 +128,11 @@ const INSTANCE_SETTINGS_CACHE_TTL_MS = parseTtl(
 );
 const GROUP_SETTINGS_CACHE_TTL_MS = parseTtl(
   process.env.BOT_GROUP_SETTINGS_CACHE_TTL_MS,
-  10_000,
+  // Flags, prompts and audio/voice toggles must take effect on the next
+  // WhatsApp event. Redis invalidation remains enabled for other consumers,
+  // but the local process must never serve an old group configuration when
+  // the environment does not explicitly opt into a positive TTL.
+  0,
 );
 
 export const getCachedInstanceSettings = async (instanceId: number) =>
