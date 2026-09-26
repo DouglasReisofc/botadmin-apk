@@ -162,7 +162,7 @@ const BOTADMIN_MCP_URL =
 
 export const isNaturalBotAdminMcpRequest = (message: string): boolean => {
   const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\bquem (?:s[aã]o|e) (?:os )?(?:admins?|administradores?|donos?|membros?)|\bdescri[cç][aã]o (?:do|deste) grupo|\bregras? (?:do|deste) grupo|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descri[cç][aã]o|regras?)\b)/i.test(
+  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\b(?:quem|qual|quais|me diga|pode me dizer)\b.{0,80}\b(?:admins?|administradores?|donos?|membros?|descricao|regras?)\b|\b(?:descricao|regras?)\b.{0,60}\b(?:do|deste|desse)?\s*grupo\b|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descricao|regras?)\b)/i.test(
     normalized,
   );
 };
