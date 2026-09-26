@@ -170,6 +170,12 @@ const mediaTypeForMime = (mimeType: string): "image" | "video" | "audio" | "docu
   return "document";
 };
 
+const extractInlineHtml = (value: string | null): string | null => {
+  if (!value) return null;
+  const match = value.match(/^\s*(?:```html?\s*)?((?:<!doctype\s+html\b|<html[\s>])[^]*?)(?:\s*```)?\s*$/i);
+  return match?.[1]?.trim() || null;
+};
+
 const getString = (record: Record<string, unknown> | null, key: string): string | null => {
   const value = record?.[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
@@ -746,6 +752,14 @@ export async function POST(request: Request) {
     const artifactDescriptors = collectGeneratedMedia(result)
       .filter((entry) => entry.url || entry.base64 || entry.textContent)
       .slice(0, 8);
+    const inlineHtml = extractInlineHtml(answer);
+    if (inlineHtml && !artifactDescriptors.some((entry) => entry.textContent === inlineHtml)) {
+      artifactDescriptors.push({
+        textContent: inlineHtml,
+        mimeType: "text/html",
+        fileName: `botinterage-${Date.now()}.html`,
+      });
+    }
     let imageUrls = collectImageUrls(result);
     // Only reconcile the Library when the terminal payload is truly empty.
     // If ChatGPT returned a policy explanation, fetching here could resend an
@@ -775,7 +789,9 @@ export async function POST(request: Request) {
     let firstMediaMessageId: string | null = null;
 
     const answerLooksLikePath = Boolean(answer && /(?:^|\s)(?:file:\/\/|\/tmp\/|\/data\/|\/storage\/|[A-Za-z]:\\)[^\s]+$/i.test(answer.trim()));
-    const visibleAnswer = answerLooksLikePath && (images.length > 0 || generatedFiles.length > 0) ? null : answer;
+    const visibleAnswer = (answerLooksLikePath || Boolean(inlineHtml)) && (images.length > 0 || generatedFiles.length > 0)
+      ? null
+      : answer;
 
     if (visibleAnswer) {
       const sentMessageId = await sendJobText(visibleAnswer);
