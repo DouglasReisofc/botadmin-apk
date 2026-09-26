@@ -17,6 +17,7 @@ import { getAppBaseUrl } from "lib/meta";
 import { resolveUploadedFileUrl, saveBufferAsUploadedFile } from "lib/uploads";
 import { getOrCreateUserApiKey } from "lib/user-api-keys";
 import { getDb } from "lib/db";
+import { syncGroupInfo } from "lib/bot-groups";
 
 const jsonText = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -1062,25 +1063,32 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
     {
       title: "Consultar perfil do grupo",
       description:
-        "Consulta somente leitura o nome, descrição, dono e participantes administrativos do grupo atual. Use quando alguém perguntar naturalmente quem são os admins, qual é a descrição ou quais são as regras do grupo.",
+        "Consulta nome, descrição, dono, administradores e quantidade de participantes do grupo atual. Use em perguntas sobre admins, descrição, regras ou quantos membros/pessoas há no grupo.",
       annotations: closedReadToolAnnotations,
       inputSchema: {
         groupId: optionalPositiveInt(),
         groupRemoteId: optionalString(),
+        refreshParticipants: z.boolean().optional(),
       },
     },
-    async ({ groupId, groupRemoteId }) => {
+    async ({ groupId, groupRemoteId, refreshParticipants }) => {
       const db = getDb();
-      const [rows] = await db.query<Array<Record<string, unknown>>>(
-        `SELECT id, remote_id, name, description, owner, participants
+      const query = `SELECT id, user_id, remote_id, name, description, owner, participants, participants_synced_at
            FROM bot_groups
-          WHERE (? IS NOT NULL AND id = ?) OR (? IS NOT NULL AND remote_id = ?)
-          ORDER BY id DESC LIMIT 1`,
-        [groupId ?? null, groupId ?? null, groupRemoteId ?? null, groupRemoteId ?? null],
-      );
-      const row = rows[0];
+          WHERE ${groupId && groupRemoteId ? "id = ? AND remote_id = ?" : groupId ? "id = ?" : "remote_id = ?"}
+          ORDER BY id DESC LIMIT 1`;
+      const values = groupId && groupRemoteId ? [groupId, groupRemoteId] : [groupId ?? groupRemoteId ?? ""];
+      const load = async () => {
+        const [rows] = await db.query<Array<Record<string, unknown>>>(query, values);
+        return rows[0];
+      };
+      let row = await load();
       if (!row) {
         return toolResult({ ok: false, message: "Grupo não encontrado no BotAdmin." });
+      }
+      if (refreshParticipants) {
+        await syncGroupInfo(Number(row.user_id), Number(row.id), { maxAgeMs: 30_000 });
+        row = await load() ?? row;
       }
       let participants: Array<Record<string, unknown>> = [];
       try {
@@ -1106,6 +1114,7 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
           owner: row.owner ?? null,
           admins,
           participantCount: participants.length,
+          participantsSyncedAt: row.participants_synced_at ?? null,
         },
       });
     },

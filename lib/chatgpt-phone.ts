@@ -162,7 +162,7 @@ const BOTADMIN_MCP_URL =
 
 export const isNaturalBotAdminMcpRequest = (message: string): boolean => {
   const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\b(?:quem|qual|quais|me diga|pode me dizer)\b.{0,80}\b(?:admins?|administradores?|donos?|membros?|descricao|regras?)\b|\b(?:descricao|regras?)\b.{0,60}\b(?:do|deste|desse)?\s*grupo\b|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descricao|regras?)\b)/i.test(
+  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\b(?:quem|qual|quais|me diga|pode me dizer)\b.{0,80}\b(?:admins?|administradores?|donos?|membros?|descricao|regras?)\b|\b(?:quantos?|quantas?|numero|total|quantidade)\b.{0,80}\b(?:pessoas?|membros?|participantes?|admins?|administradores?)\b|\b(?:pessoas?|membros?|participantes?)\b.{0,50}\b(?:quantos?|quantas?|numero|total|quantidade)\b|\b(?:descricao|regras?)\b.{0,60}\b(?:do|deste|desse)?\s*grupo\b|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descricao|regras?)\b)/i.test(
     normalized,
   );
 };
@@ -205,14 +205,18 @@ export const resolveBotAdminMcpContext = async (input: {
     const normalized = input.message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const tool = /historico|histórico|mensagens anteriores|contexto/.test(normalized)
       ? "botadmin_get_botinterage_history"
-      : /admin|administrador|dono|membro|descri[cç][aã]o|regra|grupo/.test(normalized)
+      : /admin|administrador|dono|membro|participante|pessoa|descri[cç][aã]o|regra|grupo/.test(normalized)
         ? "botadmin_get_group_profile"
         : "fetch";
     const args =
       tool === "fetch"
         ? { id: "botadmin_mcp_probe" }
         : tool === "botadmin_get_group_profile"
-          ? { groupId: input.groupId, groupRemoteId: input.groupRemoteId }
+          ? {
+              groupId: input.groupId,
+              groupRemoteId: input.groupRemoteId,
+              refreshParticipants: /\b(?:quantos?|quantas?|numero|total|quantidade)\b/.test(normalized),
+            }
           : {
             groupId: input.groupId,
             groupRemoteId: input.groupRemoteId,

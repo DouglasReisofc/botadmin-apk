@@ -14,6 +14,7 @@ import {
   submitBotInterageSystemAskJob,
 } from "lib/botinterage-system";
 import {
+  isNaturalBotAdminMcpRequest,
   recordBotInterageContextEvent,
   resolveBotAdminMcpContext,
 } from "lib/chatgpt-phone";
@@ -729,7 +730,8 @@ export async function POST(request: Request) {
     const nativeAudioAnswerNeedsFollowUp = Boolean(
       isAudioJob &&
       transcription &&
-      (!answer ||
+      (isNaturalBotAdminMcpRequest(transcription) ||
+        !answer ||
         /(?:não|nao)\s+(?:tenho|consigo|recebi|vejo|acesso)|envie\s+o\s+áudio|envie\s+o\s+audio|não\s+foi\s+poss[ií]vel\s+(?:acessar|ler|ouvir)|informações?\s+de\s+grupos?|administradores?\s+.*(?:não|nao)\s+(?:fica|está|esta)/i.test(
           answer,
         )),
@@ -753,6 +755,32 @@ export async function POST(request: Request) {
         groupRemoteId: job.chatId,
         senderJid: job.senderJid,
       }).catch(() => "");
+      // Consultas factuais do grupo são ferramentas nativas do robô, não uma
+      // pergunta comum para o modelo decidir se consegue responder. Para
+      // contagem de membros, entregue o valor autorizado pelo MCP diretamente
+      // e evite que o ChatGPT diga que não tem acesso ao grupo.
+      if (/\b(?:quantos?|quantas?|numero|total|quantidade)\b.{0,80}\b(?:pessoas?|membros?|participantes?)\b|\b(?:pessoas?|membros?|participantes?)\b.{0,50}\b(?:quantos?|quantas?|numero|total|quantidade)\b/i.test(transcription)) {
+        const countMatch = mcpContext.match(/"participantCount"\s*:\s*(\d+)/i);
+        if (countMatch) {
+          const participantCount = Number(countMatch[1]);
+          const messageId = await sendJobText(
+            `Este grupo tem ${participantCount} ${participantCount === 1 ? "membro" : "membros"}.`,
+          );
+          await completeBotInterageSystemJob({
+            jobId,
+            status: "delivered",
+            messageId,
+          });
+          return NextResponse.json({
+            ok: true,
+            delivered: true,
+            type: jobType,
+            transcription_forwarded: true,
+            mcp_tool: "botadmin_get_group_profile",
+            participant_count: participantCount,
+          });
+        }
+      }
       const followUpPrompt = [
         "Atenda exclusivamente à transcrição desta nota de voz como a solicitação atual.",
         "A resposta nativa não conseguiu usar o contexto do grupo; não diga que não recebeu áudio.",
