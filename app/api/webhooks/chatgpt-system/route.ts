@@ -13,7 +13,10 @@ import {
   saveBotInterageSystemConversation,
   submitBotInterageSystemAskJob,
 } from "lib/botinterage-system";
-import { recordBotInterageContextEvent } from "lib/chatgpt-phone";
+import {
+  recordBotInterageContextEvent,
+  resolveBotAdminMcpContext,
+} from "lib/chatgpt-phone";
 import { getInstanceForUser } from "lib/bot-instances";
 import {
   acknowledgeInternalBotFailure,
@@ -723,7 +726,15 @@ export async function POST(request: Request) {
       getExactString(result, "assistant_answer") ||
       getExactString(result, "response") ||
       (isAudioJob ? null : getExactString(result, "text"));
-    if (isAudioJob && transcription && !answer) {
+    const nativeAudioAnswerNeedsFollowUp = Boolean(
+      isAudioJob &&
+      transcription &&
+      (!answer ||
+        /(?:não|nao)\s+(?:tenho|consigo|recebi|vejo|acesso)|envie\s+o\s+áudio|envie\s+o\s+audio|não\s+foi\s+poss[ií]vel\s+(?:acessar|ler|ouvir)|informações?\s+de\s+grupos?|administradores?\s+.*(?:não|nao)\s+(?:fica|está|esta)/i.test(
+          answer,
+        )),
+    );
+    if (isAudioJob && transcription && nativeAudioAnswerNeedsFollowUp) {
       await recordBotInterageContextEvent({
         groupId: job.groupId,
         userId: job.userId,
@@ -736,6 +747,20 @@ export async function POST(request: Request) {
         contentType: "audio_transcription",
         jobId,
       });
+      const mcpContext = await resolveBotAdminMcpContext({
+        message: transcription,
+        groupId: job.groupId,
+        groupRemoteId: job.chatId,
+        senderJid: job.senderJid,
+      }).catch(() => "");
+      const followUpPrompt = [
+        "Atenda exclusivamente à transcrição desta nota de voz como a solicitação atual.",
+        "A resposta nativa não conseguiu usar o contexto do grupo; não diga que não recebeu áudio.",
+        mcpContext,
+        transcription,
+      ]
+        .filter(Boolean)
+        .join("\n\n");
       const followUp = await submitBotInterageSystemAskJob({
         groupId: job.groupId,
         userId: job.userId,
@@ -747,7 +772,7 @@ export async function POST(request: Request) {
         internalMessageId: job.internalMessageId,
         // Sem prefixos nem texto de interface: a IA recebe exatamente o que
         // foi entendido no áudio e responde como em uma mensagem normal.
-        prompt: transcription,
+        prompt: followUpPrompt,
       });
       await completeBotInterageSystemJob({
         jobId,
