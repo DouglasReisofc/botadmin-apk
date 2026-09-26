@@ -390,6 +390,10 @@ export const submitBotInterageSystemAskJob = async (params: {
       prompt: params.prompt.trim(),
       model: "auto",
       provider: "chatgpt",
+      // A resposta de grupo perde utilidade quando espera atrás de gerações
+      // longas. O módulo descarta o job antes de iniciar se a fila exceder
+      // este limite, em vez de responder a um assunto antigo minutos depois.
+      _max_queue_age_ms: 90_000,
       ...(params.attachments?.length ? { attachments: params.attachments } : {}),
       ...(conversation?.conversationId
         ? {
