@@ -162,7 +162,7 @@ const BOTADMIN_MCP_URL =
 
 const isExplicitMcpRequest = (message: string): boolean => {
   const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas)/i.test(
+  return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\bquem (?:s[aã]o|e) (?:os )?(?:admins?|administradores?|donos?|membros?)|\bdescri[cç][aã]o (?:do|deste) grupo|\bregras? (?:do|deste) grupo|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descri[cç][aã]o|regras?)\b)/i.test(
     normalized,
   );
 };
@@ -205,11 +205,15 @@ const resolveExplicitMcpContext = async (input: {
     const normalized = input.message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     const tool = /historico|histórico|mensagens anteriores|contexto/.test(normalized)
       ? "botadmin_get_botinterage_history"
-      : "fetch";
+      : /admin|administrador|dono|membro|descri[cç][aã]o|regra|grupo/.test(normalized)
+        ? "botadmin_get_group_profile"
+        : "fetch";
     const args =
       tool === "fetch"
         ? { id: "botadmin_mcp_probe" }
-        : {
+        : tool === "botadmin_get_group_profile"
+          ? { groupId: input.groupId, groupRemoteId: input.groupRemoteId }
+          : {
             groupId: input.groupId,
             groupRemoteId: input.groupRemoteId,
             senderJid: input.senderJid ?? undefined,

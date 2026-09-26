@@ -16,6 +16,7 @@ import {
 import { getAppBaseUrl } from "lib/meta";
 import { resolveUploadedFileUrl, saveBufferAsUploadedFile } from "lib/uploads";
 import { getOrCreateUserApiKey } from "lib/user-api-keys";
+import { getDb } from "lib/db";
 
 const jsonText = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -1048,6 +1049,61 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
         events,
         instruction:
           "Use estes eventos somente como memoria/contexto. A resposta final deve ser escrita normalmente no ChatGPT para o Cromite capturar.",
+      });
+    },
+  );
+
+  server.registerTool(
+    "botadmin_get_group_profile",
+    {
+      title: "Consultar perfil do grupo",
+      description:
+        "Consulta somente leitura o nome, descrição, dono e participantes administrativos do grupo atual. Use quando alguém perguntar naturalmente quem são os admins, qual é a descrição ou quais são as regras do grupo.",
+      annotations: closedReadToolAnnotations,
+      inputSchema: {
+        groupId: optionalPositiveInt(),
+        groupRemoteId: optionalString(),
+      },
+    },
+    async ({ groupId, groupRemoteId }) => {
+      const db = getDb();
+      const [rows] = await db.query<Array<Record<string, unknown>>>(
+        `SELECT id, remote_id, name, description, owner, participants, metadata
+           FROM bot_groups
+          WHERE (? IS NOT NULL AND id = ?) OR (? IS NOT NULL AND remote_id = ?)
+          ORDER BY id DESC LIMIT 1`,
+        [groupId ?? null, groupId ?? null, groupRemoteId ?? null, groupRemoteId ?? null],
+      );
+      const row = rows[0];
+      if (!row) {
+        return toolResult({ ok: false, message: "Grupo não encontrado no BotAdmin." });
+      }
+      let participants: Array<Record<string, unknown>> = [];
+      try {
+        const raw = typeof row.participants === "string" ? JSON.parse(row.participants) : row.participants;
+        if (Array.isArray(raw)) participants = raw.filter((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+      } catch {
+        participants = [];
+      }
+      const admins = participants
+        .filter((participant) => ["admin", "superadmin"].includes(String(participant.admin ?? participant.role ?? "").toLowerCase()))
+        .map((participant) => ({
+          id: participant.id ?? participant.jid ?? null,
+          name: participant.name ?? participant.notify ?? participant.pushName ?? null,
+          role: String(participant.admin ?? participant.role ?? "admin").toLowerCase(),
+        }));
+      return toolResult({
+        ok: true,
+        group: {
+          id: row.id,
+          remoteId: row.remote_id,
+          name: row.name,
+          description: row.description ?? null,
+          owner: row.owner ?? null,
+          admins,
+          participantCount: participants.length,
+          metadata: row.metadata ?? null,
+        },
       });
     },
   );
