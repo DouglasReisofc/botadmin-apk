@@ -39,6 +39,33 @@ const previewText = (value?: string | null, maxLength = 180): string | null => {
   return text.length > maxLength ? `${text.slice(0, maxLength)}...` : text;
 };
 
+const normalizeParticipantPhone = (value: unknown): string | null => {
+  const raw = String(value ?? "").trim();
+  if (!raw) return null;
+  const local = raw.split("@")[0].split(":")[0].replace(/\D/g, "");
+  return local || null;
+};
+
+const participantLabel = (participant: Record<string, unknown>): string | null => {
+  for (const key of ["name", "notify", "pushName", "verifiedName", "displayName"]) {
+    const value = typeof participant[key] === "string" ? participant[key].trim() : "";
+    if (value) return value;
+  }
+  return null;
+};
+
+const normalizeParticipant = (participant: Record<string, unknown>) => {
+  const phone = normalizeParticipantPhone(participant.phone ?? participant.id ?? participant.jid ?? participant.user);
+  const role = String(participant.admin ?? participant.role ?? "member").toLowerCase();
+  const name = participantLabel(participant);
+  return {
+    phone,
+    name,
+    display: name && phone ? `${name} (${phone})` : name ?? phone,
+    role: role === "superadmin" || role === "admin" ? role : "member",
+  };
+};
+
 const summarizeChatGptPhoneJob = (job: Awaited<ReturnType<typeof completeChatGptPhoneJob>>) => ({
   jobId: job.jobId,
   status: job.status,
@@ -1097,13 +1124,8 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
       } catch {
         participants = [];
       }
-      const admins = participants
-        .filter((participant) => ["admin", "superadmin"].includes(String(participant.admin ?? participant.role ?? "").toLowerCase()))
-        .map((participant) => ({
-          id: participant.id ?? participant.jid ?? null,
-          name: participant.name ?? participant.notify ?? participant.pushName ?? null,
-          role: String(participant.admin ?? participant.role ?? "admin").toLowerCase(),
-        }));
+      const normalizedParticipants = participants.map(normalizeParticipant);
+      const admins = normalizedParticipants.filter((participant) => ["admin", "superadmin"].includes(participant.role));
       return toolResult({
         ok: true,
         group: {
@@ -1111,8 +1133,9 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
           remoteId: row.remote_id,
           name: row.name,
           description: row.description ?? null,
-          owner: row.owner ?? null,
+          owner: normalizeParticipantPhone(row.owner),
           admins,
+          participants: normalizedParticipants,
           participantCount: participants.length,
           participantsSyncedAt: row.participants_synced_at ?? null,
         },

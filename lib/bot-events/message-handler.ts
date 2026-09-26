@@ -368,6 +368,21 @@ const BOT_INTERAGE_CONFIRMATION_CONTEXT_MAX_AGE_MS = 5 * 60 * 1_000;
 const BOT_INTERAGE_CONTEXT_LIMIT = 24;
 const BOT_INTERAGE_CONTEXT_TTL_MS = 2 * 60 * 60_000;
 const BOT_INTERAGE_CONTEXT_CACHE = new Map<number, BotGroupAiMemoryEntry[]>();
+
+/**
+ * Converte Markdown comum para a sintaxe aceita pelo WhatsApp antes de
+ * persistir ou enviar qualquer resposta textual do BotInterage.
+ */
+const sanitizeBotInterageText = (value: string): string => {
+  let text = value.replace(/\r\n?/g, "\n");
+  text = text.replace(/\*{3}([^*\n]+)\*{3}/g, "*$1*");
+  text = text.replace(/\*{2}([^*\n]+)\*{2}/g, "*$1*");
+  text = text.replace(/_{2}([^_\n]+)_{2}/g, "*$1*");
+  text = text.replace(/`([^`\n]+)`/g, "$1");
+  text = text.replace(/^\s*#{1,6}\s+/gm, "");
+  text = text.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, "$1 ($2)");
+  return text.trim();
+};
 const AUTO_RESPONSE_LIMIT = 50;
 const MAX_PRIVATE_COMMAND_LENGTH = 96;
 const IMAGE_GENERATION_USER_LOCK_TTL_MS = 12 * 60_000;
@@ -19539,7 +19554,7 @@ const convertStickerSourceToWebp = async (
       ? { stanzaId: message.id, participant: message.senderJid ?? undefined }
       : undefined;
     const sendBotInterageText = async (body: string): Promise<string | null> => {
-      const trimmed = body.replace(/\s+$/u, "").replace(/^\s+/u, "");
+      const trimmed = sanitizeBotInterageText(body);
       if (!trimmed) {
         return null;
       }
@@ -20867,7 +20882,7 @@ const convertStickerSourceToWebp = async (
       return false;
     }
 
-    const replyText = completion.trim();
+    const replyText = sanitizeBotInterageText(completion);
     if (!replyText) {
       return false;
     }
