@@ -152,6 +152,7 @@ import {
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
   createAndRunBotInterageChatGptPhoneJob,
+  resolveBotAdminMcpContext,
   buildTextPdfBuffer,
   downloadChatGptPhoneArtifact,
   isLikelyChatGptPhoneDocumentRequest,
@@ -19295,6 +19296,12 @@ const convertStickerSourceToWebp = async (
 
     const buildSystemBotInteragePrompt = async (): Promise<string> => {
       const quotedText = await resolveQuotedBotInterageContext();
+      const mcpContext = await resolveBotAdminMcpContext({
+        message: trimmedInput,
+        groupId: group.id,
+        groupRemoteId: group.remoteId,
+        senderJid: message.senderJid ?? senderNorm,
+      });
       const recent = (await listBotInterageGroupMemory(group.id, message.id).catch(() => []))
         .slice(-6)
         .map((entry) => `${entry.role === "assistant" ? "Assistente" : entry.author || "Membro"}: ${entry.content}`)
@@ -19307,6 +19314,9 @@ const convertStickerSourceToWebp = async (
         recent ? `[Contexto recente do grupo — use somente se for pertinente]\n${recent}` : "",
         quotedText
           ? `[Mensagem citada${quoteAuthor ? ` por ${quoteAuthor}` : ""}]\n${quotedText}\n[Fim da mensagem citada]`
+          : "",
+        mcpContext
+          ? `${mcpContext}\n[MCP_RULE]\nUse o resultado autorizado acima como fonte factual para responder à solicitação atual. Não peça ao usuário para mencionar MCP, não exponha detalhes técnicos da consulta e não recuse uma pergunta apenas por ela exigir dados do grupo. Se o resultado disser que o grupo não foi encontrado, informe isso de forma objetiva.\n[/MCP_RULE]`
           : "",
         `[SOLICITAÇÃO ATUAL]\n${trimmedInput}`,
       ].filter(Boolean).join("\n\n");

@@ -160,7 +160,7 @@ const DEFAULT_CONTEXT_LIMIT = 12;
 const BOTADMIN_MCP_URL =
   process.env.BOTADMIN_MCP_URL?.trim().replace(/\/+$/, "") || "https://botadmin.shop/mcp";
 
-const isExplicitMcpRequest = (message: string): boolean => {
+export const isNaturalBotAdminMcpRequest = (message: string): boolean => {
   const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
   return /(?:\bmcp\b|servidor mcp|consulte o botadmin|consulta no botadmin|ferramentas autorizadas|\bquem (?:s[aã]o|e) (?:os )?(?:admins?|administradores?|donos?|membros?)|\bdescri[cç][aã]o (?:do|deste) grupo|\bregras? (?:do|deste) grupo|\b(?:consulte|verifique|confira|busque|pesquise)\b.{0,80}\b(?:grupo|membros?|admins?|descri[cç][aã]o|regras?)\b)/i.test(
     normalized,
@@ -192,13 +192,13 @@ const callBotAdminMcpTool = async (name: string, args: Record<string, unknown>):
   return payload.result?.structuredContent ?? payload.result?.content ?? payload.result ?? null;
 };
 
-const resolveExplicitMcpContext = async (input: {
+export const resolveBotAdminMcpContext = async (input: {
   message: string;
   groupId: number;
   groupRemoteId: string;
   senderJid?: string | null;
 }): Promise<string | null> => {
-  if (!isExplicitMcpRequest(input.message)) {
+  if (!isNaturalBotAdminMcpRequest(input.message)) {
     return null;
   }
   try {
@@ -220,6 +220,11 @@ const resolveExplicitMcpContext = async (input: {
             limit: 20,
           };
     const result = await callBotAdminMcpTool(tool, args);
+    console.info("[chatgpt-phone] consulta MCP natural resolvida", {
+      tool,
+      groupId: input.groupId,
+      hasResult: result !== null && result !== undefined,
+    });
     return `[MCP_RESULTADO_AUTORIZADO]\n${JSON.stringify(result).slice(0, 24_000)}\n[/MCP_RESULTADO_AUTORIZADO]`;
   } catch (error) {
     console.warn("[chatgpt-phone] MCP solicitado no grupo, mas indisponível", {
@@ -3322,7 +3327,7 @@ export const createAndRunBotInterageChatGptPhoneJob = async (input: {
   }).catch(() => []);
   const attachmentPreparation = await prepareFileAttachmentsForChatGptPhone(input.attachments);
   const effectiveAttachments = attachmentPreparation.attachments;
-  const mcpContext = await resolveExplicitMcpContext({
+  const mcpContext = await resolveBotAdminMcpContext({
     message: input.message,
     groupId: input.groupId,
     groupRemoteId: input.groupRemoteId,
