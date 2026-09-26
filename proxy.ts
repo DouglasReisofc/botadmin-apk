@@ -32,8 +32,10 @@ export function proxy(req: NextRequest) {
   // Google has previously discovered malformed root URLs such as `/?&`.
   // Treat an empty ampersand query as the canonical home URL instead of
   // allowing it to reach a 404 page.
-  if (req.nextUrl.pathname === "/" && /^&+$/.test(req.nextUrl.search.slice(1))) {
+  if (req.nextUrl.pathname === "/&" ||
+      (req.nextUrl.pathname === "/" && /^&+$/.test(req.nextUrl.search.slice(1)))) {
     const url = req.nextUrl.clone();
+    url.pathname = "/";
     url.search = "";
     return NextResponse.redirect(url, 308);
   }

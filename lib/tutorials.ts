@@ -147,10 +147,14 @@ export const getAllTutorials = async (): Promise<FieldTutorialMap> =>
   getFieldTutorialsBySlugs(getAdminTutorialSections().flatMap((section) => section.fields.map((field) => field.slug)));
 
 export const getTutorialBySlug = async (slug: string): Promise<FieldTutorial | null> => {
-  // URLs can arrive with a composed or decomposed accent depending on the
-  // crawler/browser. Keep both forms equivalent so a valid public tutorial
-  // never falls through to the noindex/not-found metadata branch.
-  const normalizedSlug = slug.trim().toLowerCase().normalize("NFC");
+  // Next can pass an encoded segment for accented tutorial names.
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    return null;
+  }
+  const normalizedSlug = decodedSlug.trim().toLowerCase().normalize("NFC");
   if (!normalizedSlug) {
     return null;
   }

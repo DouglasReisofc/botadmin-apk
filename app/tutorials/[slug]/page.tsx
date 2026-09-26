@@ -1,7 +1,7 @@
 /* eslint-disable @next/next/no-img-element */
 import Link from "next/link";
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { Container } from "react-bootstrap";
 
 import { getAdminSiteSettings } from "lib/admin-site";
@@ -70,6 +70,15 @@ export async function generateMetadata({ params }: TutorialPageParams): Promise<
 
 const TutorialDetailPage = async ({ params }: TutorialPageParams) => {
   const { slug } = await params;
+  // Generated command guides have a single public canonical URL.
+  let decodedSlug = slug;
+  try {
+    decodedSlug = decodeURIComponent(slug);
+  } catch {
+    notFound();
+  }
+  const commandPath = getCommandPagePathFromTutorialSlug(decodedSlug);
+  if (commandPath) permanentRedirect(commandPath);
   const tutorial = await getPublicTutorialBySlug(slug);
 
   if (!tutorial) {
