@@ -198,7 +198,11 @@ const refreshConversationImages = async (
   const baseUrl = config.baseUrl.replace(/\/+$/, "");
   const prefix = baseUrl.endsWith("/v1") ? baseUrl : `${baseUrl}/v1`;
   const endpoint = `${prefix}/conversations/${encodeURIComponent(conversationId)}/images?limit=5`;
-  for (let attempt = 0; attempt < 3; attempt += 1) {
+  // The native client can index the generated asset a few seconds after the
+  // assistant stream has already completed. Keep this reconciliation window
+  // bounded, but long enough to catch the artifact before the library/API
+  // evicts or hides its temporary reference.
+  for (let attempt = 0; attempt < 8; attempt += 1) {
     try {
       const response = await fetch(endpoint, {
         headers: {
@@ -229,7 +233,7 @@ const refreshConversationImages = async (
     } catch {
       // A próxima tentativa também cobre falha de DNS, túnel e timeout.
     }
-    if (attempt < 2) await wait(500 * (attempt + 1));
+    if (attempt < 7) await wait(Math.min(1_500, 500 * (attempt + 1)));
   }
   return [];
 };
