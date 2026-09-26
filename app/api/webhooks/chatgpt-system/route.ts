@@ -8,6 +8,7 @@ import {
   completeBotInterageSystemJob,
   getBotInterageSystemConversation,
   getBotInterageSystemJob,
+  isBotInterageSystemJobSuperseded,
   botInterageGroupConversationKey,
   saveBotInterageSystemConversation,
   submitBotInterageSystemAskJob,
@@ -425,6 +426,14 @@ export async function POST(request: Request) {
   const job = await getBotInterageSystemJob(jobId);
   if (!job) {
     return NextResponse.json({ message: "Job não encontrado." }, { status: 503 });
+  }
+  if (await isBotInterageSystemJobSuperseded(jobId)) {
+    await completeBotInterageSystemJob({
+      jobId,
+      status: "failed",
+      error: "Resposta descartada porque existe uma solicitação mais nova para este grupo.",
+    });
+    return NextResponse.json({ ok: true, superseded: true });
   }
 
   try {

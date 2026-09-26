@@ -130,6 +130,13 @@ export const getBotInterageSystemConversation = async (
   groupId: number,
   senderJid: string,
 ): Promise<BotInterageSystemConversation | null> => {
+  // O histórico oficial do grupo já é montado no prompt do BotInterage. Não
+  // reutilize o cursor remoto por padrão: uma resposta atrasada do provedor
+  // pode reabrir assunto antigo e ser entregue como se fosse a solicitação
+  // atual. A continuidade remota só é opt-in para diagnóstico controlado.
+  if (process.env.BOTINTERAGE_USE_REMOTE_CONVERSATION !== "true") {
+    return null;
+  }
   await ensureBotInterageSystemTables();
   const db = getDb();
   const [rows] = await db.query<ConversationRow[]>(
@@ -163,6 +170,28 @@ export const getBotInterageSystemConversation = async (
     conversationId: row.conversation_id,
     lastMessageId: row.last_message_id ?? null,
   };
+};
+
+export const isBotInterageSystemJobSuperseded = async (
+  jobId: string,
+): Promise<boolean> => {
+  await ensureBotInterageSystemTables();
+  const db = getDb();
+  const [rows] = await db.query<RowDataPacket[]>(
+    `
+      SELECT newer.job_id
+      FROM botinterage_system_jobs current_job
+      INNER JOIN botinterage_system_jobs newer
+        ON newer.group_id = current_job.group_id
+       AND newer.created_at > current_job.created_at
+       AND newer.status <> 'failed'
+      WHERE current_job.job_id = ?
+      ORDER BY newer.created_at DESC
+      LIMIT 1
+    `,
+    [jobId],
+  );
+  return rows.length > 0;
 };
 
 export const saveBotInterageSystemConversation = async (params: {
