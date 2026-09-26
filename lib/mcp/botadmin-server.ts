@@ -1006,6 +1006,10 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
     },
   );
 
+  if (options.publicMode) {
+    return server;
+  }
+
   server.registerTool(
     "botadmin_get_botinterage_history",
     {
@@ -1068,7 +1072,7 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
     async ({ groupId, groupRemoteId }) => {
       const db = getDb();
       const [rows] = await db.query<Array<Record<string, unknown>>>(
-        `SELECT id, remote_id, name, description, owner, participants, metadata
+        `SELECT id, remote_id, name, description, owner, participants
            FROM bot_groups
           WHERE (? IS NOT NULL AND id = ?) OR (? IS NOT NULL AND remote_id = ?)
           ORDER BY id DESC LIMIT 1`,
@@ -1102,15 +1106,10 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
           owner: row.owner ?? null,
           admins,
           participantCount: participants.length,
-          metadata: row.metadata ?? null,
         },
       });
     },
   );
-
-  if (options.publicMode) {
-    return server;
-  }
 
   server.registerTool(
     "botadmin_get_group_context",

@@ -158,7 +158,7 @@ const MAX_CONTEXT_LIMIT = 80;
 const DEFAULT_CONTEXT_LIMIT = 12;
 
 const BOTADMIN_MCP_URL =
-  process.env.BOTADMIN_MCP_URL?.trim().replace(/\/+$/, "") || "https://botadmin.shop/mcp";
+  process.env.BOTADMIN_MCP_URL?.trim().replace(/\/+$/, "") || "https://botadmin.shop/api/mcp";
 
 export const isNaturalBotAdminMcpRequest = (message: string): boolean => {
   const normalized = message.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
