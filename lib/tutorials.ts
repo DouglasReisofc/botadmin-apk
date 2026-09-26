@@ -147,14 +147,23 @@ export const getAllTutorials = async (): Promise<FieldTutorialMap> =>
   getFieldTutorialsBySlugs(getAdminTutorialSections().flatMap((section) => section.fields.map((field) => field.slug)));
 
 export const getTutorialBySlug = async (slug: string): Promise<FieldTutorial | null> => {
-  const normalizedSlug = slug.trim().toLowerCase();
+  // URLs can arrive with a composed or decomposed accent depending on the
+  // crawler/browser. Keep both forms equivalent so a valid public tutorial
+  // never falls through to the noindex/not-found metadata branch.
+  const normalizedSlug = slug.trim().toLowerCase().normalize("NFC");
   if (!normalizedSlug) {
     return null;
   }
 
   const tutorials = await getFieldTutorialsBySlugs([normalizedSlug]);
-  const tutorial = tutorials[normalizedSlug];
-  return tutorial ?? null;
+  const direct = tutorials[normalizedSlug];
+  if (direct) return direct;
+
+  // Legacy rows may have been stored in NFD form. Resolve those rows without
+  // changing their database key, then use the canonical stored value for the
+  // returned page metadata and content.
+  const all = await getAllFieldTutorials();
+  return all.find((tutorial) => tutorial.slug.trim().toLowerCase().normalize("NFC") === normalizedSlug) ?? null;
 };
 
 export const getPublicTutorialBySlug = async (slug: string): Promise<FieldTutorial | null> => {
