@@ -156,6 +156,7 @@ import {
 import { isBotInterageChatGptPhoneModel } from "lib/botinterage-chatgpt-phone";
 import {
   createAndRunBotInterageChatGptPhoneJob,
+  executeBotAdminMcpTool,
   resolveBotAdminMcpContext,
   buildTextPdfBuffer,
   downloadChatGptPhoneArtifact,
@@ -19432,6 +19433,28 @@ const convertStickerSourceToWebp = async (
       {
         type: "function" as const,
         function: {
+          name: "botadmin_get_group_profile",
+          description:
+            "Consulta em tempo real o perfil do grupo atual: nome, descrição, dono, administradores e quantidade de participantes. Use quando a resposta depender de dados do grupo.",
+          parameters: { type: "object", properties: {}, additionalProperties: false },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
+          name: "botadmin_get_group_context",
+          description:
+            "Consulta o contexto recente persistido do BotInterage no grupo atual. Use quando precisar recuperar uma informação anterior do próprio grupo.",
+          parameters: {
+            type: "object",
+            properties: { limit: { type: "integer", minimum: 1, maximum: 40 } },
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "download_youtube_video",
           description:
             "Use quando o usuario pedir video, MP4, clipe ou video do YouTube. Esta ferramenta nao baixa direto: ela abre a selecao play com botoes MP3/MP4.",
@@ -19467,7 +19490,11 @@ const convertStickerSourceToWebp = async (
       }
       downloadIntent = { ...downloadIntent, query: normalizedQuery };
     }
+    // MCP is exposed as real model tools for every private-LLM turn. The
+    // model decides whether a group lookup is needed; no keyword matching is
+    // used to force a canned answer.
     const exposeDownloadTools = downloadIntent.shouldUseTools;
+    const exposeBotAdminTools = canUsePrivateLlm;
     const history = buildBotInterageHistory(filtered, exposeDownloadTools);
     const systemRules = [
       "Regras internas do BotAdmin: estas regras têm prioridade sobre o prompt configurado no painel.",
@@ -19492,6 +19519,11 @@ const convertStickerSourceToWebp = async (
     } else {
       systemRules.push(
         "A mensagem atual não foi classificada como pedido real de download; não fale em baixar música/vídeo e não peça nome ou URL de mídia.",
+      );
+    }
+    if (exposeBotAdminTools) {
+      systemRules.push(
+        "Você tem ferramentas nativas do BotAdmin para consultar o grupo atual. Chame uma ferramenta quando a pergunta depender de membros, administradores, descrição, regras ou contexto anterior; não invente dados. Depois da ferramenta, responda normalmente ao usuário.",
       );
     }
 
@@ -20640,7 +20672,7 @@ const convertStickerSourceToWebp = async (
     let completion: string | null = null;
     let completionArtifacts: BotInterageArtifact[] = [];
     let toolCalls:
-      | Array<{ name: string; arguments: Record<string, unknown> }>
+      | Array<{ id: string; name: string; arguments: Record<string, unknown> }>
       | undefined;
     let llmError:
       | {
@@ -20663,8 +20695,46 @@ const convertStickerSourceToWebp = async (
         token: runtimeConfig!.token,
         model: primaryModel,
         messages: chatMessages,
-        tools: exposeDownloadTools ? botInterageTools : undefined,
+        tools: exposeBotAdminTools ? botInterageTools : undefined,
       }));
+
+      // Complete one native tool round-trip: model -> MCP -> model. The
+      // second completion receives the standard assistant/tool messages, so
+      // the answer is authored by the model with the actual tool result.
+      const mcpCalls = (toolCalls ?? []).filter((call) =>
+        call.name === "botadmin_get_group_profile" || call.name === "botadmin_get_group_context",
+      );
+      if (mcpCalls.length > 0) {
+        const toolMessages = await Promise.all(mcpCalls.map(async (call) => {
+          const args = { ...call.arguments, groupId: group.id, groupRemoteId: group.remoteId,
+            ...(call.name === "botadmin_get_group_profile" ? { refreshParticipants: true } : { limit: call.arguments.limit ?? 20 }) };
+          const result = await executeBotAdminMcpTool(call.name, args).catch((error) => ({
+            ok: false,
+            error: error instanceof Error ? error.message : String(error),
+          }));
+          return {
+            role: "tool" as const,
+            tool_call_id: call.id,
+            content: JSON.stringify(result),
+          };
+        }));
+        const assistantToolMessage = {
+          role: "assistant" as const,
+          content: completion ?? "",
+          tool_calls: mcpCalls.map((call) => ({
+            id: call.id,
+            type: "function" as const,
+            function: { name: call.name, arguments: JSON.stringify(call.arguments) },
+          })),
+        };
+        ({ content: completion, toolCalls, artifacts: completionArtifacts = [], error: llmError } = await createBotInterageChatCompletion({
+          baseUrl: runtimeConfig!.baseUrl,
+          token: runtimeConfig!.token,
+          model: primaryModel,
+          messages: [...chatMessages, assistantToolMessage, ...toolMessages],
+          tools: botInterageTools,
+        }));
+      }
 
       if (!completion && llmError?.type === "invalid_request" && configuredModel && configuredModel !== runtimeModel) {
         console.warn("[bot-interage] modelo do grupo recusado; tentando modelo global", {
@@ -20678,7 +20748,7 @@ const convertStickerSourceToWebp = async (
           token: runtimeConfig!.token,
           model: runtimeModel,
           messages: chatMessages,
-          tools: exposeDownloadTools ? botInterageTools : undefined,
+          tools: exposeBotAdminTools ? botInterageTools : undefined,
         }));
       }
     } else {

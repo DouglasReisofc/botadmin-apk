@@ -192,6 +192,12 @@ const callBotAdminMcpTool = async (name: string, args: Record<string, unknown>):
   return payload.result?.structuredContent ?? payload.result?.content ?? payload.result ?? null;
 };
 
+/** Execute a BotAdmin MCP tool on behalf of the model's native tool call. */
+export const executeBotAdminMcpTool = async (
+  name: string,
+  args: Record<string, unknown>,
+): Promise<unknown> => callBotAdminMcpTool(name, args);
+
 export const resolveBotAdminMcpContext = async (input: {
   message: string;
   groupId: number;

@@ -1,7 +1,13 @@
 export type BotInterageChatMessage = {
-  role: "system" | "user" | "assistant";
+  role: "system" | "user" | "assistant" | "tool";
   content: string;
   images?: string[];
+  tool_calls?: Array<{
+    id: string;
+    type: "function";
+    function: { name: string; arguments: string };
+  }>;
+  tool_call_id?: string;
 };
 
 export type BotInterageChatOptions = {
@@ -24,6 +30,7 @@ export type BotInterageToolDefinition = {
 };
 
 export type BotInterageToolCall = {
+  id: string;
   name: string;
   arguments: Record<string, unknown>;
 };
@@ -144,6 +151,7 @@ const extractToolCalls = (payload: any): BotInterageToolCall[] => {
         return null;
       }
       return {
+        id: typeof call?.id === "string" && call.id.trim() ? call.id.trim() : `tool_call_${Math.random().toString(36).slice(2)}`,
         name: name.trim(),
         arguments: parseToolArguments(call?.function?.arguments),
       };
