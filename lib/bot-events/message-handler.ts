@@ -19377,10 +19377,18 @@ const convertStickerSourceToWebp = async (
       return true;
     }
     const isSystemAudioBotInterage =
-      currentBotInterageMediaKind === "audio" &&
       botInterageAudioEnabled &&
       aiProvider === "chatgpt_system" &&
-      runtimeConfig !== null;
+      runtimeConfig !== null &&
+      (currentBotInterageMediaKind === "audio" ||
+        // A text message replying to an audio must use the same native audio
+        // endpoint as a directly sent voice note.  Otherwise the audio was
+        // uploaded as a generic attachment and the model often answered the
+        // request without transcribing the quoted media first.
+        Boolean(message.quotedMessageId) &&
+        /\b(?:audio|áudio|voz|ptt|nota de voz|resuma|resumir|transcreva|transcrever|escute|ou[cç]a|baseado|neste|nesse|nela|nele)\b/i.test(
+          trimmedInput,
+        ));
     if (!isSystemAudioBotInterage) {
       void recordBotInterageContextSafe("user", trimmedInput);
     }
@@ -20135,6 +20143,13 @@ const convertStickerSourceToWebp = async (
         }).catch(() => undefined);
       }
 
+      const audioPrompt = [
+        "A entrada principal desta solicitação é o áudio anexado (direto ou citado).",
+        "Escute/transcreva o áudio antes de responder e execute a tarefa pedida sobre o conteúdo dele.",
+        "Se a solicitação pedir resumo, resumo deve ser baseado exclusivamente no áudio; se pedir criação, use o áudio como contexto e entregue o arquivo/texto solicitado.",
+        trimmedInput || "Transcreva o áudio e responda ao que foi pedido.",
+      ].join("\n");
+
       // O endpoint nativo já faz transcrição + conversa em uma única operação
       // e também preserva eventuais arquivos gerados pela IA. Não transcreva
       // localmente e depois envie para /chat/completions: isso perdia contexto,
@@ -20152,7 +20167,7 @@ const convertStickerSourceToWebp = async (
             // O endpoint nativo transcreve primeiro. Não acrescentamos uma
             // frase decorativa ao áudio: a transcrição literal seguirá como
             // uma mensagem comum para a IA no webhook.
-            prompt: trimmedInput,
+            prompt: audioPrompt,
             audio: {
               name: audio.name,
               mimeType: audio.mimeType || "audio/ogg",
@@ -20164,6 +20179,7 @@ const convertStickerSourceToWebp = async (
           console.info("[bot-interage] áudio enviado para /v1/audio/native/ask", {
             groupId: group.id,
             messageId: message.id ?? null,
+            quotedMessageId: message.quotedMessageId ?? null,
             jobId: job.jobId,
             status: job.status,
           });
