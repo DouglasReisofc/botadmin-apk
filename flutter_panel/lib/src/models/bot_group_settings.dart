@@ -840,6 +840,7 @@ class GroupScheduledAdConfig {
     required this.enabled,
     required this.caption,
     required this.captionVariations,
+    this.messageVariants = const [],
     required this.mentionAll,
     required this.scheduleType,
     required this.frequency,
@@ -853,6 +854,7 @@ class GroupScheduledAdConfig {
   final bool enabled;
   final String caption;
   final List<String> captionVariations;
+  final List<GroupScheduledAdConfig> messageVariants;
   final bool mentionAll;
   final String scheduleType;
   final String? frequency;
@@ -914,6 +916,7 @@ class GroupScheduledAdConfig {
       enabled: !json.containsKey('enabled') || _asBool(json['enabled']),
       caption: (json['caption'] ?? '').toString(),
       captionVariations: _stringList(json['captionVariations'] ?? json['caption_variations']),
+      messageVariants: _list(json['messageVariants']).map((entry) => GroupScheduledAdConfig.fromJson(_map(entry))).toList(),
       mentionAll: _asBool(json['mentionAll'] ?? json['mention_all']),
       scheduleType:
           (json['scheduleType'] ?? json['schedule_type'] ?? 'frequency')

@@ -172,6 +172,7 @@ export async function POST(
     enabled: enabled ?? true,
     caption: typeof payload.caption === "string" ? payload.caption : "",
     captionVariations: Array.isArray(payload.captionVariations) ? payload.captionVariations : [],
+    messageVariants: Array.isArray(payload.messageVariants) ? payload.messageVariants : [],
     mentionAll: mentionAll ?? false,
     scheduleType,
     frequency,

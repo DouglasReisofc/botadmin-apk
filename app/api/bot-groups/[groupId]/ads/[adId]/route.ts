@@ -123,6 +123,10 @@ export async function PATCH(
         patch.captionVariations = payload.captionVariations;
         patch.lastVariationIndex = null;
       }
+      if (Array.isArray(payload.messageVariants)) {
+        patch.messageVariants = payload.messageVariants;
+        patch.lastVariationIndex = null;
+      }
       if (mentionAll !== undefined) {
         patch.mentionAll = mentionAll;
       }

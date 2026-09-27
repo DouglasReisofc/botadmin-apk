@@ -4479,6 +4479,7 @@ class _ScheduledAdDraft {
     required this.enabled,
     required this.caption,
     required this.captionVariations,
+    this.messageVariants = const [],
     required this.mentionAll,
     required this.scheduleType,
     required this.frequency,
@@ -4490,6 +4491,7 @@ class _ScheduledAdDraft {
   final bool enabled;
   final String caption;
   final List<String> captionVariations;
+  final List<_ScheduledAdDraft> messageVariants;
   final bool mentionAll;
   final String scheduleType;
   final String frequency;
@@ -4501,6 +4503,10 @@ class _ScheduledAdDraft {
     'enabled': enabled,
     'caption': caption,
     'captionVariations': captionVariations,
+    // Cada alternativa é persistida como um snapshot completo da mensagem.
+    // Assim o dispatcher alterna o balão inteiro (mídia e botões incluídos),
+    // e não apenas troca o texto no último segundo.
+    'messageVariants': messageVariants.map((variant) => variant.toPayload()).toList(),
     'mentionAll': mentionAll,
     'scheduleType': scheduleType,
     'frequency': frequency,
@@ -4512,10 +4518,11 @@ class _ScheduledAdDraft {
 }
 
 class _ScheduledAdEditorDialog extends ConsumerStatefulWidget {
-  const _ScheduledAdEditorDialog({required this.group, required this.initial});
+  const _ScheduledAdEditorDialog({required this.group, required this.initial, this.variantOnly = false});
 
   final BotGroup group;
   final GroupScheduledAdConfig initial;
+  final bool variantOnly;
 
   @override
   ConsumerState<_ScheduledAdEditorDialog> createState() =>
@@ -4526,6 +4533,7 @@ class _ScheduledAdEditorDialogState
     extends ConsumerState<_ScheduledAdEditorDialog> {
   late final TextEditingController _caption;
   late final List<TextEditingController> _variations;
+  final List<_ScheduledAdDraft> _messageVariants = [];
   late final TextEditingController _frequency;
   late final TextEditingController _times;
   late bool _enabled;
@@ -4551,6 +4559,14 @@ class _ScheduledAdEditorDialogState
     _scheduleType = initial.scheduleType == 'times' ? 'times' : 'frequency';
     _media = initial.media;
     _buttons = [...initial.buttons];
+    for (final variant in initial.messageVariants) {
+      _messageVariants.add(_ScheduledAdDraft(enabled: true, caption: variant.caption, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: variant.media, buttons: variant.buttons));
+    }
+    if (_messageVariants.isEmpty) {
+      for (final text in initial.captionVariations) {
+        _messageVariants.add(_ScheduledAdDraft(enabled: true, caption: text, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: initial.media, buttons: initial.buttons));
+      }
+    }
   }
 
   @override
@@ -4592,44 +4608,53 @@ class _ScheduledAdEditorDialogState
       children: [
         bubble,
         const SizedBox(height: 16),
-        ConstrainedBox(
+        if (!widget.variantOnly) ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 430),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Row(
                 children: [
-                  const Expanded(child: Text('Variações de texto', style: TextStyle(fontWeight: FontWeight.w800))),
+                  const Expanded(child: Text('Mensagens alternativas completas', style: TextStyle(fontWeight: FontWeight.w800))),
                   TextButton.icon(
-                    onPressed: _variations.length >= 20 ? null : () => setState(() => _variations.add(TextEditingController())),
+                    onPressed: _messageVariants.length >= 20 ? null : () => _editVariant(),
                     icon: const Icon(Icons.add_rounded),
                     label: const Text('Adicionar'),
                   ),
                 ],
               ),
-              const Text('A cada envio, uma versão é sorteada sem repetir a anterior.'),
+              const Text('Cada alternativa tem seu próprio texto, mídia e botões. O horário é compartilhado.'),
               const SizedBox(height: 8),
-              for (var index = 0; index < _variations.length; index++)
+              for (var index = 0; index < _messageVariants.length; index++)
                 Padding(
                   padding: const EdgeInsets.only(bottom: 8),
-                  child: Row(
+                  child: Column(
+                    children: [
+                    Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _variations[index],
-                          minLines: 2,
-                          maxLines: 5,
-                          decoration: InputDecoration(
-                            labelText: 'Variação ${index + 1}',
-                            border: const OutlineInputBorder(),
-                          ),
-                        ),
+                        child: ListTile(title: Text('Mensagem ${index + 2}'), subtitle: Text(_messageVariants[index].caption.isEmpty ? 'Mídia / botões' : _messageVariants[index].caption, maxLines: 2, overflow: TextOverflow.ellipsis), trailing: const Icon(Icons.edit_outlined), onTap: () => _editVariant(index)),
                       ),
                       IconButton(
                         tooltip: 'Remover variação',
-                        onPressed: () => setState(() => _variations.removeAt(index).dispose()),
+                        onPressed: () => setState(() => _messageVariants.removeAt(index)),
                         icon: const Icon(Icons.delete_outline_rounded),
                       ),
+                    ],
+                    ),
+                    _ScheduledAdBubblePreview(
+                      caption: _messageVariants[index].caption,
+                      media: _messageVariants[index].media,
+                      localMediaBytes: null,
+                      uploading: false,
+                      buttons: _messageVariants[index].buttons,
+                      onEditText: () => _editVariant(index),
+                      onPickMedia: () => _editVariant(index),
+                      onClearMedia: null,
+                      onAddButton: () => _editVariant(index),
+                      onEditButton: (_) => _editVariant(index),
+                      onRemoveButton: (_) => _editVariant(index),
+                    ),
                     ],
                   ),
                 ),
@@ -4682,7 +4707,7 @@ class _ScheduledAdEditorDialogState
               child: compact
                   ? ListView(
                       padding: const EdgeInsets.all(12),
-                      children: [preview, const SizedBox(height: 12), schedule],
+                      children: [preview, if (!widget.variantOnly) ...[const SizedBox(height: 12), schedule]],
                     )
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4697,8 +4722,8 @@ class _ScheduledAdEditorDialogState
                             ),
                           ),
                         ),
-                        VerticalDivider(width: 1, color: wa.divider),
-                        SizedBox(
+                        if (!widget.variantOnly) VerticalDivider(width: 1, color: wa.divider),
+                        if (!widget.variantOnly) SizedBox(
                           width: 350,
                           child: SingleChildScrollView(
                             padding: const EdgeInsets.all(16),
@@ -4712,6 +4737,14 @@ class _ScheduledAdEditorDialogState
         ),
       ),
     );
+  }
+
+  Future<void> _editVariant([int? index]) async {
+    final current = index == null ? null : _messageVariants[index];
+    final initial = current == null ? GroupScheduledAdConfig.newDraft() : GroupScheduledAdConfig(id: '', enabled: true, caption: current.caption, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: current.media, buttons: current.buttons, lastSentAt: null);
+    final result = await showDialog<_ScheduledAdDraft>(context: context, builder: (_) => _ScheduledAdEditorDialog(group: widget.group, initial: initial, variantOnly: true));
+    if (result == null || !mounted) return;
+    setState(() { if (index == null) { _messageVariants.add(result); } else { _messageVariants[index] = result; } });
   }
 
   Future<void> _editText() async {
@@ -4873,7 +4906,8 @@ class _ScheduledAdEditorDialogState
       _ScheduledAdDraft(
         enabled: _enabled,
         caption: caption,
-        captionVariations: _variations.map((controller) => controller.text.trim()).where((text) => text.isNotEmpty).toList(),
+        captionVariations: const [],
+        messageVariants: List.of(_messageVariants),
         mentionAll: _mentionAll,
         scheduleType: _scheduleType,
         frequency: frequency.isEmpty ? '24h' : frequency,

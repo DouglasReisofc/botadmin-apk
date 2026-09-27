@@ -84,6 +84,9 @@ writeAtomic(bootstrapFile, bootstrap);
 
 if (fs.existsSync(indexFile)) {
   let index = fs.readFileSync(indexFile, "utf8");
+  // HTML is also served at /dashboard/user (without a trailing slash).
+  // A root base silently turns every Flutter asset request into a 404.
+  index = index.replace(/<base\s+href="[^"]*"\s*\/?\s*>/, '<base href="/dashboard/user/">');
   index = index.replace(/__BOTADMIN_FLUTTER_BOOT_VERSION__/g, version);
   index = index.replace(
     /link\.href = 'main\.dart\.js\?v=' \+ Date\.now\(\);/,
@@ -93,6 +96,8 @@ if (fs.existsSync(indexFile)) {
     /script\.src\s*=\s*'flutter_bootstrap\.js\?v='\s*\+\s*Date\.now\(\);/,
     `script.src = '${versionedBootstrapName}';`,
   );
+  index = index.replace(/script\.src\s*=\s*'flutter_bootstrap\.v[^']+\.js';/, `script.src = '${versionedBootstrapName}';`);
+  index = index.replace(/link\.href\s*=\s*'main\.dart\.v[^']+\.js';/, `link.href = '${versionedName}';`);
   writeAtomic(indexFile, index);
 }
 

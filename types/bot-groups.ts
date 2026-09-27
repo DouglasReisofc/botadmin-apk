@@ -302,6 +302,8 @@ export type BotGroupAd = {
   enabled?: boolean;
   caption: string;
   captionVariations?: string[];
+  /** Complete message snapshots used by the scheduler (caption + media + buttons). */
+  messageVariants?: BotGroupAdMessageVariant[];
   lastVariationIndex?: number | null;
   mentionAll: boolean;
   scheduleType: "frequency" | "times";
@@ -314,6 +316,13 @@ export type BotGroupAd = {
   interactiveButtons?: BotGroupWelcomeReplyButton[] | null;
   createdAt: string;
   updatedAt: string;
+};
+
+export type BotGroupAdMessageVariant = {
+  caption: string;
+  media: BotGroupAutoResponseMedia | null;
+  responseButtons?: BotAutoResponseButtons | null;
+  interactiveButtons?: BotGroupWelcomeReplyButton[] | null;
 };
 
 export type BotGroupHorapgConfig = {

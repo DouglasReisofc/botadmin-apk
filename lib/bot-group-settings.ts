@@ -3060,12 +3060,36 @@ const normalizeAdEntry = (raw: Partial<BotGroupAd> & Record<string, unknown>): B
     ? raw.captionVariations.filter((entry): entry is string => typeof entry === "string")
         .map((entry) => entry.replace(/\r\n/g, "\n").trim()).filter(Boolean).slice(0, 20)
     : [];
+  const messageVariants = Array.isArray(raw.messageVariants)
+    ? raw.messageVariants
+        .filter((entry): entry is Record<string, unknown> => Boolean(entry && typeof entry === "object"))
+        .map((entry) => {
+          const rawVariantButtons = entry.interactiveButtons ?? entry.interactive_buttons;
+          const variantButtons = Array.isArray(rawVariantButtons)
+            ? rawVariantButtons
+                .map((button, index) => sanitizeReplyButtonEntry(button, index + 1))
+                .filter((button): button is BotGroupWelcomeReplyButton => Boolean(button))
+                .slice(0, 3)
+            : null;
+          return {
+            caption: typeof entry.caption === "string"
+              ? entry.caption.replace(/\r\n/g, "\n").trim()
+              : "",
+            media: normalizeAutoResponseMedia(entry.media ?? null),
+            responseButtons: normalizeAutoResponseButtons(entry.responseButtons ?? entry.response_buttons ?? null),
+            interactiveButtons: variantButtons,
+          };
+        })
+        .filter((entry) => Boolean(entry.caption) || Boolean(entry.media) || Boolean(entry.interactiveButtons?.length))
+        .slice(0, 20)
+    : [];
 
   return {
     id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : randomUUID(),
     enabled,
     caption,
     captionVariations,
+    messageVariants,
     lastVariationIndex: Number.isInteger(raw.lastVariationIndex) ? Number(raw.lastVariationIndex) : null,
     mentionAll: mentionAllRaw === true || mentionAllRaw === "true",
     scheduleType: times.length > 0 && scheduleType === "times" ? "times" : "frequency",
