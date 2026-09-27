@@ -660,7 +660,7 @@ export async function POST(request: Request) {
       // campos explícitos e invoque o MCP do BotAdmin diretamente.
       const money = transcription.match(/(?:r\$|rs?\.?\s*)\s*([\d.,]+)\s*(?:reais?|no\s+pix)?/i);
       const prize = money ? `R$ ${money[1].replace(/\./g, "").replace(",", ".")}${/pix/i.test(transcription) ? " no Pix" : ""}` : null;
-      const winnersMatch = transcription.match(/(?:com|para|ter(?:á)?|s[oó])\s*(?:um|uma|1|dois|duas|2|tr[eê]s|3|\d+)\s+ganhador/i);
+      const winnersMatch = transcription.match(/(?:com|para|ter(?:á)?|s[oó])\s*((?:um|uma|1|dois|duas|2|tr[eê]s|3|\d+))\s+ganhador/i);
       const wordNumbers: Record<string, number> = { um: 1, uma: 1, dois: 2, duas: 2, "três": 3, "tres": 3 };
       const winnersCount = winnersMatch ? (wordNumbers[winnersMatch[1].toLowerCase()] ?? Number(winnersMatch[1])) : null;
       const relative = transcription.match(/(?:daqui\s+a\s+)(\d+|um|uma|dois|duas|tr[eê]s)\s*(minutos?|mins?|horas?|h)/i);
