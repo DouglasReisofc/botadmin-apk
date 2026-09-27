@@ -16,6 +16,7 @@ export type BotInterageChatOptions = {
   model: string;
   messages: BotInterageChatMessage[];
   tools?: BotInterageToolDefinition[];
+  toolChoice?: "auto" | "required" | { type: "function"; function: { name: string } };
   temperature?: number;
   timeoutMs?: number;
 };
@@ -278,6 +279,7 @@ export const createBotInterageChatCompletion = async (
           model,
           messages: options.messages,
           ...(options.tools && options.tools.length > 0 ? { tools: options.tools } : {}),
+          ...(options.toolChoice ? { tool_choice: options.toolChoice } : {}),
           stream: false,
           temperature: options.temperature ?? DEFAULT_TEMPERATURE,
         }),

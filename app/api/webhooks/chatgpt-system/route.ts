@@ -648,7 +648,8 @@ export async function POST(request: Request) {
     };
 
     const handleAudioBotAdminToolRequest = async (transcription: string): Promise<boolean> => {
-      if (!isAudioJob || !transcription.trim() || isInternalDelivery) return false;
+      const raffleIntent = /\b(?:sorteio|enquete|ganhador(?:es)?|pr[eê]mio|participar|pix)\b/i.test(transcription);
+      if (!isAudioJob || !raffleIntent || !transcription.trim() || isInternalDelivery) return false;
       const runtime = await getBotInterageRuntimeConfig().catch(() => null);
       if (!runtime?.enabled || !runtime.token) return false;
       const tools = [{
@@ -679,6 +680,7 @@ export async function POST(request: Request) {
           { role: "user", content: transcription },
         ],
         tools,
+        toolChoice: { type: "function", function: { name: "botadmin_create_group_sweepstake" } },
         timeoutMs: 60_000,
       });
       const calls = (first.toolCalls ?? []).filter((call) => call.name === "botadmin_create_group_sweepstake");
