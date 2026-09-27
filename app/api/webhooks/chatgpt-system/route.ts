@@ -20,6 +20,7 @@ import {
   resolveBotAdminMcpContext,
 } from "lib/chatgpt-phone";
 import { createBotInterageChatCompletion } from "lib/apis/botinterage";
+import { parseAudioRaffleRequest } from "lib/botinterage-raffle-intent";
 import { getInstanceForUser } from "lib/bot-instances";
 import { getGroupSettings } from "lib/bot-group-settings";
 import { getBotInterageTtsRuntimeConfig } from "lib/admin-botinterage-tts-config";
@@ -658,30 +659,29 @@ export async function POST(request: Request) {
       // O endpoint privado atual não implementa tool_calls. Não delegue este
       // pedido ao ChatGPT (que pode criar um agendamento próprio): extraia os
       // campos explícitos e invoque o MCP do BotAdmin diretamente.
-      const money = transcription.match(/(?:r\$|rs?\.?\s*)\s*([\d.,]+)\s*(?:reais?|no\s+pix)?/i);
-      const prize = money ? `R$ ${money[1].replace(/\./g, "").replace(",", ".")}${/pix/i.test(transcription) ? " no Pix" : ""}` : null;
-      const winnersMatch = transcription.match(/(?:com|para|ter(?:á)?|s[oó])\s*((?:um|uma|1|dois|duas|2|tr[eê]s|3|\d+))\s+ganhador/i);
-      const wordNumbers: Record<string, number> = { um: 1, uma: 1, dois: 2, duas: 2, "três": 3, "tres": 3 };
-      const winnersCount = winnersMatch ? (wordNumbers[winnersMatch[1].toLowerCase()] ?? Number(winnersMatch[1])) : null;
-      const relative = transcription.match(/(?:daqui\s+a\s+)(\d+|um|uma|dois|duas|tr[eê]s)\s*(minutos?|mins?|horas?|h)/i);
-      const relativeAmount = relative ? (wordNumbers[relative[1].toLowerCase()] ?? Number(relative[1])) : 0;
-      const endsAt = relative && Number.isFinite(relativeAmount) && relativeAmount > 0
-        ? new Date(Date.now() + relativeAmount * (/hora|\bh\b/i.test(relative[2]) ? 3_600_000 : 60_000)).toISOString()
-        : null;
-      if (!prize || !winnersCount || !endsAt) return false;
+      const request = parseAudioRaffleRequest(transcription);
+      if (!request) return false;
+      if (request.missing) {
+        const messageId = await sendJobText("Para criar a enquete, informe o prêmio, quantos ganhadores e em quanto tempo termina o sorteio.");
+        await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
+        return true;
+      }
       const result = await executeBotAdminMcpTool("botadmin_create_group_sweepstake", {
-        prize,
-        endsAt,
-        winnersCount,
-        mentionAll: true,
+        prize: request.prize,
+        endsAt: request.endsAt,
+        winnersCount: request.winnersCount,
+        mentionAll: request.mentionAll,
         groupId: job.groupId,
         groupRemoteId: job.chatId,
         senderJid: job.senderJid,
         requestMessageId: job.whatsappMessageId || job.jobId,
       }).catch((error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
-      const answer = result && typeof result === "object" && "message" in result
-        ? String((result as { message?: unknown }).message || "Sorteio processado pelo BotAdmin.")
-        : "Sorteio processado pelo BotAdmin.";
+      const outcome = asRecord(result);
+      console.info("[bot-interage] resultado MCP sorteio áudio", { jobId, groupId: job.groupId, ok: outcome?.ok, pollMessageId: outcome?.pollMessageId, message: outcome?.message });
+      if (outcome?.ok !== true && !outcome?.message) throw new Error("MCP não confirmou a criação do sorteio.");
+      const answer = outcome?.ok === true
+        ? "Sorteio publicado! Participe votando na enquete acima."
+        : String(outcome?.message);
       const messageId = await sendJobText(answer);
       await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
       return true;
