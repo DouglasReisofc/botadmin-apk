@@ -18,6 +18,9 @@ import { resolveUploadedFileUrl, saveBufferAsUploadedFile } from "lib/uploads";
 import { getOrCreateUserApiKey } from "lib/user-api-keys";
 import { getDb } from "lib/db";
 import { syncGroupInfo } from "lib/bot-groups";
+import { createSweepstake, findActiveSweepstakeByGroup } from "lib/bot-sweepstakes";
+import { sendPollMessage, resolveWhatsappLidsToPhones } from "lib/wuzapi";
+import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
 
 const jsonText = (value: unknown) => JSON.stringify(value, null, 2);
 
@@ -1140,6 +1143,105 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
           participantsSyncedAt: row.participants_synced_at ?? null,
         },
       });
+    },
+  );
+
+  server.registerTool(
+    "botadmin_create_group_sweepstake",
+    {
+      title: "Criar sorteio por enquete no grupo atual",
+      description:
+        "Cria e publica uma enquete real de sorteio no grupo WhatsApp atual. Apenas quem vota em Participar entra. Informe premio, encerramento em ISO 8601 com fuso, quantidade de ganhadores, limite de participantes e se deve mencionar todos de forma oculta na enquete. Use somente diante de pedido explícito de um administrador.",
+      annotations: closedWriteToolAnnotations,
+      inputSchema: {
+        groupId: z.number().int().positive(),
+        groupRemoteId: z.string().min(1),
+        senderJid: z.string().min(1),
+        requestMessageId: z.string().min(1),
+        prize: z.string().min(1).max(200),
+        endsAt: z.string().datetime({ offset: true }),
+        winnersCount: z.number().int().min(1).max(50),
+        maxParticipants: z.number().int().min(1).max(10000).optional(),
+        mentionAll: z.boolean().optional(),
+      },
+    },
+    async ({ groupId, groupRemoteId, senderJid, requestMessageId, prize, endsAt, winnersCount, maxParticipants, mentionAll }) => {
+      const db = getDb();
+      const [rows] = await db.query<Array<Record<string, unknown>>>(
+        `SELECT g.id, g.user_id, g.instance_id, g.remote_id, g.participants,
+                i.base_url, i.token, i.phone, i.session_status
+           FROM bot_groups g JOIN bot_instances i ON i.id = g.instance_id
+          WHERE g.id = ? AND g.remote_id = ? LIMIT 1`,
+        [groupId, groupRemoteId],
+      );
+      const row = rows[0];
+      if (!row || !row.base_url || !row.token || String(row.session_status).toLowerCase() !== "conectado") {
+        return toolResult({ ok: false, message: "Grupo ou instância indisponível para publicar a enquete." });
+      }
+      const client = { baseUrl: String(row.base_url), token: String(row.token) };
+      const guard = await resolveBotAutomationGuard({
+        userId: Number(row.user_id), instanceId: Number(row.instance_id), groupId: Number(row.id),
+      });
+      if (guard.blocked) return toolResult({ ok: false, message: "Automação não autorizada neste grupo." });
+      await syncGroupInfo(Number(row.user_id), Number(row.id), { maxAgeMs: 0 });
+      const [freshRows] = await db.query<Array<Record<string, unknown>>>(
+        "SELECT participants FROM bot_groups WHERE id = ? LIMIT 1", [groupId],
+      );
+      let participants: Array<Record<string, unknown>> = [];
+      try {
+        const raw = freshRows[0]?.participants;
+        const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+        if (Array.isArray(parsed)) participants = parsed.filter((entry) => entry && typeof entry === "object");
+      } catch { /* fail closed below */ }
+      if (participants.length === 0) return toolResult({ ok: false, message: "Não foi possível validar os administradores do grupo." });
+      const senderPhone = senderJid.endsWith("@lid")
+        ? (await resolveWhatsappLidsToPhones(client, [senderJid]).catch(() => new Map())).get(normalizeParticipantPhone(senderJid) ?? "")
+        : normalizeParticipantPhone(senderJid);
+      const senderDigits = senderPhone ?? normalizeParticipantPhone(senderJid);
+      const ownDigits = normalizeParticipantPhone(row.phone);
+      const isAdmin = senderDigits === ownDigits || participants.some((participant) =>
+        ["admin", "superadmin"].includes(String(participant.admin ?? participant.role ?? "").toLowerCase()) &&
+        normalizeParticipantPhone(participant.id ?? participant.jid ?? participant.phone) === senderDigits,
+      );
+      if (!senderDigits || !isAdmin) return toolResult({ ok: false, message: "Somente um administrador confirmado pode criar o sorteio." });
+
+      const expiration = new Date(endsAt);
+      const durationMs = expiration.getTime() - Date.now();
+      if (!Number.isFinite(durationMs) || durationMs < 30_000 || durationMs > 7 * 86_400_000) {
+        return toolResult({ ok: false, message: "O encerramento deve ocorrer entre 30 segundos e 7 dias a partir de agora." });
+      }
+      const limit = maxParticipants ?? Math.max(participants.length, winnersCount);
+      if (winnersCount > limit) return toolResult({ ok: false, message: "Ganhadores excedem o limite de participantes." });
+      const existing = await findActiveSweepstakeByGroup(Number(row.instance_id), groupRemoteId);
+      if (existing) return toolResult({ ok: false, message: "Já existe um sorteio ativo neste grupo.", sweepstakeId: existing.id });
+
+      const mentions = mentionAll
+        ? participants.map((participant) => String(participant.id ?? participant.jid ?? "")).filter(Boolean)
+        : [];
+      const question = prize.trim();
+      const poll = await sendPollMessage(client, {
+        to: groupRemoteId,
+        question: `🎟️ *SORTEIO*: ${question}`,
+        options: ["Participar ✅", "Não participar ❌"],
+        selectableOptionsCount: 1,
+        mentions,
+      });
+      const options = (poll.poll?.options ?? []).filter((option) => option.hash && option.name);
+      if (options.length < 2) {
+        return toolResult({ ok: false, message: "A enquete foi publicada, mas a API não retornou os identificadores dos votos. Não foi possível ativar o sorteio com segurança." });
+      }
+      const sweepstake = await createSweepstake({
+        instanceId: Number(row.instance_id), groupJid: groupRemoteId,
+        pollMessageId: poll.messageId ?? poll.pollId, pollId: poll.pollId,
+        question, joinOptionHash: options[0].hash, options,
+        maxParticipants: limit, winnersCount, expiresAt: expiration,
+        createdBy: senderJid,
+        metadata: { source: "botinterage_mcp", mentionAll: mentionAll === true, createdAt: new Date().toISOString() },
+        messageKey: requestMessageId,
+      });
+      return toolResult({ ok: true, sweepstakeId: sweepstake.id, pollMessageId: sweepstake.pollMessageId,
+        prize: question, endsAt: expiration.toISOString(), winnersCount, maxParticipants: limit,
+        mentionAll: mentionAll === true, participation: "Somente votos em Participar ✅" });
     },
   );
 

@@ -19470,6 +19470,26 @@ const convertStickerSourceToWebp = async (
       {
         type: "function" as const,
         function: {
+          name: "botadmin_create_group_sweepstake",
+          description:
+            "Cria um sorteio real no grupo atual por enquete: só participa quem votar em Participar. Use apenas quando um administrador pedir explicitamente para criar/publicar um sorteio. Não confunda com rifa paga. O prêmio e o encerramento são obrigatórios; pergunte o que faltar. mentionAll envia menção oculta a todos na enquete.",
+          parameters: {
+            type: "object",
+            properties: {
+              prize: { type: "string", description: "Prêmio exato anunciado ao grupo." },
+              endsAt: { type: "string", description: "Data/hora futura ISO 8601 com offset de fuso, ex.: 2026-09-27T18:00:00-03:00." },
+              winnersCount: { type: "integer", minimum: 1, maximum: 50 },
+              maxParticipants: { type: "integer", minimum: 1, maximum: 10000 },
+              mentionAll: { type: "boolean", description: "true quando o usuário pedir para chamar/mencionar todos." },
+            },
+            required: ["prize", "endsAt", "winnersCount"],
+            additionalProperties: false,
+          },
+        },
+      },
+      {
+        type: "function" as const,
+        function: {
           name: "download_youtube_video",
           description:
             "Use quando o usuario pedir video, MP4, clipe ou video do YouTube. Esta ferramenta nao baixa direto: ela abre a selecao play com botoes MP3/MP4.",
@@ -19522,6 +19542,7 @@ const convertStickerSourceToWebp = async (
       prompt,
       "Responda à mensagem atual de forma natural e objetiva.",
       "Não transforme conversa comum, saudação, confirmação curta, elogio ou pergunta genérica em pedido de download.",
+      `Agora: ${new Date().toISOString()}. Fuso local do usuário: America/Sao_Paulo (UTC-03:00).`,
     ];
     if (exposeDownloadTools) {
       systemRules.push(
@@ -20717,16 +20738,20 @@ const convertStickerSourceToWebp = async (
       // second completion receives the standard assistant/tool messages, so
       // the answer is authored by the model with the actual tool result.
       const mcpCalls = (toolCalls ?? []).filter((call) =>
-        call.name === "botadmin_get_group_profile" || call.name === "botadmin_get_group_context",
+        call.name === "botadmin_get_group_profile" || call.name === "botadmin_get_group_context" || call.name === "botadmin_create_group_sweepstake",
       );
       if (mcpCalls.length > 0) {
         const toolMessages = await Promise.all(mcpCalls.map(async (call) => {
+          const isCreate = call.name === "botadmin_create_group_sweepstake";
+          const allowed = !isCreate || (Boolean(message.id) && await ensureAdminStatus());
           const args = { ...call.arguments, groupId: group.id, groupRemoteId: group.remoteId,
-            ...(call.name === "botadmin_get_group_profile" ? { refreshParticipants: true } : { limit: call.arguments.limit ?? 20 }) };
-          const result = await executeBotAdminMcpTool(call.name, args).catch((error) => ({
+            ...(call.name === "botadmin_get_group_profile" ? { refreshParticipants: true } :
+              call.name === "botadmin_get_group_context" ? { limit: call.arguments.limit ?? 20 } :
+                { senderJid: message.senderJid ?? context.instance.phone, requestMessageId: message.id }) };
+          const result = allowed ? await executeBotAdminMcpTool(call.name, args).catch((error) => ({
             ok: false,
             error: error instanceof Error ? error.message : String(error),
-          }));
+          })) : { ok: false, message: "Somente um administrador do grupo pode criar o sorteio." };
           return {
             role: "tool" as const,
             tool_call_id: call.id,

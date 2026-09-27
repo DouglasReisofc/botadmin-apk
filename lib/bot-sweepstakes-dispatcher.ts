@@ -6,8 +6,10 @@ import {
   type BotSweepstakeParticipant,
   type BotSweepstakeWithInstance,
 } from "lib/bot-sweepstakes";
-import { sendTextMessage } from "lib/wuzapi";
+import { resolveWhatsappLidsToPhones, sendTextMessage } from "lib/wuzapi";
 import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
+import { getDb } from "lib/db";
+import { normalizeJid } from "lib/whatsapp";
 
 const DISPATCH_INTERVAL_MS = Number.parseInt(
   process.env.SWEEPSTAKES_DISPATCH_INTERVAL_MS ?? "",
@@ -48,12 +50,36 @@ const announceSweepstakeResult = async (
     return;
   }
 
-  const announcement = buildSweepstakeAnnouncement(sweepstake, winners);
+  const client = { baseUrl: sweepstake.instance.baseUrl, token: sweepstake.instance.token };
+  const lidWinners = winners.filter((winner) => winner.jid.toLowerCase().endsWith("@lid"));
+  const lidPhones = lidWinners.length
+    ? await resolveWhatsappLidsToPhones(client, lidWinners.map((winner) => winner.jid)).catch(() => new Map<string, string>())
+    : new Map<string, string>();
+  const [groupRows] = await getDb().query<Array<{ participants: unknown }>>(
+    "SELECT participants FROM bot_groups WHERE id = ? LIMIT 1", [sweepstake.groupId],
+  );
+  let groupParticipants: Array<Record<string, unknown>> = [];
+  try {
+    const raw = groupRows[0]?.participants;
+    const parsed = typeof raw === "string" ? JSON.parse(raw) : raw;
+    if (Array.isArray(parsed)) groupParticipants = parsed.filter((entry) => entry && typeof entry === "object");
+  } catch { /* Use the vote display name if the group snapshot is unavailable. */ }
+  const resolvedWinners = winners.map((winner) => {
+    const lidDigits = winner.jid.toLowerCase().endsWith("@lid") ? normalizeJid(winner.jid) : null;
+    const phone = lidDigits ? lidPhones.get(lidDigits) : null;
+    const jid = phone ? `${phone}@s.whatsapp.net` : winner.jid;
+    const participant = groupParticipants.find((entry) =>
+      [entry.id, entry.jid, entry.phone].some((value) =>
+        typeof value === "string" && (value === winner.jid || (phone && normalizeJid(value) === phone)),
+      ),
+    );
+    const name = [participant?.name, participant?.displayName, participant?.pushName, winner.displayName]
+      .find((value) => typeof value === "string" && value.trim() && !/@lid\b/i.test(value)) as string | undefined;
+    return { ...winner, jid, displayName: name?.trim() || null };
+  });
+  const announcement = buildSweepstakeAnnouncement(sweepstake, resolvedWinners);
   await sendTextMessage(
-    {
-      baseUrl: sweepstake.instance.baseUrl,
-      token: sweepstake.instance.token,
-    },
+    client,
     {
       to: sweepstake.groupJid,
       body: announcement.body,

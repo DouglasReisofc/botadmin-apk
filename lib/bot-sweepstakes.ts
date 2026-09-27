@@ -487,7 +487,7 @@ export const pickSweepstakeWinners = (
 export const formatSweepstakeWinnerLabel = (
   winner: BotSweepstakeParticipant,
 ): string => {
-  const normalized = normalizeJid(winner.jid);
+  const normalized = /@(s\.whatsapp\.net|c\.us)$/i.test(winner.jid) ? normalizeJid(winner.jid) : null;
   const phoneLabel = normalized ? `@${normalized}` : "Participante";
   if (winner.displayName && winner.displayName.trim()) {
     return normalized
@@ -525,7 +525,7 @@ export const buildSweepstakeAnnouncement = (
   lines.push("", "Obrigado a todos que participaram!");
 
   const mentions = winners
-    .map((winner) => normalizeJid(winner.jid))
+    .map((winner) => /@(s\.whatsapp\.net|c\.us)$/i.test(winner.jid) ? winner.jid : null)
     .filter((jid) => typeof jid === "string" && jid.length > 0);
 
   return {
