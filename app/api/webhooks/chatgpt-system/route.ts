@@ -452,7 +452,12 @@ export async function POST(request: Request) {
     const failedResult = asRecord(data?.result);
     const jobType = getString(data, "type") || getString(failedResult, "type");
     const isAudioJob = jobType === "audio_ask" || jobType === "audio_transcription" ||
-      jobType === "native_audio_ask" || jobType === "native_audio_transcription";
+      jobType === "native_audio_ask" || jobType === "native_audio_transcription" ||
+      // Older ChatGPT-System callbacks omit `type`, but the BotInterage job
+      // prompt still carries this invariant marker. Without this fallback the
+      // transcription is mistaken for a normal text answer and raffle/audio
+      // requests fall through as a writing template.
+      /^A entrada principal desta solicitação é o áudio anexado/i.test(job.prompt ?? "");
     // `/v1/ask` is the general multimodal BotInterage contract. It is not an
     // image or video-only job: the result may contain text and any artifacts
     // returned by the assistant.
