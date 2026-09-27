@@ -4541,7 +4541,9 @@ class _ScheduledAdEditorDialogState
     super.initState();
     final initial = widget.initial;
     _caption = TextEditingController(text: initial.caption);
-    _variations = initial.captionVariations.map(TextEditingController.new).toList();
+    _variations = initial.captionVariations
+        .map((text) => TextEditingController(text: text))
+        .toList();
     _frequency = TextEditingController(text: initial.frequency ?? '24h');
     _times = TextEditingController(text: initial.times.join(', '));
     _enabled = initial.enabled;

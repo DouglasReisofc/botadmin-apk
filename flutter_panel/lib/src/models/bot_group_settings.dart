@@ -618,8 +618,6 @@ class GroupMessageConfig {
   const GroupMessageConfig({
     required this.enabled,
     required this.caption,
-    required this.captionVariations,
-    required this.captionVariations,
     required this.mediaUrl,
     required this.mediaPath,
     required this.useParticipantProfilePhoto,
@@ -629,8 +627,6 @@ class GroupMessageConfig {
 
   final bool enabled;
   final String caption;
-  final List<String> captionVariations;
-  final List<String> captionVariations;
   final String? mediaUrl;
   final String? mediaPath;
   final bool useParticipantProfilePhoto;
@@ -641,7 +637,6 @@ class GroupMessageConfig {
     return GroupMessageConfig(
       enabled: _asBool(json['enabled']),
       caption: (json['caption'] ?? '').toString(),
-      captionVariations: _stringList(json['captionVariations'] ?? json['caption_variations']),
       mediaUrl: _nullableString(json['mediaUrl'] ?? json['media_url']),
       mediaPath: _nullableString(json['mediaPath'] ?? json['media_path']),
       useParticipantProfilePhoto: _asBool(
@@ -844,6 +839,7 @@ class GroupScheduledAdConfig {
     required this.id,
     required this.enabled,
     required this.caption,
+    required this.captionVariations,
     required this.mentionAll,
     required this.scheduleType,
     required this.frequency,
@@ -856,6 +852,7 @@ class GroupScheduledAdConfig {
   final String id;
   final bool enabled;
   final String caption;
+  final List<String> captionVariations;
   final bool mentionAll;
   final String scheduleType;
   final String? frequency;
