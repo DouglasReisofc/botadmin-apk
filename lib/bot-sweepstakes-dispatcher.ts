@@ -66,13 +66,24 @@ const announceSweepstakeResult = async (
   } catch { /* Use the vote display name if the group snapshot is unavailable. */ }
   const resolvedWinners = winners.map((winner) => {
     const lidDigits = winner.jid.toLowerCase().endsWith("@lid") ? normalizeJid(winner.jid) : null;
-    const phone = lidDigits ? lidPhones.get(lidDigits) : null;
-    const jid = phone ? `${phone}@s.whatsapp.net` : winner.jid;
+    const resolvedPhoneFromLid = lidDigits ? lidPhones.get(lidDigits) ?? null : null;
     const participant = groupParticipants.find((entry) =>
       [entry.id, entry.jid, entry.phone].some((value) =>
-        typeof value === "string" && (value === winner.jid || (phone && normalizeJid(value) === phone)),
+        typeof value === "string" && (value === winner.jid || (resolvedPhoneFromLid && normalizeJid(value) === resolvedPhoneFromLid)),
       ),
     );
+    const participantPhone = participant
+      ? [participant.phone, participant.id, participant.jid]
+          .map((value) => typeof value === "string" ? normalizeJid(value) : null)
+          .find((value) => Boolean(value) && !String(value).endsWith("@lid")) ?? null
+      : null;
+    const bareWinnerPhone = !lidDigits && !winner.jid.toLowerCase().includes("@lid")
+      ? normalizeJid(winner.jid)
+      : null;
+    const phone = lidDigits ? resolvedPhoneFromLid ?? participantPhone : participantPhone ?? bareWinnerPhone;
+    const jid = phone
+      ? `${phone.replace(/@(s\.whatsapp\.net|c\.us)$/i, "")}@s.whatsapp.net`
+      : winner.jid;
     const name = [participant?.name, participant?.displayName, participant?.pushName, winner.displayName]
       .find((value) => typeof value === "string" && value.trim() && !/@lid\b/i.test(value)) as string | undefined;
     return { ...winner, jid, displayName: name?.trim() || null };

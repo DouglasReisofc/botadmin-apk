@@ -15,9 +15,11 @@ import {
 } from "lib/botinterage-system";
 import {
   isNaturalBotAdminMcpRequest,
+  executeBotAdminMcpTool,
   recordBotInterageContextEvent,
   resolveBotAdminMcpContext,
 } from "lib/chatgpt-phone";
+import { createBotInterageChatCompletion } from "lib/apis/botinterage";
 import { getInstanceForUser } from "lib/bot-instances";
 import { getGroupSettings } from "lib/bot-group-settings";
 import { getBotInterageTtsRuntimeConfig } from "lib/admin-botinterage-tts-config";
@@ -645,6 +647,72 @@ export async function POST(request: Request) {
       return messageId;
     };
 
+    const handleAudioBotAdminToolRequest = async (transcription: string): Promise<boolean> => {
+      if (!isAudioJob || !transcription.trim() || isInternalDelivery) return false;
+      const runtime = await getBotInterageRuntimeConfig().catch(() => null);
+      if (!runtime?.enabled || !runtime.token) return false;
+      const tools = [{
+        type: "function" as const,
+        function: {
+          name: "botadmin_create_group_sweepstake",
+          description: "Cria um sorteio real por enquete no grupo atual. Use somente quando um administrador pedir explicitamente. Premio, data/hora de encerramento e quantidade de ganhadores são obrigatórios; se faltar algum, peça antes de chamar.",
+          parameters: {
+            type: "object",
+            properties: {
+              prize: { type: "string" },
+              endsAt: { type: "string", description: "ISO 8601 com fuso horário" },
+              winnersCount: { type: "integer", minimum: 1, maximum: 50 },
+              maxParticipants: { type: "integer", minimum: 1, maximum: 10000 },
+              mentionAll: { type: "boolean" },
+            },
+            required: ["prize", "endsAt", "winnersCount"],
+            additionalProperties: false,
+          },
+        },
+      }];
+      const first = await createBotInterageChatCompletion({
+        baseUrl: runtime.baseUrl,
+        token: runtime.token,
+        model: runtime.model,
+        messages: [
+          { role: "system", content: "Você é o BotAdmin no WhatsApp. Interprete a transcrição atual. Se o administrador pedir um sorteio, use a ferramenta nativa; não escreva apenas um modelo de mensagem. Se faltarem dados obrigatórios, responda pedindo-os sem chamar a ferramenta." },
+          { role: "user", content: transcription },
+        ],
+        tools,
+        timeoutMs: 60_000,
+      });
+      const calls = (first.toolCalls ?? []).filter((call) => call.name === "botadmin_create_group_sweepstake");
+      if (calls.length === 0) return false;
+      const toolMessages = [];
+      for (const call of calls) {
+        const result = await executeBotAdminMcpTool(call.name, {
+          ...call.arguments,
+          groupId: job.groupId,
+          groupRemoteId: job.chatId,
+          senderJid: job.senderJid,
+          requestMessageId: job.whatsappMessageId || job.jobId,
+        }).catch((error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+        toolMessages.push({ role: "tool" as const, tool_call_id: call.id, content: JSON.stringify(result) });
+      }
+      const second = await createBotInterageChatCompletion({
+        baseUrl: runtime.baseUrl,
+        token: runtime.token,
+        model: runtime.model,
+        messages: [
+          { role: "system", content: "Responda em português de forma curta e confirme o resultado real da ferramenta. Não invente publicação." },
+          { role: "user", content: transcription },
+          { role: "assistant", content: first.content ?? "", tool_calls: calls.map((call) => ({ id: call.id, type: "function" as const, function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) },
+          ...toolMessages,
+        ],
+        tools,
+        timeoutMs: 60_000,
+      });
+      const answer = second.content?.trim() || "Solicitação processada pelo BotAdmin.";
+      const messageId = await sendJobText(answer);
+      await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
+      return true;
+    };
+
     if (event === "job.failed") {
       const result = asRecord(data?.result);
       const error = getString(result, "error") ||
@@ -798,6 +866,9 @@ export async function POST(request: Request) {
           answer,
         )),
     );
+    if (isAudioJob && transcription && await handleAudioBotAdminToolRequest(transcription)) {
+      return NextResponse.json({ ok: true, delivered: true, type: jobType, botadmin_tool: true });
+    }
     if (isAudioJob && transcription && nativeAudioAnswerNeedsFollowUp) {
       await recordBotInterageContextEvent({
         groupId: job.groupId,
