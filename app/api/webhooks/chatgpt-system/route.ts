@@ -653,13 +653,13 @@ export async function POST(request: Request) {
       return messageId;
     };
 
-    const handleAudioBotAdminToolRequest = async (transcription: string): Promise<boolean> => {
-      const raffleIntent = /\b(?:sorteio|enquete|ganhador(?:es)?|pr[eê]mio|participar|pix)\b/i.test(transcription);
-      if (!isAudioJob || !raffleIntent || !transcription.trim() || isInternalDelivery) return false;
+    const handleAudioBotAdminToolRequest = async (transcription: string, allowContinuation = false): Promise<boolean> => {
+      const raffleIntent = /\b(?:sorteio|enquete|ganhador(?:es)?|pr[eê]mio|participar|pix|centavos?)\b/i.test(transcription);
+      if (!raffleIntent || !transcription.trim() || isInternalDelivery) return false;
       // O endpoint privado atual não implementa tool_calls. Não delegue este
       // pedido ao ChatGPT (que pode criar um agendamento próprio): extraia os
       // campos explícitos e invoque o MCP do BotAdmin diretamente.
-      const request = parseAudioRaffleRequest(transcription);
+      const request = parseAudioRaffleRequest(transcription, Date.now(), allowContinuation);
       if (!request) return false;
       if (request.missing) {
         const messageId = await sendJobText("Para criar a enquete, informe o prêmio, quantos ganhadores e em quanto tempo termina o sorteio.");
@@ -840,7 +840,13 @@ export async function POST(request: Request) {
           answer,
         )),
     );
+    const currentRequest = !isAudioJob
+      ? (job.prompt.match(/\[SOLICITAÇÃO ATUAL\]\s*([\s\S]*)$/i)?.[1]?.trim() || null)
+      : null;
     if (isAudioJob && transcription && await handleAudioBotAdminToolRequest(transcription)) {
+      return NextResponse.json({ ok: true, delivered: true, type: jobType, botadmin_tool: true });
+    }
+    if (!isAudioJob && currentRequest && await handleAudioBotAdminToolRequest(currentRequest, true)) {
       return NextResponse.json({ ok: true, delivered: true, type: jobType, botadmin_tool: true });
     }
     if (isAudioJob && transcription && nativeAudioAnswerNeedsFollowUp) {
