@@ -1225,6 +1225,7 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
         options: ["Participar ✅", "Não participar ❌"],
         selectableOptionsCount: 1,
         mentions,
+        mentionAll: mentionAll === true,
       });
       const options = (poll.poll?.options ?? []).filter((option) => option.hash && option.name);
       if (options.length < 2) {

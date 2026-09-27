@@ -3982,6 +3982,7 @@ export type SendPollPayload = {
   question: string;
   options: string[];
   mentions?: string[];
+  mentionAll?: boolean | null;
   selectableOptionsCount?: number;
   pollId?: string;
 };
@@ -4034,6 +4035,10 @@ export const sendPollMessage = async (
     if (mentionList.length > 0) {
       payload.Mentions = mentionList;
     }
+  }
+  if (params.mentionAll === true) {
+    payload.MentionAll = true;
+    payload.mentionAll = true;
   }
 
   const response = await requestWuzapi<any>(client, "/chat/send/poll", {
