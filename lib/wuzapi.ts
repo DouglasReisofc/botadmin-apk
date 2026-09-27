@@ -2233,6 +2233,33 @@ export const resolveWhatsappLidsToPhones = async (
   return resolved;
 };
 
+export const resolveWhatsappLidProfiles = async (
+  client: WuzapiClient,
+  lids: string[],
+): Promise<Map<string, { phone: string; name: string | null }>> => {
+  const unique = [...new Set(lids.map((lid) => normalizeJid(lid)).filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const response = await requestWuzapi<unknown>(client, "/user/info", {
+    method: "POST",
+    expectedStatus: 200,
+    body: { Phone: unique.map((digits) => `${digits}@lid`) },
+  });
+  const root = response && typeof response === "object" ? response as Record<string, unknown> : {};
+  const data = root.data && typeof root.data === "object" ? root.data as Record<string, unknown> : {};
+  const users = data.Users && typeof data.Users === "object" ? data.Users as Record<string, unknown> : {};
+  const profiles = new Map<string, { phone: string; name: string | null }>();
+  for (const [key, value] of Object.entries(users)) {
+    if (!value || typeof value !== "object") continue;
+    const user = value as Record<string, unknown>;
+    const lid = typeof user.LIDJID === "string" ? normalizeJid(user.LIDJID) : "";
+    const phone = normalizeJid(typeof user.PNJID === "string" ? user.PNJID : key);
+    if (!lid || !phone || !unique.includes(lid)) continue;
+    const name = typeof user.Name === "string" && user.Name.trim() ? user.Name.trim() : null;
+    profiles.set(lid, { phone, name });
+  }
+  return profiles;
+};
+
 export const listUserContacts = async (
   client: WuzapiClient,
 ): Promise<UserContact[]> => {

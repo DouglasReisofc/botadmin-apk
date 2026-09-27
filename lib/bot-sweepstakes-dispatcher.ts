@@ -6,7 +6,7 @@ import {
   type BotSweepstakeParticipant,
   type BotSweepstakeWithInstance,
 } from "lib/bot-sweepstakes";
-import { resolveWhatsappLidsToPhones, sendTextMessage } from "lib/wuzapi";
+import { resolveWhatsappLidProfiles, resolveWhatsappLidsToPhones, sendTextMessage } from "lib/wuzapi";
 import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
 import { getDb } from "lib/db";
 import { normalizeJid } from "lib/whatsapp";
@@ -51,10 +51,16 @@ const announceSweepstakeResult = async (
   }
 
   const client = { baseUrl: sweepstake.instance.baseUrl, token: sweepstake.instance.token };
-  const lidWinners = winners.filter((winner) => winner.jid.toLowerCase().endsWith("@lid"));
+  // Vote updates may persist the LID as bare digits, without the @lid suffix.
+  const lidWinners = winners.filter((winner) =>
+    winner.jid.toLowerCase().endsWith("@lid") || /^\d{14,}$/.test(winner.jid),
+  );
   const lidPhones = lidWinners.length
     ? await resolveWhatsappLidsToPhones(client, lidWinners.map((winner) => winner.jid)).catch(() => new Map<string, string>())
     : new Map<string, string>();
+  const lidProfiles = lidWinners.length
+    ? await resolveWhatsappLidProfiles(client, lidWinners.map((winner) => winner.jid)).catch(() => new Map())
+    : new Map();
   const [groupRows] = await getDb().query<Array<{ participants: unknown }>>(
     "SELECT participants FROM bot_groups WHERE id = ? LIMIT 1", [sweepstake.groupId],
   );
@@ -65,8 +71,8 @@ const announceSweepstakeResult = async (
     if (Array.isArray(parsed)) groupParticipants = parsed.filter((entry) => entry && typeof entry === "object");
   } catch { /* Use the vote display name if the group snapshot is unavailable. */ }
   const resolvedWinners = winners.map((winner) => {
-    const lidDigits = winner.jid.toLowerCase().endsWith("@lid") ? normalizeJid(winner.jid) : null;
-    const resolvedPhoneFromLid = lidDigits ? lidPhones.get(lidDigits) ?? null : null;
+    const lidDigits = lidWinners.includes(winner) ? normalizeJid(winner.jid) : null;
+    const resolvedPhoneFromLid = lidDigits ? lidPhones.get(lidDigits) ?? lidProfiles.get(lidDigits)?.phone ?? null : null;
     const participant = groupParticipants.find((entry) =>
       [entry.id, entry.jid, entry.phone].some((value) =>
         typeof value === "string" && (value === winner.jid || (resolvedPhoneFromLid && normalizeJid(value) === resolvedPhoneFromLid)),
@@ -74,8 +80,8 @@ const announceSweepstakeResult = async (
     );
     const participantPhone = participant
       ? [participant.phone, participant.id, participant.jid]
-          .map((value) => typeof value === "string" ? normalizeJid(value) : null)
-          .find((value) => Boolean(value) && !String(value).endsWith("@lid")) ?? null
+          .map((value) => typeof value === "string" && !value.toLowerCase().endsWith("@lid") ? normalizeJid(value) : null)
+          .find(Boolean) ?? null
       : null;
     const bareWinnerPhone = !lidDigits && !winner.jid.toLowerCase().includes("@lid")
       ? normalizeJid(winner.jid)
@@ -84,7 +90,7 @@ const announceSweepstakeResult = async (
     const jid = phone
       ? `${phone.replace(/@(s\.whatsapp\.net|c\.us)$/i, "")}@s.whatsapp.net`
       : winner.jid;
-    const name = [participant?.name, participant?.displayName, participant?.pushName, winner.displayName]
+    const name = [participant?.name, participant?.displayName, participant?.pushName, lidDigits ? lidProfiles.get(lidDigits)?.name : null, winner.displayName]
       .find((value) => typeof value === "string" && value.trim() && !/@lid\b/i.test(value)) as string | undefined;
     return { ...winner, jid, displayName: name?.trim() || null };
   });

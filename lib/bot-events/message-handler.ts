@@ -19409,6 +19409,8 @@ const convertStickerSourceToWebp = async (
         /\b(?:audio|áudio|voz|ptt|nota de voz|resuma|resumir|transcreva|transcrever|escute|ou[cç]a|baseado|neste|nesse|nela|nele)\b/i.test(
           trimmedInput,
         ));
+    const audioSweepstakeHint = currentBotInterageMediaKind === "audio" &&
+      /\b(?:sorteio|sorteio|enquete|premio|prêmio|ganhador|participar|pix)\b/i.test(trimmedInput);
     if (!isSystemAudioBotInterage) {
       void recordBotInterageContextSafe("user", trimmedInput);
     }
@@ -19506,6 +19508,11 @@ const convertStickerSourceToWebp = async (
         },
       },
     ];
+    if (audioSweepstakeHint) {
+      systemRules.push(
+        "A mensagem atual veio de uma nota de voz e contém um pedido de sorteio. Não escreva um texto-modelo: depois de entender a transcrição, chame a ferramenta botadmin_create_group_sweepstake. Se faltarem prêmio, encerramento ou quantidade de ganhadores, peça somente o dado que falta.",
+      );
+    }
     const classifyDownloadIntent = async () => {
       if (heuristicDownloadIntent.shouldUseTools) {
         return heuristicDownloadIntent;
