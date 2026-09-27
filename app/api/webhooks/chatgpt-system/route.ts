@@ -19,6 +19,8 @@ import {
   resolveBotAdminMcpContext,
 } from "lib/chatgpt-phone";
 import { getInstanceForUser } from "lib/bot-instances";
+import { getGroupSettings } from "lib/bot-group-settings";
+import { getBotInterageTtsRuntimeConfig } from "lib/admin-botinterage-tts-config";
 import {
   acknowledgeInternalBotFailure,
   dispatchInternalGroupAutomationMessage,
@@ -489,6 +491,66 @@ export async function POST(request: Request) {
         );
         if (!messageId) throw new Error("Grupo BotAdmin não está disponível para receber a resposta.");
         return String(messageId);
+      }
+      // Jobs returned by the native audio/multimodal module bypass the regular
+      // message-handler voice branch. Respect the group voice toggle here too,
+      // otherwise an enabled BotInterage voice silently falls back to text.
+      try {
+        const settings = await getGroupSettings(job.groupId);
+        const voiceEnabled =
+          settings.commandToggles.vozbotinterage === true ||
+          settings.featureFlags.botInterageVoice === true;
+        const ttsRuntime = voiceEnabled ? await getBotInterageTtsRuntimeConfig() : null;
+        const voiceId = settings.aiVoice?.trim() || ttsRuntime?.defaultVoiceId?.trim() || "";
+        if (client && voiceEnabled && ttsRuntime?.enabled && ttsRuntime.baseUrl && ttsRuntime.token && voiceId) {
+          const base = new URL(ttsRuntime.baseUrl);
+          const path = base.pathname.replace(/\/+$/, "");
+          base.pathname = path.endsWith("/v1/tts") ? path : `${path || ""}/v1/tts`;
+          base.search = "";
+          const response = await fetch(base.toString(), {
+            method: "POST",
+            headers: {
+              accept: "audio/mpeg,audio/wav,application/octet-stream",
+              authorization: `Bearer ${ttsRuntime.token}`,
+              "content-type": "application/json",
+            },
+            body: JSON.stringify({ text: body, voice_id: voiceId, format: "mp3", streaming: false }),
+            signal: AbortSignal.timeout(30_000),
+          });
+          if (response.ok) {
+            const buffer = Buffer.from(await response.arrayBuffer());
+            if (buffer.length > 0) {
+              const messageId = await sendMediaMessage(client, {
+                to: job.chatId,
+                media: buffer,
+                mediaType: "audio",
+                mimeType: response.headers.get("content-type")?.split(";")[0] || "audio/mpeg",
+                filename: `botinterage-${Date.now()}.mp3`,
+                quoted,
+              });
+              if (messageId) {
+                console.info("[botinterage-system-webhook] resposta TTS enviada", {
+                  groupId: job.groupId,
+                  jobId,
+                  voiceId,
+                });
+                return messageId;
+              }
+            }
+          } else {
+            console.warn("[botinterage-system-webhook] TTS retornou erro; usando texto", {
+              groupId: job.groupId,
+              jobId,
+              status: response.status,
+            });
+          }
+        }
+      } catch (error) {
+        console.warn("[botinterage-system-webhook] falha no TTS; usando texto", {
+          groupId: job.groupId,
+          jobId,
+          error,
+        });
       }
       const messageId = await sendTextMessage(client!, { to: job.chatId, body, quoted });
       if (!messageId) throw new Error("WhatsApp não retornou o ID da resposta de texto.");
