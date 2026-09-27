@@ -655,66 +655,33 @@ export async function POST(request: Request) {
     const handleAudioBotAdminToolRequest = async (transcription: string): Promise<boolean> => {
       const raffleIntent = /\b(?:sorteio|enquete|ganhador(?:es)?|pr[eê]mio|participar|pix)\b/i.test(transcription);
       if (!isAudioJob || !raffleIntent || !transcription.trim() || isInternalDelivery) return false;
-      const runtime = await getBotInterageRuntimeConfig().catch(() => null);
-      if (!runtime?.enabled || !runtime.token) return false;
-      const tools = [{
-        type: "function" as const,
-        function: {
-          name: "botadmin_create_group_sweepstake",
-          description: "Cria um sorteio real por enquete no grupo atual. Use somente quando um administrador pedir explicitamente. Premio, data/hora de encerramento e quantidade de ganhadores são obrigatórios; se faltar algum, peça antes de chamar.",
-          parameters: {
-            type: "object",
-            properties: {
-              prize: { type: "string" },
-              endsAt: { type: "string", description: "ISO 8601 com fuso horário" },
-              winnersCount: { type: "integer", minimum: 1, maximum: 50 },
-              maxParticipants: { type: "integer", minimum: 1, maximum: 10000 },
-              mentionAll: { type: "boolean" },
-            },
-            required: ["prize", "endsAt", "winnersCount"],
-            additionalProperties: false,
-          },
-        },
-      }];
-      const first = await createBotInterageChatCompletion({
-        baseUrl: runtime.baseUrl,
-        token: runtime.token,
-        model: runtime.model,
-        messages: [
-          { role: "system", content: "Você é o BotAdmin no WhatsApp. Interprete a transcrição atual. Se o administrador pedir um sorteio, use a ferramenta nativa; não escreva apenas um modelo de mensagem. Se faltarem dados obrigatórios, responda pedindo-os sem chamar a ferramenta." },
-          { role: "user", content: transcription },
-        ],
-        tools,
-        toolChoice: { type: "function", function: { name: "botadmin_create_group_sweepstake" } },
-        timeoutMs: 60_000,
-      });
-      const calls = (first.toolCalls ?? []).filter((call) => call.name === "botadmin_create_group_sweepstake");
-      if (calls.length === 0) return false;
-      const toolMessages = [];
-      for (const call of calls) {
-        const result = await executeBotAdminMcpTool(call.name, {
-          ...call.arguments,
-          groupId: job.groupId,
-          groupRemoteId: job.chatId,
-          senderJid: job.senderJid,
-          requestMessageId: job.whatsappMessageId || job.jobId,
-        }).catch((error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
-        toolMessages.push({ role: "tool" as const, tool_call_id: call.id, content: JSON.stringify(result) });
-      }
-      const second = await createBotInterageChatCompletion({
-        baseUrl: runtime.baseUrl,
-        token: runtime.token,
-        model: runtime.model,
-        messages: [
-          { role: "system", content: "Responda em português de forma curta e confirme o resultado real da ferramenta. Não invente publicação." },
-          { role: "user", content: transcription },
-          { role: "assistant", content: first.content ?? "", tool_calls: calls.map((call) => ({ id: call.id, type: "function" as const, function: { name: call.name, arguments: JSON.stringify(call.arguments) } })) },
-          ...toolMessages,
-        ],
-        tools,
-        timeoutMs: 60_000,
-      });
-      const answer = second.content?.trim() || "Solicitação processada pelo BotAdmin.";
+      // O endpoint privado atual não implementa tool_calls. Não delegue este
+      // pedido ao ChatGPT (que pode criar um agendamento próprio): extraia os
+      // campos explícitos e invoque o MCP do BotAdmin diretamente.
+      const money = transcription.match(/(?:r\$|rs?\.?\s*)\s*([\d.,]+)\s*(?:reais?|no\s+pix)?/i);
+      const prize = money ? `R$ ${money[1].replace(/\./g, "").replace(",", ".")}${/pix/i.test(transcription) ? " no Pix" : ""}` : null;
+      const winnersMatch = transcription.match(/(?:com|para|ter(?:á)?|s[oó])\s*(?:um|uma|1|dois|duas|2|tr[eê]s|3|\d+)\s+ganhador/i);
+      const wordNumbers: Record<string, number> = { um: 1, uma: 1, dois: 2, duas: 2, "três": 3, "tres": 3 };
+      const winnersCount = winnersMatch ? (wordNumbers[winnersMatch[1].toLowerCase()] ?? Number(winnersMatch[1])) : null;
+      const relative = transcription.match(/(?:daqui\s+a\s+)(\d+|um|uma|dois|duas|tr[eê]s)\s*(minutos?|mins?|horas?|h)/i);
+      const relativeAmount = relative ? (wordNumbers[relative[1].toLowerCase()] ?? Number(relative[1])) : 0;
+      const endsAt = relative && Number.isFinite(relativeAmount) && relativeAmount > 0
+        ? new Date(Date.now() + relativeAmount * (/hora|\bh\b/i.test(relative[2]) ? 3_600_000 : 60_000)).toISOString()
+        : null;
+      if (!prize || !winnersCount || !endsAt) return false;
+      const result = await executeBotAdminMcpTool("botadmin_create_group_sweepstake", {
+        prize,
+        endsAt,
+        winnersCount,
+        mentionAll: true,
+        groupId: job.groupId,
+        groupRemoteId: job.chatId,
+        senderJid: job.senderJid,
+        requestMessageId: job.whatsappMessageId || job.jobId,
+      }).catch((error) => ({ ok: false, message: error instanceof Error ? error.message : String(error) }));
+      const answer = result && typeof result === "object" && "message" in result
+        ? String((result as { message?: unknown }).message || "Sorteio processado pelo BotAdmin.")
+        : "Sorteio processado pelo BotAdmin.";
       const messageId = await sendJobText(answer);
       await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
       return true;
