@@ -119,6 +119,10 @@ export async function PATCH(
       if (typeof payload.caption === "string") {
         patch.caption = payload.caption;
       }
+      if (Array.isArray(payload.captionVariations)) {
+        patch.captionVariations = payload.captionVariations;
+        patch.lastVariationIndex = null;
+      }
       if (mentionAll !== undefined) {
         patch.mentionAll = mentionAll;
       }

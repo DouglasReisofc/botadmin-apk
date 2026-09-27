@@ -15,6 +15,7 @@ import { resolveTimezonePreference } from "lib/timezones";
 import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
 import type { BotGroupAd } from "types/bot-groups";
 import { dispatchInternalGroupAutomationMessage } from "lib/internal-groups";
+import { chooseScheduledAdVariation } from "lib/scheduled-ad-variation";
 
 type AdsDispatcherRow = RowDataPacket & {
   group_id: number;
@@ -513,21 +514,26 @@ const runAdsDispatchCycle = async () => {
         let hasChanges = false;
         const client: WuzapiClient = { baseUrl: row.base_url ?? "", token: row.token ?? "" };
         const deliverAd = async (ad: BotGroupAd): Promise<SendAdResult> => {
+          const selected = chooseScheduledAdVariation(ad);
+          const selectedAd = { ...ad, caption: selected.caption };
           if (isInternal) {
             const messageId = await dispatchInternalGroupAutomationMessage(
               row.group_id,
-              ad.caption,
+              selected.caption,
               ad.media,
             );
+            if (messageId != null) ad.lastVariationIndex = selected.index;
             return { delivered: messageId != null, unauthorized: false };
           }
-          return sendAdMessage({
+          const result = await sendAdMessage({
             client,
             groupJid: row.remote_id,
-            ad,
+            ad: selectedAd,
             mentionJids: ad.mentionAll ? mentionJids : [],
             nativeButtonsEnabled,
           });
+          if (result.delivered) ad.lastVariationIndex = selected.index;
+          return result;
         };
 
         for (let index = 0; index < ads.length; index += 1) {

@@ -301,6 +301,8 @@ export type BotGroupAd = {
   id: string;
   enabled?: boolean;
   caption: string;
+  captionVariations?: string[];
+  lastVariationIndex?: number | null;
   mentionAll: boolean;
   scheduleType: "frequency" | "times";
   frequency?: string | null;

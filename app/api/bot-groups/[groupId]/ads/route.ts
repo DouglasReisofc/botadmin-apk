@@ -171,6 +171,7 @@ export async function POST(
     id: randomUUID(),
     enabled: enabled ?? true,
     caption: typeof payload.caption === "string" ? payload.caption : "",
+    captionVariations: Array.isArray(payload.captionVariations) ? payload.captionVariations : [],
     mentionAll: mentionAll ?? false,
     scheduleType,
     frequency,

@@ -618,6 +618,8 @@ class GroupMessageConfig {
   const GroupMessageConfig({
     required this.enabled,
     required this.caption,
+    required this.captionVariations,
+    required this.captionVariations,
     required this.mediaUrl,
     required this.mediaPath,
     required this.useParticipantProfilePhoto,
@@ -627,6 +629,8 @@ class GroupMessageConfig {
 
   final bool enabled;
   final String caption;
+  final List<String> captionVariations;
+  final List<String> captionVariations;
   final String? mediaUrl;
   final String? mediaPath;
   final bool useParticipantProfilePhoto;
@@ -637,6 +641,7 @@ class GroupMessageConfig {
     return GroupMessageConfig(
       enabled: _asBool(json['enabled']),
       caption: (json['caption'] ?? '').toString(),
+      captionVariations: _stringList(json['captionVariations'] ?? json['caption_variations']),
       mediaUrl: _nullableString(json['mediaUrl'] ?? json['media_url']),
       mediaPath: _nullableString(json['mediaPath'] ?? json['media_path']),
       useParticipantProfilePhoto: _asBool(
@@ -911,6 +916,7 @@ class GroupScheduledAdConfig {
       id: (json['id'] ?? '').toString(),
       enabled: !json.containsKey('enabled') || _asBool(json['enabled']),
       caption: (json['caption'] ?? '').toString(),
+      captionVariations: _stringList(json['captionVariations'] ?? json['caption_variations']),
       mentionAll: _asBool(json['mentionAll'] ?? json['mention_all']),
       scheduleType:
           (json['scheduleType'] ?? json['schedule_type'] ?? 'frequency')
@@ -930,6 +936,7 @@ class GroupScheduledAdConfig {
       id: '',
       enabled: true,
       caption: '',
+      captionVariations: const [],
       mentionAll: false,
       scheduleType: 'frequency',
       frequency: '1h',

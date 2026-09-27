@@ -4478,6 +4478,7 @@ class _ScheduledAdDraft {
   const _ScheduledAdDraft({
     required this.enabled,
     required this.caption,
+    required this.captionVariations,
     required this.mentionAll,
     required this.scheduleType,
     required this.frequency,
@@ -4488,6 +4489,7 @@ class _ScheduledAdDraft {
 
   final bool enabled;
   final String caption;
+  final List<String> captionVariations;
   final bool mentionAll;
   final String scheduleType;
   final String frequency;
@@ -4498,6 +4500,7 @@ class _ScheduledAdDraft {
   Map<String, Object?> toPayload() => {
     'enabled': enabled,
     'caption': caption,
+    'captionVariations': captionVariations,
     'mentionAll': mentionAll,
     'scheduleType': scheduleType,
     'frequency': frequency,
@@ -4522,6 +4525,7 @@ class _ScheduledAdEditorDialog extends ConsumerStatefulWidget {
 class _ScheduledAdEditorDialogState
     extends ConsumerState<_ScheduledAdEditorDialog> {
   late final TextEditingController _caption;
+  late final List<TextEditingController> _variations;
   late final TextEditingController _frequency;
   late final TextEditingController _times;
   late bool _enabled;
@@ -4537,6 +4541,7 @@ class _ScheduledAdEditorDialogState
     super.initState();
     final initial = widget.initial;
     _caption = TextEditingController(text: initial.caption);
+    _variations = initial.captionVariations.map(TextEditingController.new).toList();
     _frequency = TextEditingController(text: initial.frequency ?? '24h');
     _times = TextEditingController(text: initial.times.join(', '));
     _enabled = initial.enabled;
@@ -4549,6 +4554,9 @@ class _ScheduledAdEditorDialogState
   @override
   void dispose() {
     _caption.dispose();
+    for (final controller in _variations) {
+      controller.dispose();
+    }
     _frequency.dispose();
     _times.dispose();
     super.dispose();
@@ -4559,7 +4567,7 @@ class _ScheduledAdEditorDialogState
     final wa = WaTheme.of(context);
     final size = MediaQuery.sizeOf(context);
     final compact = size.width < 760;
-    final preview = _ScheduledAdBubblePreview(
+    final bubble = _ScheduledAdBubblePreview(
       caption: _caption.text,
       media: _media,
       localMediaBytes: _localMediaBytes,
@@ -4576,6 +4584,57 @@ class _ScheduledAdEditorDialogState
       onAddButton: _buttons.length >= 3 ? null : _addButton,
       onEditButton: _editButton,
       onRemoveButton: (index) => setState(() => _buttons.removeAt(index)),
+    );
+    final preview = Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        bubble,
+        const SizedBox(height: 16),
+        ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(child: Text('Variações de texto', style: TextStyle(fontWeight: FontWeight.w800))),
+                  TextButton.icon(
+                    onPressed: _variations.length >= 20 ? null : () => setState(() => _variations.add(TextEditingController())),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Adicionar'),
+                  ),
+                ],
+              ),
+              const Text('A cada envio, uma versão é sorteada sem repetir a anterior.'),
+              const SizedBox(height: 8),
+              for (var index = 0; index < _variations.length; index++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _variations[index],
+                          minLines: 2,
+                          maxLines: 5,
+                          decoration: InputDecoration(
+                            labelText: 'Variação ${index + 1}',
+                            border: const OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      IconButton(
+                        tooltip: 'Remover variação',
+                        onPressed: () => setState(() => _variations.removeAt(index).dispose()),
+                        icon: const Icon(Icons.delete_outline_rounded),
+                      ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
     final schedule = _ScheduledAdScheduleForm(
       enabled: _enabled,
@@ -4812,6 +4871,7 @@ class _ScheduledAdEditorDialogState
       _ScheduledAdDraft(
         enabled: _enabled,
         caption: caption,
+        captionVariations: _variations.map((controller) => controller.text.trim()).where((text) => text.isNotEmpty).toList(),
         mentionAll: _mentionAll,
         scheduleType: _scheduleType,
         frequency: frequency.isEmpty ? '24h' : frequency,

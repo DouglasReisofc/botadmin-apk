@@ -3056,11 +3056,17 @@ const normalizeAdEntry = (raw: Partial<BotGroupAd> & Record<string, unknown>): B
   }
 
   const caption = typeof raw.caption === "string" ? raw.caption.replace(/\r\n/g, "\n").trim() : "";
+  const captionVariations = Array.isArray(raw.captionVariations)
+    ? raw.captionVariations.filter((entry): entry is string => typeof entry === "string")
+        .map((entry) => entry.replace(/\r\n/g, "\n").trim()).filter(Boolean).slice(0, 20)
+    : [];
 
   return {
     id: typeof raw.id === "string" && raw.id.trim() ? raw.id.trim() : randomUUID(),
     enabled,
     caption,
+    captionVariations,
+    lastVariationIndex: Number.isInteger(raw.lastVariationIndex) ? Number(raw.lastVariationIndex) : null,
     mentionAll: mentionAllRaw === true || mentionAllRaw === "true",
     scheduleType: times.length > 0 && scheduleType === "times" ? "times" : "frequency",
     frequency,
