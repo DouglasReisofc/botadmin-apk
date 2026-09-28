@@ -14462,16 +14462,25 @@ export const handleMessageUpsert = async (
   }
 
   let storedMessage: Awaited<ReturnType<typeof recordWhatsappMessageFromNormalized>> | null = null;
-  try {
-    storedMessage = await recordWhatsappMessageFromNormalized({ instance: context.instance, message });
-  } catch (error) {
-    console.error("[whatsapp-conversations] Falha ao registrar mensagem do webhook", {
-      userId: context.instance.userId,
-      instanceId: context.instance.id,
-      chatId: message.chatId,
-      messageId: message.id,
-      error,
-    });
+  // A poll vote is an update to the original poll, not a new conversation
+  // message. Persisting the webhook envelope here creates a second empty
+  // "Enquete" bubble every time somebody votes in a BotAdmin sweepstake.
+  const incomingSweepstakeVote = extractSweepstakePollVote(payload, message);
+  const activeSweepstakeForStorage = incomingSweepstakeVote
+    ? await findActiveSweepstakeByPoll(context.instance.id, incomingSweepstakeVote.pollId).catch(() => null)
+    : null;
+  if (!activeSweepstakeForStorage) {
+    try {
+      storedMessage = await recordWhatsappMessageFromNormalized({ instance: context.instance, message });
+    } catch (error) {
+      console.error("[whatsapp-conversations] Falha ao registrar mensagem do webhook", {
+        userId: context.instance.userId,
+        instanceId: context.instance.id,
+        chatId: message.chatId,
+        messageId: message.id,
+        error,
+      });
+    }
   }
 
   const isStoredDuplicateMessage = storedMessage?.isNewMessage === false;
