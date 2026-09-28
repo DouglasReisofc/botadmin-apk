@@ -6730,6 +6730,7 @@ type PollVoteDetails = {
   pollId: string;
   selectedOptionHashes: string[];
   participantJid: string;
+  participantIsLid: boolean;
   displayName?: string | null;
   timestamp?: Date;
 };
@@ -9270,22 +9271,20 @@ const extractSweepstakePollVote = (
     return null;
   }
 
-  const participantJid =
-    normalizeJid(
-      firstString(
-        normalizedRecord.participant,
-        normalizedRecord.Participant,
-        normalizedRecord.senderJid,
-        normalizedRecord.sender,
-        infoRecord.ParticipantNormalized,
-        infoRecord.participantNormalized,
-        infoRecord.Participant,
-        infoRecord.participant,
-        participantCandidate,
-        message.participant,
-        message.senderJid,
-      ),
-    ) ?? null;
+  const participantRaw = firstString(
+    normalizedRecord.participant,
+    normalizedRecord.Participant,
+    normalizedRecord.senderJid,
+    normalizedRecord.sender,
+    infoRecord.ParticipantNormalized,
+    infoRecord.participantNormalized,
+    infoRecord.Participant,
+    infoRecord.participant,
+    participantCandidate,
+    message.participant,
+    message.senderJid,
+  );
+  const participantJid = normalizeJid(participantRaw) || null;
 
   if (!participantJid) {
     return null;
@@ -9315,6 +9314,7 @@ const extractSweepstakePollVote = (
     pollId,
     selectedOptionHashes,
     participantJid,
+    participantIsLid: /@lid(?:$|:)/i.test(participantRaw ?? ''),
     displayName,
     timestamp: voteTimestamp,
   };
@@ -15649,13 +15649,31 @@ export const handleMessageUpsert = async (
       );
 
       if (activeSweepstake) {
-        const resolvedLidProfiles = sweepstakeVote.participantJid.toLowerCase().endsWith('@lid')
+        // `normalizeJid` intentionally returns digits only, so checking its
+        // result for `@lid` can never work. Keep the source-domain flag from
+        // the webhook parser and resolve the LID before persisting the vote.
+        const isLidVoter = sweepstakeVote.participantIsLid;
+        const resolvedLidProfiles = isLidVoter
           ? await resolveWhatsappLidProfiles(client, [sweepstakeVote.participantJid]).catch(() => new Map())
           : new Map();
-        const resolvedLid = resolvedLidProfiles.get(normalizeJid(sweepstakeVote.participantJid) ?? '');
-        const voterJid = resolvedLid?.phone
-          ? `${resolvedLid.phone}@s.whatsapp.net`
-          : sweepstakeVote.participantJid;
+        const resolvedLid = resolvedLidProfiles.get(sweepstakeVote.participantJid);
+        const fallbackLidPhones = isLidVoter && !resolvedLid?.phone
+          ? await resolveWhatsappLidsToPhones(client, [`${sweepstakeVote.participantJid}@lid`]).catch(() => new Map())
+          : new Map();
+        const resolvedPhone = resolvedLid?.phone ?? fallbackLidPhones.get(sweepstakeVote.participantJid) ?? null;
+        if (isLidVoter && !resolvedPhone) {
+          // Never write a LID into the participant list. A transient lookup
+          // failure is retried by the next poll event instead of corrupting
+          // the public participant identity.
+          console.warn('[sweepstakes] could not resolve poll voter LID; vote not persisted', {
+            pollId: sweepstakeVote.pollId,
+            lid: sweepstakeVote.participantJid,
+          });
+          return;
+        }
+        const voterJid = resolvedPhone
+          ? `${resolvedPhone}@s.whatsapp.net`
+          : `${sweepstakeVote.participantJid}@s.whatsapp.net`;
         await applyWhatsappPollVoteForUser({
           userId: context.instance.userId,
           instanceId: context.instance.id,
