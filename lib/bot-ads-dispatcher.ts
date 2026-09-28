@@ -22,7 +22,6 @@ type AdsDispatcherRow = RowDataPacket & {
   user_id: number;
   instance_id: number | null;
   remote_id: string;
-  participants: string | null;
   base_url: string | null;
   token: string | null;
   session_status: string | null;
@@ -36,9 +35,6 @@ type AdsDispatcherRow = RowDataPacket & {
 const ADS_DISPATCH_INTERVAL_MS = 15_000;
 const ADS_TIME_WINDOW_MINUTES = 5;
 const ENV_ADS_DISPATCH_TIMEZONE = process.env.ADS_DISPATCH_TIMEZONE ?? null;
-const ADS_MAX_MENTION_COUNT = Number.isFinite(Number(process.env.ADS_MAX_MENTION_COUNT))
-  ? Math.max(1, Math.floor(Number(process.env.ADS_MAX_MENTION_COUNT)))
-  : 32;
 
 const globalRuntime = globalThis as typeof globalThis & {
   __botAdsDispatcherStarted?: boolean;
@@ -134,80 +130,6 @@ const sanitizeTimes = (entries: unknown): string[] => {
   return out;
 };
 
-const parseParticipantIds = (raw: unknown): string[] => {
-  if (raw === null || raw === undefined) {
-    return [];
-  }
-  const collectFromArray = (source: unknown[]): string[] => {
-    const out: string[] = [];
-    for (const entry of source) {
-      if (typeof entry === "string" && entry.trim()) {
-        out.push(entry.trim());
-        continue;
-      }
-      if (entry && typeof entry === "object") {
-        const record = entry as Record<string, unknown>;
-        const idCandidates = [
-          record.id,
-          record.Id,
-          record.ID,
-          record.jid,
-          record.JID,
-          record._serialized,
-          record.phone,
-          record.Phone,
-          record.Number,
-        ];
-        const idCandidate = idCandidates.find(
-          (candidate) => typeof candidate === "string" && candidate.trim(),
-        );
-        if (typeof idCandidate === "string" && idCandidate.trim()) {
-          out.push(idCandidate.trim());
-        }
-      }
-      if (out.length >= 256) {
-        break;
-      }
-    }
-    return out;
-  };
-
-  if (Array.isArray(raw)) {
-    return collectFromArray(raw);
-  }
-
-  if (typeof raw === "string") {
-    const trimmed = raw.trim();
-    if (!trimmed) {
-      return [];
-    }
-    if (/^\[object\b/i.test(trimmed)) {
-      return [];
-    }
-    if (!trimmed.startsWith("[") && !trimmed.startsWith("{")) {
-      return [];
-    }
-    try {
-      const parsed = JSON.parse(trimmed);
-      return Array.isArray(parsed) ? collectFromArray(parsed) : [];
-    } catch {
-      return [];
-    }
-  }
-
-  if (typeof raw === "object") {
-    const record = raw as Record<string, unknown>;
-    if (Array.isArray(record.participants)) {
-      return collectFromArray(record.participants);
-    }
-    if (Array.isArray(record.data)) {
-      return collectFromArray(record.data);
-    }
-  }
-
-  return [];
-};
-
 const getTimezoneContext = (date: Date, timezone: string) => {
   const dateFormatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: timezone,
@@ -238,36 +160,25 @@ const getTimezoneContext = (date: Date, timezone: string) => {
   };
 };
 
-const buildMentionPayload = (
-  baseText: string,
-  mentionJids: string[],
-): { body: string; mentions: string[] } => {
-  if (mentionJids.length === 0) {
-    return { body: baseText, mentions: [] };
-  }
-  const limitedMentions = mentionJids.slice(0, ADS_MAX_MENTION_COUNT);
-  const mentionHandles = limitedMentions.map((jid) => `@${jid.replace(/@.+$/, "")}`);
-  const mentionText = mentionHandles.join(" ");
-  const body = baseText ? `${mentionText}\n${baseText}` : mentionText;
-  return { body, mentions: limitedMentions };
-};
-
 const sendAdMessage = async ({
   client,
   groupJid,
   ad,
-  mentionJids,
   nativeButtonsEnabled,
 }: {
   client: WuzapiClient;
   groupJid: string;
   ad: BotGroupAd;
-  mentionJids: string[];
   nativeButtonsEnabled: boolean;
 }): Promise<SendAdResult> => {
   try {
     const text = (ad.caption ?? "").trim();
-    const { body, mentions } = buildMentionPayload(text, mentionJids);
+    const mentionAll = Boolean(ad.mentionAll);
+    // Mantemos a expansão técnica da EasyZap e exibimos a indicação no balão.
+    // O texto visível é intencionalmente curto para não poluir com todos os JIDs.
+    const body = mentionAll
+      ? [`@todos`, text].filter(Boolean).join("\n")
+      : text;
     const buttonTemplate = ad.responseButtons ?? null;
     const mappedInteractiveButtons: InteractiveButton[] = Array.isArray(ad.interactiveButtons)
       ? ad.interactiveButtons.slice(0, 3).flatMap((button, index) => {
@@ -334,16 +245,20 @@ const sendAdMessage = async ({
       if (mappedButtons.length === 0) {
         return false;
       }
+      const configuredBody = buttonTemplate?.body?.trim() || fallbackBody || "Selecione uma opção abaixo.";
+      const buttonBody = mentionAll
+        ? [`@todos`, configuredBody].filter(Boolean).join("\n")
+        : configuredBody;
       await sendInteractiveButtons(client, {
         to: groupJid,
         title: buttonTemplate?.title?.trim() || "ADS",
-        body: buttonTemplate?.body?.trim() || fallbackBody || "Selecione uma opção abaixo.",
+        body: buttonBody,
         footer: buttonTemplate?.footer ?? undefined,
         buttons: mappedButtons,
         buttonType:
           firstFamily === "action" || nativeButtonsEnabled ? "native" : "legacy",
         headerMedia,
-        mentions,
+        mentionAll,
       });
       return true;
     };
@@ -364,10 +279,10 @@ const sendAdMessage = async ({
           to: groupJid,
           sticker: stickerSource,
           mimeType: ad.media.mimeType ?? "image/webp",
-          mentions,
+          mentionAll,
         });
         if (!(await sendButtonsMessage(body)) && body) {
-          await sendTextMessage(client, { to: groupJid, body, mentions });
+          await sendTextMessage(client, { to: groupJid, body, mentionAll });
         }
         return { delivered: true, unauthorized: false };
       }
@@ -406,7 +321,7 @@ const sendAdMessage = async ({
         caption: body || ad.media.caption || null,
         filename: ad.media.fileName ?? undefined,
         mimeType: ad.media.mimeType ?? undefined,
-        mentions,
+        mentionAll,
       });
       await sendButtonsMessage(body || ad.media.caption || "");
       return { delivered: true, unauthorized: false };
@@ -419,7 +334,7 @@ const sendAdMessage = async ({
       return { delivered: false, unauthorized: false };
     }
     if (!(await sendButtonsMessage(body))) {
-      await sendTextMessage(client, { to: groupJid, body, mentions });
+      await sendTextMessage(client, { to: groupJid, body, mentionAll });
     }
     return { delivered: true, unauthorized: false };
   } catch (error) {
@@ -448,7 +363,6 @@ const runAdsDispatchCycle = async () => {
           g.user_id,
           g.instance_id,
           g.remote_id,
-          g.participants,
           i.base_url,
           i.token,
           i.session_status,
@@ -505,9 +419,6 @@ const runAdsDispatchCycle = async () => {
           media: ad.media ? { ...ad.media } : null,
         }));
 
-        const mentionJids = parseParticipantIds(row.participants).filter((jid) =>
-          jid && jid.includes("@"),
-        );
         const instanceSettings = isInternal ? null : await getInstanceSettings(row.instance_id!);
         const nativeButtonsEnabled = Boolean(instanceSettings?.commandToggles.nativeButtons);
 
@@ -535,7 +446,6 @@ const runAdsDispatchCycle = async () => {
             client,
             groupJid: row.remote_id,
             ad: selectedAd,
-            mentionJids: ad.mentionAll ? mentionJids : [],
             nativeButtonsEnabled,
           });
           if (result.delivered) ad.lastVariationIndex = selected.index;

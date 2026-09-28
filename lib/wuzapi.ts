@@ -118,6 +118,7 @@ export type SendInteractiveButtonsParams = {
   headerMedia?: InteractiveHeaderMedia | null;
   buttonType?: "native" | "legacy";
   mentions?: string[] | null;
+  mentionAll?: boolean | null;
 };
 
 export type WhatsAppFormField = {
@@ -3264,6 +3265,10 @@ export const sendInteractiveButtons = async (
       payload.Mentions = mentionList;
       payload.mentions = mentionList;
     }
+  }
+  if (params.mentionAll) {
+    payload.MentionAll = true;
+    payload.mentionAll = true;
   }
 
   if (params.quoted?.stanzaId) {
