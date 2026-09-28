@@ -1844,11 +1844,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final visible = items.where((message) {
       if (!message.isUserVisible) return false;
       // Poll-vote webhooks from older EasyZap builds arrived as a second,
-      // inbound empty "Enquete" message. The real poll bubble is outbound and
-      // contains the options; hide only this malformed duplicate.
-      final emptyPollVote =
+      // inbound empty poll envelope. The renderer used to turn that envelope
+      // into a visible fallback card titled "Enquete" even though it had no
+      // question or options. Hide that protocol row regardless of whether
+      // the provider put the fallback in `text`, `mediaTitle`, or left both
+      // fields empty. A real poll always has a question/title or options.
+      final pollTitle = message.displayText.trim().isNotEmpty
+          ? message.displayText.trim()
+          : (message.mediaTitle ?? '').trim();
+      final emptyPollVote = message.resolvedMediaKind == 'poll' &&
           message.pollOptions.isEmpty &&
-          message.text.trim().toLowerCase() == 'enquete';
+          (pollTitle.isEmpty || pollTitle.toLowerCase() == 'enquete');
       return !emptyPollVote;
     });
     final query = _search.text.trim().toLowerCase();
