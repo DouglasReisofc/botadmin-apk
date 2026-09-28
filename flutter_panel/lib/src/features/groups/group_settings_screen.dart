@@ -1,3 +1,5 @@
+import 'dart:ui' show PointerDeviceKind;
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -4506,7 +4508,9 @@ class _ScheduledAdDraft {
     // Cada alternativa é persistida como um snapshot completo da mensagem.
     // Assim o dispatcher alterna o balão inteiro (mídia e botões incluídos),
     // e não apenas troca o texto no último segundo.
-    'messageVariants': messageVariants.map((variant) => variant.toPayload()).toList(),
+    'messageVariants': messageVariants
+        .map((variant) => variant.toPayload())
+        .toList(),
     'mentionAll': mentionAll,
     'scheduleType': scheduleType,
     'frequency': frequency,
@@ -4518,7 +4522,11 @@ class _ScheduledAdDraft {
 }
 
 class _ScheduledAdEditorDialog extends ConsumerStatefulWidget {
-  const _ScheduledAdEditorDialog({required this.group, required this.initial, this.variantOnly = false});
+  const _ScheduledAdEditorDialog({
+    required this.group,
+    required this.initial,
+    this.variantOnly = false,
+  });
 
   final BotGroup group;
   final GroupScheduledAdConfig initial;
@@ -4532,7 +4540,8 @@ class _ScheduledAdEditorDialog extends ConsumerStatefulWidget {
 class _ScheduledAdEditorDialogState
     extends ConsumerState<_ScheduledAdEditorDialog> {
   late final TextEditingController _caption;
-  late final List<TextEditingController> _variations;
+  late final PageController _messagePageController;
+  int _messagePage = 0;
   final List<_ScheduledAdDraft> _messageVariants = [];
   late final TextEditingController _frequency;
   late final TextEditingController _times;
@@ -4549,9 +4558,7 @@ class _ScheduledAdEditorDialogState
     super.initState();
     final initial = widget.initial;
     _caption = TextEditingController(text: initial.caption);
-    _variations = initial.captionVariations
-        .map((text) => TextEditingController(text: text))
-        .toList();
+    _messagePageController = PageController(viewportFraction: 0.94);
     _frequency = TextEditingController(text: initial.frequency ?? '24h');
     _times = TextEditingController(text: initial.times.join(', '));
     _enabled = initial.enabled;
@@ -4560,11 +4567,35 @@ class _ScheduledAdEditorDialogState
     _media = initial.media;
     _buttons = [...initial.buttons];
     for (final variant in initial.messageVariants) {
-      _messageVariants.add(_ScheduledAdDraft(enabled: true, caption: variant.caption, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: variant.media, buttons: variant.buttons));
+      _messageVariants.add(
+        _ScheduledAdDraft(
+          enabled: true,
+          caption: variant.caption,
+          captionVariations: const [],
+          mentionAll: false,
+          scheduleType: 'frequency',
+          frequency: '1h',
+          times: const [],
+          media: variant.media,
+          buttons: variant.buttons,
+        ),
+      );
     }
     if (_messageVariants.isEmpty) {
       for (final text in initial.captionVariations) {
-        _messageVariants.add(_ScheduledAdDraft(enabled: true, caption: text, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: initial.media, buttons: initial.buttons));
+        _messageVariants.add(
+          _ScheduledAdDraft(
+            enabled: true,
+            caption: text,
+            captionVariations: const [],
+            mentionAll: false,
+            scheduleType: 'frequency',
+            frequency: '1h',
+            times: const [],
+            media: initial.media,
+            buttons: initial.buttons,
+          ),
+        );
       }
     }
   }
@@ -4572,9 +4603,7 @@ class _ScheduledAdEditorDialogState
   @override
   void dispose() {
     _caption.dispose();
-    for (final controller in _variations) {
-      controller.dispose();
-    }
+    _messagePageController.dispose();
     _frequency.dispose();
     _times.dispose();
     super.dispose();
@@ -4603,66 +4632,9 @@ class _ScheduledAdEditorDialogState
       onEditButton: _editButton,
       onRemoveButton: (index) => setState(() => _buttons.removeAt(index)),
     );
-    final preview = Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        bubble,
-        const SizedBox(height: 16),
-        if (!widget.variantOnly) ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  const Expanded(child: Text('Mensagens alternativas completas', style: TextStyle(fontWeight: FontWeight.w800))),
-                  TextButton.icon(
-                    onPressed: _messageVariants.length >= 20 ? null : () => _editVariant(),
-                    icon: const Icon(Icons.add_rounded),
-                    label: const Text('Adicionar'),
-                  ),
-                ],
-              ),
-              const Text('Cada alternativa tem seu próprio texto, mídia e botões. O horário é compartilhado.'),
-              const SizedBox(height: 8),
-              for (var index = 0; index < _messageVariants.length; index++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Column(
-                    children: [
-                    Row(
-                    children: [
-                      Expanded(
-                        child: ListTile(title: Text('Mensagem ${index + 2}'), subtitle: Text(_messageVariants[index].caption.isEmpty ? 'Mídia / botões' : _messageVariants[index].caption, maxLines: 2, overflow: TextOverflow.ellipsis), trailing: const Icon(Icons.edit_outlined), onTap: () => _editVariant(index)),
-                      ),
-                      IconButton(
-                        tooltip: 'Remover variação',
-                        onPressed: () => setState(() => _messageVariants.removeAt(index)),
-                        icon: const Icon(Icons.delete_outline_rounded),
-                      ),
-                    ],
-                    ),
-                    _ScheduledAdBubblePreview(
-                      caption: _messageVariants[index].caption,
-                      media: _messageVariants[index].media,
-                      localMediaBytes: null,
-                      uploading: false,
-                      buttons: _messageVariants[index].buttons,
-                      onEditText: () => _editVariant(index),
-                      onPickMedia: () => _editVariant(index),
-                      onClearMedia: null,
-                      onAddButton: () => _editVariant(index),
-                      onEditButton: (_) => _editVariant(index),
-                      onRemoveButton: (_) => _editVariant(index),
-                    ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ),
-      ],
-    );
+    final preview = widget.variantOnly
+        ? Padding(padding: const EdgeInsets.all(16), child: bubble)
+        : _buildMessageCarousel(bubble, size, compact);
     final schedule = _ScheduledAdScheduleForm(
       enabled: _enabled,
       mentionAll: _mentionAll,
@@ -4691,7 +4663,9 @@ class _ScheduledAdEditorDialogState
                 tooltip: 'Fechar',
               ),
               title: Text(
-                widget.initial.id.isEmpty
+                widget.variantOnly
+                    ? 'Editar variação'
+                    : widget.initial.id.isEmpty
                     ? 'Nova mensagem programada'
                     : 'Editar mensagem programada',
                 style: const TextStyle(fontWeight: FontWeight.w900),
@@ -4707,7 +4681,13 @@ class _ScheduledAdEditorDialogState
               child: compact
                   ? ListView(
                       padding: const EdgeInsets.all(12),
-                      children: [preview, if (!widget.variantOnly) ...[const SizedBox(height: 12), schedule]],
+                      children: [
+                        preview,
+                        if (!widget.variantOnly) ...[
+                          const SizedBox(height: 12),
+                          schedule,
+                        ],
+                      ],
                     )
                   : Row(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -4716,20 +4696,21 @@ class _ScheduledAdEditorDialogState
                           flex: 6,
                           child: ColoredBox(
                             color: wa.chatWallpaper,
+                            child: widget.variantOnly
+                                ? SingleChildScrollView(child: preview)
+                                : preview,
+                          ),
+                        ),
+                        if (!widget.variantOnly)
+                          VerticalDivider(width: 1, color: wa.divider),
+                        if (!widget.variantOnly)
+                          SizedBox(
+                            width: 350,
                             child: SingleChildScrollView(
-                              padding: const EdgeInsets.all(22),
-                              child: preview,
+                              padding: const EdgeInsets.all(16),
+                              child: schedule,
                             ),
                           ),
-                        ),
-                        if (!widget.variantOnly) VerticalDivider(width: 1, color: wa.divider),
-                        if (!widget.variantOnly) SizedBox(
-                          width: 350,
-                          child: SingleChildScrollView(
-                            padding: const EdgeInsets.all(16),
-                            child: schedule,
-                          ),
-                        ),
                       ],
                     ),
             ),
@@ -4739,12 +4720,237 @@ class _ScheduledAdEditorDialogState
     );
   }
 
+  Widget _buildMessageCarousel(Widget primaryBubble, Size size, bool compact) {
+    final wa = WaTheme.of(context);
+    final pageCount = _messageVariants.length + 1;
+    final carouselHeight = compact
+        ? (size.height * 0.52).clamp(350.0, 570.0)
+        : (size.height - 180).clamp(430.0, 670.0);
+    return SizedBox(
+      height: carouselHeight,
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Text(
+                    'Mensagens',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                  ),
+                ),
+                Text(
+                  '$pageCount/21',
+                  style: TextStyle(fontSize: 12, color: wa.textMuted),
+                ),
+                const SizedBox(width: 8),
+                IconButton.filledTonal(
+                  tooltip: 'Adicionar variação completa',
+                  onPressed: _messageVariants.length >= 20
+                      ? null
+                      : () => _editVariant(),
+                  icon: const Icon(Icons.add_rounded),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: ScrollConfiguration(
+              behavior: const MaterialScrollBehavior().copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.stylus,
+                },
+              ),
+              child: PageView.builder(
+                controller: _messagePageController,
+                itemCount: pageCount,
+                onPageChanged: (page) => setState(() => _messagePage = page),
+                itemBuilder: (context, page) {
+                  final variantIndex = page - 1;
+                  final isPrimary = page == 0;
+                  final variant = isPrimary
+                      ? null
+                      : _messageVariants[variantIndex];
+                  final message = isPrimary
+                      ? primaryBubble
+                      : _ScheduledAdBubblePreview(
+                          caption: variant!.caption,
+                          media: variant.media,
+                          localMediaBytes: null,
+                          uploading: false,
+                          buttons: variant.buttons,
+                          onEditText: () => _editVariant(variantIndex),
+                          onPickMedia: () => _editVariant(variantIndex),
+                          onClearMedia: null,
+                          onAddButton: () => _editVariant(variantIndex),
+                          onEditButton: (_) => _editVariant(variantIndex),
+                          onRemoveButton: (_) => _editVariant(variantIndex),
+                        );
+                  return Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 3,
+                    ),
+                    child: Material(
+                      color: wa.panel,
+                      borderRadius: BorderRadius.circular(18),
+                      clipBehavior: Clip.antiAlias,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          border: Border.all(color: wa.border),
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        child: Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(12, 5, 5, 5),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: Text(
+                                      isPrimary
+                                          ? 'Mensagem principal'
+                                          : 'Variação $page',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                  if (!isPrimary) ...[
+                                    IconButton(
+                                      tooltip: 'Editar variação',
+                                      onPressed: () =>
+                                          _editVariant(variantIndex),
+                                      icon: const Icon(Icons.edit_outlined),
+                                    ),
+                                    IconButton(
+                                      tooltip: 'Remover variação',
+                                      onPressed: () =>
+                                          _removeVariant(variantIndex),
+                                      icon: const Icon(
+                                        Icons.delete_outline_rounded,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                            Divider(height: 1, color: wa.divider),
+                            Expanded(
+                              child: SingleChildScrollView(
+                                padding: const EdgeInsets.all(12),
+                                child: message,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 5),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                IconButton(
+                  tooltip: 'Mensagem anterior',
+                  onPressed: _messagePage > 0
+                      ? () => _goToMessage(_messagePage - 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_left_rounded),
+                ),
+                Text(
+                  '${_messagePage + 1} de $pageCount',
+                  style: TextStyle(color: wa.textMuted, fontSize: 12),
+                ),
+                IconButton(
+                  tooltip: 'Próxima mensagem',
+                  onPressed: _messagePage < pageCount - 1
+                      ? () => _goToMessage(_messagePage + 1)
+                      : null,
+                  icon: const Icon(Icons.chevron_right_rounded),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _goToMessage(int page) {
+    if (_messagePageController.hasClients) {
+      _messagePageController.animateToPage(
+        page,
+        duration: const Duration(milliseconds: 260),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  void _removeVariant(int index) {
+    setState(() {
+      _messageVariants.removeAt(index);
+      _messagePage = _messagePage.clamp(0, _messageVariants.length);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _messagePageController.hasClients) {
+        _messagePageController.jumpToPage(_messagePage);
+      }
+    });
+  }
+
   Future<void> _editVariant([int? index]) async {
     final current = index == null ? null : _messageVariants[index];
-    final initial = current == null ? GroupScheduledAdConfig.newDraft() : GroupScheduledAdConfig(id: '', enabled: true, caption: current.caption, captionVariations: const [], mentionAll: false, scheduleType: 'frequency', frequency: '1h', times: const [], media: current.media, buttons: current.buttons, lastSentAt: null);
-    final result = await showDialog<_ScheduledAdDraft>(context: context, builder: (_) => _ScheduledAdEditorDialog(group: widget.group, initial: initial, variantOnly: true));
+    final initial = current == null
+        ? GroupScheduledAdConfig.newDraft()
+        : GroupScheduledAdConfig(
+            id: '',
+            enabled: true,
+            caption: current.caption,
+            captionVariations: const [],
+            mentionAll: false,
+            scheduleType: 'frequency',
+            frequency: '1h',
+            times: const [],
+            media: current.media,
+            buttons: current.buttons,
+            lastSentAt: null,
+          );
+    final result = await showDialog<_ScheduledAdDraft>(
+      context: context,
+      builder: (_) => _ScheduledAdEditorDialog(
+        group: widget.group,
+        initial: initial,
+        variantOnly: true,
+      ),
+    );
     if (result == null || !mounted) return;
-    setState(() { if (index == null) { _messageVariants.add(result); } else { _messageVariants[index] = result; } });
+    setState(() {
+      if (index == null) {
+        _messageVariants.add(result);
+      } else {
+        _messageVariants[index] = result;
+      }
+    });
+    if (index == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _messagePageController.hasClients) {
+          _messagePageController.animateToPage(
+            _messageVariants.length,
+            duration: const Duration(milliseconds: 280),
+            curve: Curves.easeOutCubic,
+          );
+        }
+      });
+    }
   }
 
   Future<void> _editText() async {
