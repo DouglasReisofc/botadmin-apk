@@ -1198,6 +1198,7 @@ List<ChatPollOption> _parsePollOptions(Map<String, dynamic> media) {
   ];
   final seen = <String>{};
   final result = <ChatPollOption>[];
+  final voterNames = _map(media['pollVoterNames']);
   for (final record in records) {
     final title = _firstStringFromList([
       record['title'],
@@ -1223,11 +1224,21 @@ List<ChatPollOption> _parsePollOptions(Map<String, dynamic> media) {
         voteCount:
             _firstInt(record['voteCount'], record['votes'], record['count']) ??
             _stringList(record['voters']).length,
-        voterNames: _stringList(record['voterNames'] ?? record['voters']),
+        voterNames: _stringList(record['voterNames'] ?? record['voters'])
+            .map((voter) => _cleanPollVoter(voter, voterNames))
+            .toList(growable: false),
       ),
     );
   }
   return result;
+}
+
+String _cleanPollVoter(String value, Map<String, dynamic> names) {
+  final normalized = value.trim();
+  final direct = names[normalized] ?? names[normalized.replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')];
+  final label = '${direct ?? ''}'.replaceAll(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)\b', caseSensitive: false), '').trim();
+  if (label.isNotEmpty && !RegExp(r'^\d{10,}$').hasMatch(label)) return label;
+  return normalized.replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '');
 }
 
 List<ChatContactCard> _parseContacts(Map<String, dynamic> media) {

@@ -136,6 +136,7 @@ import {
   type UserAvatarResult,
   type WuzapiClient,
   resolveWhatsappLidsToPhones,
+  resolveWhatsappLidProfiles,
 } from "lib/wuzapi";
 import { sendReactionMessage } from "lib/wuzapi";
 import { canAutoDownloadMessage, youtubeVideoThumbnail } from "./autodownload-input";
@@ -15648,14 +15649,21 @@ export const handleMessageUpsert = async (
       );
 
       if (activeSweepstake) {
+        const resolvedLidProfiles = sweepstakeVote.participantJid.toLowerCase().endsWith('@lid')
+          ? await resolveWhatsappLidProfiles(client, [sweepstakeVote.participantJid]).catch(() => new Map())
+          : new Map();
+        const resolvedLid = resolvedLidProfiles.get(normalizeJid(sweepstakeVote.participantJid) ?? '');
+        const voterJid = resolvedLid?.phone
+          ? `${resolvedLid.phone}@s.whatsapp.net`
+          : sweepstakeVote.participantJid;
         await applyWhatsappPollVoteForUser({
           userId: context.instance.userId,
           instanceId: context.instance.id,
           chatJid: message.chatId,
           pollMessageId: sweepstakeVote.pollId,
-          voterJid: sweepstakeVote.participantJid,
+          voterJid,
           selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
-          voterName: sweepstakeVote.displayName,
+          voterName: sweepstakeVote.displayName ?? resolvedLid?.name ?? null,
           ownJid: context.instance.phone
             ? `${context.instance.phone}@s.whatsapp.net`
             : null,
@@ -15668,9 +15676,10 @@ export const handleMessageUpsert = async (
         });
         const participantDisplayName =
           sweepstakeVote.displayName ??
+          resolvedLid?.name ??
           await resolvePollParticipantName(client, message.chatId, sweepstakeVote.participantJid);
         const voteResult = await recordSweepstakeVote(activeSweepstake, {
-          participantJid: sweepstakeVote.participantJid,
+          participantJid: voterJid,
           selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
           displayName: participantDisplayName,
           timestamp: sweepstakeVote.timestamp,

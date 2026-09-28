@@ -9,7 +9,7 @@ import {
   listSweepstakesForGroup,
   type BotSweepstakeOption,
 } from "lib/bot-sweepstakes";
-import { sendPollMessage } from "lib/wuzapi";
+import { resolveWhatsappLidsToPhones, sendPollMessage } from "lib/wuzapi";
 import type { BotGroup } from "types/bot-groups";
 
 const DURATION_MULTIPLIERS: Record<string, number> = {
@@ -243,6 +243,20 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
 
   let pollResponse: Awaited<ReturnType<typeof sendPollMessage>>;
   try {
+    const rawMentionTargets = (group.participants ?? [])
+      .map((participant) => participant.jid || participant.id || participant.phone)
+      .filter((jid): jid is string => typeof jid === "string" && jid.trim().length > 0);
+    const lidTargets = rawMentionTargets.filter((jid) => jid.toLowerCase().endsWith('@lid'));
+    const lidPhones = lidTargets.length
+      ? await resolveWhatsappLidsToPhones(
+          { baseUrl: instance.serverBaseUrl, token: instance.token },
+          lidTargets,
+        ).catch(() => new Map<string, string>())
+      : new Map<string, string>();
+    const mentionTargets = rawMentionTargets.map((jid) => {
+      const phone = lidPhones.get(jid.replace(/\D+/g, ''));
+      return phone ? `${phone}@s.whatsapp.net` : jid;
+    });
     pollResponse = await sendPollMessage(
       {
         baseUrl: instance.serverBaseUrl,
@@ -259,9 +273,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
         question: pollQuestion,
         options: ["Participar ✅", "Não participar ❌"],
         selectableOptionsCount: 1,
-        mentions: (group.participants ?? [])
-          .map((participant) => participant.jid || participant.id || participant.phone)
-          .filter((jid): jid is string => typeof jid === "string" && jid.trim().length > 0),
+        mentions: mentionTargets,
         mentionAll: true,
       },
     );

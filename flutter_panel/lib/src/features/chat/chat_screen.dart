@@ -1841,7 +1841,17 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
   }
 
   List<ChatMessage> _filteredMessages(List<ChatMessage> items) {
-    final visible = items.where((message) => message.isUserVisible);
+    final visible = items.where((message) {
+      if (!message.isUserVisible) return false;
+      // Poll-vote webhooks from older EasyZap builds arrived as a second,
+      // inbound empty "Enquete" message. The real poll bubble is outbound and
+      // contains the options; hide only this malformed duplicate.
+      final emptyPollVote = !message.fromMe &&
+          message.pollOptions.isEmpty &&
+          message.normalizedType == 'poll' &&
+          message.text.trim().toLowerCase() == 'enquete';
+      return !emptyPollVote;
+    });
     final query = _search.text.trim().toLowerCase();
     if (query.isEmpty) return visible.toList(growable: false);
     return visible.where((message) {
@@ -14074,6 +14084,7 @@ class _MentionCandidate {
     final jid =
         (json['jid'] ?? json['id'] ?? json['userId'] ?? json['user_id'] ?? '')
             .toString()
+            .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
             .trim();
     final label =
         (json['name'] ??
@@ -14084,8 +14095,9 @@ class _MentionCandidate {
                 '')
             .toString()
             .trim();
-    final subtitle = (json['phone'] ?? json['number'] ?? json['role'] ?? '')
+    final subtitle = (json['phone'] ?? json['number'] ?? json['role'] ?? jid)
         .toString()
+        .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
         .trim();
     return _MentionCandidate(
       jid: jid,
