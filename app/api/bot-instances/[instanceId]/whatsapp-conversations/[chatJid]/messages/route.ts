@@ -14,6 +14,7 @@ import {
   sendMediaMessage,
   sendStickerMessage,
   sendTextMessage,
+  resolveWhatsappLidsToPhones,
   sendWhatsAppForm,
   type InteractiveButton,
   type SendMediaPayload,
@@ -105,27 +106,45 @@ const applyGroupMentionIdentities = async (
   userId: number,
   instanceId: number,
   chatJid: string,
+  client?: WuzapiClient,
 ) => {
   if (getWhatsappChatType(chatJid) !== "group") return messages;
   const groups = await listGroupsForUser(userId).catch(() => []);
   const group = groups.find(
     (entry) => entry.instanceId === instanceId && normalizeWhatsappChatJid(entry.remoteId) === chatJid,
   );
-  if (!group?.participants?.length) return messages;
+  const lidDigits = [...new Set(messages.flatMap((message) => [
+    ...[...(message.text ?? "").matchAll(/@(\d{14,})(?!\d)/g)].map((match) => match[1]),
+    ...(message.mentionedJids ?? [])
+      .filter((jid) => jid.toLowerCase().endsWith("@lid"))
+      .map(identityDigits),
+  ]))].slice(0, 20);
+  const lidPhones = client && lidDigits.length
+    ? await Promise.race([
+        resolveWhatsappLidsToPhones(client, lidDigits).catch(() => new Map<string, string>()),
+        new Promise<Map<string, string>>((resolve) => setTimeout(() => resolve(new Map()), 1500)),
+      ])
+    : new Map<string, string>();
+  if (!group?.participants?.length && lidPhones.size === 0) return messages;
   return messages.map((message) => {
-    if (!message.mentionedJids?.length) return message;
-    const mentionTargets = message.mentionedJids.map((jid) => {
+    const inlineLids = [...(message.text ?? "").matchAll(/@(\d{14,})(?!\d)/g)]
+      .map((match) => `${match[1]}@lid`);
+    const mentions = [...new Set([...(message.mentionedJids ?? []), ...inlineLids])];
+    if (!mentions.length) return message;
+    const mentionTargets = mentions.map((jid) => {
       const raw = String(jid).trim();
-      const member = group.participants.find((entry) =>
+      const phone = lidPhones.get(identityDigits(raw));
+      const member = group?.participants?.find((entry) =>
         String(entry.id || "").trim().toLowerCase() === raw.toLowerCase() ||
-        (identityDigits(entry.id) && identityDigits(entry.id) === identityDigits(raw)),
+        (identityDigits(entry.id) && identityDigits(entry.id) === identityDigits(raw)) ||
+        (phone && [entry.id, entry.phone].some((value) => identityDigits(value) === phone)),
       );
       const existing = message.mentionTargets?.find((target) =>
         String(target.jid).trim().toLowerCase() === raw.toLowerCase(),
       );
       return {
         jid: raw,
-        name: existing?.name || member?.name || member?.displayName || member?.pushName || null,
+        name: existing?.name || member?.name || member?.displayName || member?.pushName || phone || null,
       };
     });
     return { ...message, mentionTargets };
@@ -893,6 +912,9 @@ export async function GET(request: Request, context: Context) {
       storageUserId,
       instance.id,
       chatJid,
+      instance.serverBaseUrl && instance.token
+        ? { baseUrl: instance.serverBaseUrl, token: instance.token }
+        : undefined,
     );
 
     // Fast path used by Flutter prefetch/cache warmup: return recent messages only.

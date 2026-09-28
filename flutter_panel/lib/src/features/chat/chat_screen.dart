@@ -1531,6 +1531,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       builder: (_) => _SweepstakeDetailsDialog(
         sweepstake: active,
         canDraw:
+            !thread.isInternalGroup ||
             thread.instanceIsAdmin == true ||
             thread.internalGroupRole == 'owner',
         members: _mentionCandidates,
