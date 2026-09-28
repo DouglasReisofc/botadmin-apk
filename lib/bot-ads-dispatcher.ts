@@ -16,6 +16,8 @@ import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
 import type { BotGroupAd } from "types/bot-groups";
 import { dispatchInternalGroupAutomationMessage } from "lib/internal-groups";
 import { chooseScheduledAdMessage } from "lib/scheduled-ad-variation";
+import { startRedisSingleton } from "lib/redis";
+import { deliverScheduledAdOnce, scheduledAdOccurrenceKey } from "lib/scheduled-ad-delivery";
 
 type AdsDispatcherRow = RowDataPacket & {
   group_id: number;
@@ -486,7 +488,19 @@ const runAdsDispatchCycle = async () => {
             }
 
             for (const time of dueTimes) {
-              const result = await deliverAd(ad);
+              const result = await deliverScheduledAdOnce(
+                scheduledAdOccurrenceKey(row.group_id, ad.id, `${timezoneContext.date}:${time}`),
+                () => deliverAd(ad),
+              );
+              if (!result) {
+                console.info("[AdsDispatcher] Ocorrência já reivindicada por outro worker", {
+                  groupId: row.group_id,
+                  adId: ad.id,
+                  time,
+                  date: timezoneContext.date,
+                });
+                continue;
+              }
               if (result.delivered) {
                 if (!ad.sentTimes) {
                   ad.sentTimes = {};
@@ -524,7 +538,17 @@ const runAdsDispatchCycle = async () => {
             continue;
           }
 
-          const result = await deliverAd(ad);
+          const result = await deliverScheduledAdOnce(
+            scheduledAdOccurrenceKey(row.group_id, ad.id, `interval:${ad.lastSentAt ?? "initial"}`),
+            () => deliverAd(ad),
+          );
+          if (!result) {
+            console.info("[AdsDispatcher] Anúncio de intervalo já reivindicado por outro worker", {
+              groupId: row.group_id,
+              adId: ad.id,
+            });
+            continue;
+          }
           if (result.delivered) {
             ad.lastSentAt = nowIso;
             ad.updatedAt = nowIso;
@@ -562,7 +586,9 @@ const runAdsDispatchCycle = async () => {
 };
 
 export const startAdsDispatcher = () => {
-  if (process.env.ENABLE_BOT_DISPATCHERS === "false") {
+  if (process.env.ENABLE_BOT_DISPATCHERS === "false" ||
+      process.env.BOTADMIN_DISABLE_BACKGROUND_JOBS === "1" ||
+      process.env.BOTADMIN_LOCAL_PREVIEW === "1") {
     return;
   }
   if (dispatcherStarted) {
@@ -571,8 +597,12 @@ export const startAdsDispatcher = () => {
   dispatcherStarted = true;
   globalRuntime.__botAdsDispatcherStarted = true;
 
-  void runAdsDispatchCycle();
-  setInterval(() => {
+  // Webhooks call this too. All entry points must acquire the same lease,
+  // rather than bypassing server-bootstrap's distributed protection.
+  startRedisSingleton("ads-dispatcher", () => {
     void runAdsDispatchCycle();
-  }, ADS_DISPATCH_INTERVAL_MS);
+    setInterval(() => {
+      void runAdsDispatchCycle();
+    }, ADS_DISPATCH_INTERVAL_MS);
+  });
 };

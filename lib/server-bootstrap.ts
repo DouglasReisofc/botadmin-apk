@@ -35,7 +35,7 @@ if (!runtime.__botAdminServerBootstrap && typeof process !== "undefined" && !isB
   if (disableBackgroundJobs) {
     console.info("[server-bootstrap] background jobs disabled for local preview");
   } else {
-    startRedisSingleton("ads-dispatcher", startAdsDispatcher);
+    startAdsDispatcher();
     startRedisSingleton("bot-ad-campaign-dispatcher", startBotAdCampaignDispatcher);
     startRedisSingleton("admin-campaign-dispatcher", startAdminCampaignDispatcher);
     startRedisSingleton("admin-panel-notification-dispatcher", startAdminPanelNotificationDispatcher);
