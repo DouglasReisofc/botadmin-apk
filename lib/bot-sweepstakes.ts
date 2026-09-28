@@ -398,6 +398,17 @@ export const recordSweepstakeVote = async (
   vote: SweepstakeVoteInput,
 ): Promise<SweepstakeVoteResult> => {
   await ensureTable();
+  // Defense in depth for webhooks that provide the instance number directly:
+  // the bot itself is never an eligible participant.
+  const [instanceRows] = await getDb().query<Array<{ phone: string | null }>>(
+    "SELECT phone FROM bot_instances WHERE id = ? LIMIT 1",
+    [sweepstake.instanceId],
+  );
+  const botPhone = String(instanceRows[0]?.phone || "").replace(/\D+/g, "");
+  const voterPhone = normalizeJid(vote.participantJid).replace(/\D+/g, "");
+  if (botPhone && voterPhone && botPhone === voterPhone) {
+    return { sweepstake, change: "none" };
+  }
   const wantsParticipate = vote.selectedOptionHashes.includes(sweepstake.joinOptionHash);
   const timestampIso = (vote.timestamp ?? new Date()).toISOString();
   const participants = [...sweepstake.participants];
@@ -490,9 +501,9 @@ export const formatSweepstakeWinnerLabel = (
   const normalized = /@(s\.whatsapp\.net|c\.us)$/i.test(winner.jid) ? normalizeJid(winner.jid) : null;
   const phoneLabel = normalized ? `@${normalized}` : "Participante";
   if (winner.displayName && winner.displayName.trim()) {
-    return normalized
-      ? `${winner.displayName.trim()} (@${normalized})`
-      : winner.displayName.trim();
+    // O JID continua em ContextInfo.MentionedJID para tornar o nome verde e
+    // clicável; não o repetimos no corpo, onde virava @número/LID visível.
+    return `@${winner.displayName.trim().replace(/^@+/, "")}`;
   }
   return phoneLabel;
 };

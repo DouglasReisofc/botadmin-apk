@@ -244,12 +244,22 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
   let pollResponse: Awaited<ReturnType<typeof sendPollMessage>>;
   try {
     pollResponse = await sendPollMessage(
-      { baseUrl: instance.serverBaseUrl, token: instance.token },
+      {
+        baseUrl: instance.serverBaseUrl,
+        token: instance.token,
+        conversation: {
+          userId,
+          instanceId: instance.id,
+          instanceName: instance.name,
+          instancePhone: instance.phone,
+        },
+      },
       {
         to: group.remoteId,
         question: pollQuestion,
         options: ["Participar ✅", "Não participar ❌"],
         selectableOptionsCount: 1,
+        mentionAll: true,
       },
     );
   } catch (error) {

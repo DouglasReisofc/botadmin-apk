@@ -4088,6 +4088,36 @@ export const sendPollMessage = async (
       pollId,
   );
 
+  // Enquetes enviadas pela API precisam entrar imediatamente no histórico do
+  // chat. O webhook só traz as atualizações de voto, não uma nova mensagem de
+  // criação, portanto persistimos o balão aqui.
+  const responseOptions = Array.isArray(responsePoll?.options)
+    ? responsePoll.options
+        .map((option: any, index: number) => {
+          const title = String(option?.name ?? option?.Name ?? option?.title ?? option?.Title ?? trimmedOptions[index] ?? "").trim();
+          if (!title) return null;
+          const hash = String(option?.hash ?? option?.Hash ?? option?.id ?? option?.Id ?? "").trim();
+          return { id: hash || title, hash: hash || title, title, name: title, votes: 0, voteCount: 0, voters: [] };
+        })
+        .filter(Boolean)
+    : trimmedOptions.map((title) => ({ id: title, hash: title, title, name: title, votes: 0, voteCount: 0, voters: [] }));
+  await recordOutgoingConversationMessage(client, {
+    to: params.to,
+    messageId: messageId ?? resolvedPollId,
+    messageType: "poll",
+    text: params.question,
+    media: {
+      mediaType: "poll",
+      kind: "poll",
+      title: params.question,
+      options: responseOptions,
+      pollOptions: responseOptions,
+      pollVotes: {},
+      totalVotes: 0,
+    },
+    raw: { request: cloneJsonSafe(payload), response: cloneJsonSafe(response) },
+  });
+
   return {
     messageId,
     pollId: resolvedPollId,

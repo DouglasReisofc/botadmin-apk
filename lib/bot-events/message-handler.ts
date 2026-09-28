@@ -135,6 +135,7 @@ import {
   type SendMediaPayload,
   type UserAvatarResult,
   type WuzapiClient,
+  resolveWhatsappLidsToPhones,
 } from "lib/wuzapi";
 import { sendReactionMessage } from "lib/wuzapi";
 import { canAutoDownloadMessage, youtubeVideoThumbnail } from "./autodownload-input";
@@ -9318,6 +9319,36 @@ const extractSweepstakePollVote = (
   };
 };
 
+const resolvePollParticipantName = async (
+  client: WuzapiClient,
+  groupJid: string,
+  participantJid: string,
+): Promise<string | null> => {
+  try {
+    const response = await getGroupInfo<Record<string, unknown>>(client, groupJid);
+    const root = toRecord(response) ?? {};
+    const data = toRecord(root.data ?? root.Data ?? root.result ?? root.Result ?? root.info ?? root.Info) ?? root;
+    const rawParticipants = data.Participants ?? data.participants;
+    if (!Array.isArray(rawParticipants)) return null;
+    const target = normalizeJid(participantJid)?.toLowerCase();
+    const targetBare = target?.replace(/@(?:s\.whatsapp\.net|c\.us|lid)$/i, "");
+    for (const entry of rawParticipants) {
+      const record = toRecord(entry);
+      if (!record) continue;
+      const ids = [record.JID, record.jid, record.ID, record.id, record.PN, record.pn, record.LID, record.lid]
+        .filter((value): value is string => typeof value === "string")
+        .map((value) => normalizeJid(value)?.toLowerCase() ?? value.toLowerCase());
+      const matches = target && ids.includes(target) || Boolean(targetBare && ids.some((id) => id.replace(/@(?:s\.whatsapp\.net|c\.us|lid)$/i, "") === targetBare));
+      if (!matches) continue;
+      const name = firstString(record.PushName, record.pushName, record.Notify, record.notify, record.Name, record.name, record.DisplayName, record.displayName);
+      if (name && !/@(?:lid|s\.whatsapp\.net)\b/i.test(name)) return name;
+    }
+  } catch (error) {
+    console.warn("[sweepstakes] participant pushName lookup failed", { groupJid, participantJid, error });
+  }
+  return null;
+};
+
 const isAdminFromPayload = (payload: Record<string, unknown>): boolean => {
   const info = toRecord(payload.Info ?? payload.info);
   const flags = [
@@ -14430,69 +14461,6 @@ export const handleMessageUpsert = async (
     }
   }
 
-  const pollVote = extractSweepstakePollVote(payload, message);
-  if (pollVote) {
-    try {
-      await applyWhatsappPollVoteForUser({
-        userId: context.instance.userId,
-        instanceId: context.instance.id,
-        chatJid: message.chatId,
-        pollMessageId: pollVote.pollId,
-        voterJid: pollVote.participantJid,
-        selectedOptionHashes: pollVote.selectedOptionHashes,
-        voterName: pollVote.displayName,
-        ownJid: context.instance.phone ? `${context.instance.phone}@s.whatsapp.net` : null,
-        timestamp: pollVote.timestamp ?? null,
-      });
-    } catch (error) {
-      console.error("[whatsapp-conversations] Falha ao atualizar votos da enquete", {
-        userId: context.instance.userId,
-        instanceId: context.instance.id,
-        chatId: message.chatId,
-        pollId: pollVote.pollId,
-        error,
-      });
-    }
-
-    try {
-      const activeSweepstake = await findActiveSweepstakeByPoll(
-        context.instance.id,
-        pollVote.pollId,
-      );
-
-      if (activeSweepstake) {
-        const voteResult = await recordSweepstakeVote(activeSweepstake, {
-          participantJid: pollVote.participantJid,
-          selectedOptionHashes: pollVote.selectedOptionHashes,
-          displayName: pollVote.displayName,
-          timestamp: pollVote.timestamp,
-        });
-
-        if (
-          voteResult.change === "added" &&
-          typeof activeSweepstake.maxParticipants === "number" &&
-          activeSweepstake.maxParticipants > 0 &&
-          voteResult.sweepstake.participants.length === activeSweepstake.maxParticipants
-        ) {
-          await sendTextMessage(buildWuzapiClient(context), {
-            to: message.chatId,
-            body: [
-              "✅ Limite de participantes atingido para o sorteio!",
-              "O sorteio será encerrado automaticamente no horário configurado.",
-            ].join("\n"),
-          });
-        }
-      }
-    } catch (error) {
-      console.error("[sweepstakes] poll vote handling failed", {
-        pollId: pollVote.pollId,
-        group: message.chatId,
-        error,
-      });
-    }
-    return;
-  }
-
   let storedMessage: Awaited<ReturnType<typeof recordWhatsappMessageFromNormalized>> | null = null;
   try {
     storedMessage = await recordWhatsappMessageFromNormalized({ instance: context.instance, message });
@@ -15671,10 +15639,31 @@ export const handleMessageUpsert = async (
       );
 
       if (activeSweepstake) {
+        await applyWhatsappPollVoteForUser({
+          userId: context.instance.userId,
+          instanceId: context.instance.id,
+          chatJid: message.chatId,
+          pollMessageId: sweepstakeVote.pollId,
+          voterJid: sweepstakeVote.participantJid,
+          selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
+          voterName: sweepstakeVote.displayName,
+          ownJid: context.instance.phone
+            ? `${context.instance.phone}@s.whatsapp.net`
+            : null,
+          timestamp: sweepstakeVote.timestamp ?? null,
+        }).catch((error) => {
+          console.warn("[sweepstakes] failed to update poll bubble after vote", {
+            pollId: sweepstakeVote.pollId,
+            error,
+          });
+        });
+        const participantDisplayName =
+          sweepstakeVote.displayName ??
+          await resolvePollParticipantName(client, message.chatId, sweepstakeVote.participantJid);
         const voteResult = await recordSweepstakeVote(activeSweepstake, {
           participantJid: sweepstakeVote.participantJid,
           selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
-          displayName: sweepstakeVote.displayName,
+          displayName: participantDisplayName,
           timestamp: sweepstakeVote.timestamp,
         });
 
