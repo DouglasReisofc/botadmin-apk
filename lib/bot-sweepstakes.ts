@@ -409,6 +409,12 @@ export const recordSweepstakeVote = async (
   vote: SweepstakeVoteInput,
 ): Promise<SweepstakeVoteResult> => {
   await ensureTable();
+  // A WhatsApp LID is an internal alias, not a participant phone number. The
+  // webhook handler resolves it before reaching this function; reject any
+  // remaining LID defensively so manual/replayed events cannot persist it.
+  if (/@lid(?:$|:)/i.test(String(vote.participantJid ?? '').trim())) {
+    return { sweepstake, change: "none" };
+  }
   // Defense in depth for webhooks that provide the instance number directly:
   // the bot itself is never an eligible participant.
   const [instanceRows] = await getDb().query<Array<{ phone: string | null }>>(

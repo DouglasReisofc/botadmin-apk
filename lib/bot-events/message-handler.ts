@@ -9271,19 +9271,32 @@ const extractSweepstakePollVote = (
     return null;
   }
 
-  const participantRaw = firstString(
+  const participantCandidates = [
     normalizedRecord.participant,
     normalizedRecord.Participant,
+    normalizedRecord.participantJid,
+    normalizedRecord.participant_jid,
     normalizedRecord.senderJid,
     normalizedRecord.sender,
+    normalizedRecord.participantAlt,
+    normalizedRecord.ParticipantAlt,
     infoRecord.ParticipantNormalized,
     infoRecord.participantNormalized,
     infoRecord.Participant,
     infoRecord.participant,
+    infoRecord.ParticipantAlt,
+    infoRecord.participantAlt,
     participantCandidate,
     message.participant,
     message.senderJid,
-  );
+  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
+  // Prefer the domain-qualified LID when the provider includes both a
+  // normalized bare identifier and its original JID. The bare identifier has
+  // no way to distinguish a LID from a phone number after normalizeJid().
+  const participantRaw =
+    participantCandidates.find((value) => /@lid(?:$|:)/i.test(value.trim())) ??
+    firstString(...participantCandidates);
+  const participantIsLid = participantCandidates.some((value) => /@lid(?:$|:)/i.test(value.trim()));
   const participantJid = normalizeJid(participantRaw) || null;
 
   if (!participantJid) {
@@ -9314,7 +9327,7 @@ const extractSweepstakePollVote = (
     pollId,
     selectedOptionHashes,
     participantJid,
-    participantIsLid: /@lid(?:$|:)/i.test(participantRaw ?? ''),
+    participantIsLid,
     displayName,
     timestamp: voteTimestamp,
   };
