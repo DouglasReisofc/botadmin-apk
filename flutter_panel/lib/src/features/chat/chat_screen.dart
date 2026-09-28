@@ -14983,79 +14983,81 @@ class _SweepstakeDialogState extends ConsumerState<_SweepstakeDialog> {
           ),
         ],
       ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: size.width - 48,
-          maxHeight: size.height - 190,
-        ),
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: _question,
-                autofocus: true,
-                minLines: 2,
-                maxLines: 5,
-                maxLength: 160,
-                keyboardType: TextInputType.multiline,
-                textInputAction: TextInputAction.newline,
-                decoration: const InputDecoration(
-                  labelText: 'O que será sorteado?',
-                  hintText:
-                      'Ex.: Kit de produtos BotAdmin\nDigite outra linha se quiser',
+      content: SizedBox(
+        width: size.width > 760 ? 820 : size.width - 48,
+        child: ConstrainedBox(
+          constraints: BoxConstraints(maxHeight: size.height - 170),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _question,
+                  autofocus: true,
+                  minLines: 2,
+                  maxLines: 5,
+                  maxLength: 160,
+                  keyboardType: TextInputType.multiline,
+                  textInputAction: TextInputAction.newline,
+                  decoration: const InputDecoration(
+                    labelText: 'O que será sorteado?',
+                    hintText:
+                        'Ex.: Kit de produtos BotAdmin\nDigite outra linha se quiser',
+                  ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Imagem ou vídeo do anúncio final',
-                  style: Theme.of(context).textTheme.titleSmall,
+                const SizedBox(height: 10),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Imagem do anúncio final',
+                    style: Theme.of(context).textTheme.titleSmall,
+                  ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              _winnerMediaCard(),
-              const SizedBox(height: 8),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _duration,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(labelText: 'Duração'),
+                const SizedBox(height: 8),
+                _winnerMediaCard(),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _duration,
+                        keyboardType: TextInputType.number,
+                        decoration: const InputDecoration(labelText: 'Duração'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  DropdownButton<String>(
-                    value: _unit,
-                    items: const [
-                      DropdownMenuItem(value: 'm', child: Text('minutos')),
-                      DropdownMenuItem(value: 'h', child: Text('horas')),
-                      DropdownMenuItem(value: 'd', child: Text('dias')),
-                    ],
-                    onChanged: (value) => setState(() => _unit = value ?? 'm'),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _limit,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Limite de participantes',
-                  helperText: 'Cada pessoa participa clicando em “Participar”.',
+                    const SizedBox(width: 10),
+                    DropdownButton<String>(
+                      value: _unit,
+                      items: const [
+                        DropdownMenuItem(value: 'm', child: Text('minutos')),
+                        DropdownMenuItem(value: 'h', child: Text('horas')),
+                        DropdownMenuItem(value: 'd', child: Text('dias')),
+                      ],
+                      onChanged: (value) =>
+                          setState(() => _unit = value ?? 'm'),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: _winners,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: 'Quantidade de ganhadores',
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _limit,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Limite de participantes',
+                    helperText:
+                        'Cada pessoa participa clicando em “Participar”.',
+                  ),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _winners,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: 'Quantidade de ganhadores',
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
