@@ -4653,7 +4653,7 @@ class _ScheduledAdEditorDialogState
       ),
       clipBehavior: Clip.antiAlias,
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 980, maxHeight: 860),
+        constraints: const BoxConstraints(maxWidth: 1280, maxHeight: 900),
         child: Column(
           children: [
             ListTile(
@@ -4693,7 +4693,7 @@ class _ScheduledAdEditorDialogState
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Expanded(
-                          flex: 6,
+                          flex: 7,
                           child: ColoredBox(
                             color: wa.chatWallpaper,
                             child: widget.variantOnly
@@ -4705,7 +4705,7 @@ class _ScheduledAdEditorDialogState
                           VerticalDivider(width: 1, color: wa.divider),
                         if (!widget.variantOnly)
                           SizedBox(
-                            width: 350,
+                            width: 390,
                             child: SingleChildScrollView(
                               padding: const EdgeInsets.all(16),
                               child: schedule,
@@ -4741,7 +4741,7 @@ class _ScheduledAdEditorDialogState
                   ),
                 ),
                 Text(
-                  '$pageCount/21',
+                  '$pageCount mensagem${pageCount == 1 ? '' : 'ns'}',
                   style: TextStyle(fontSize: 12, color: wa.textMuted),
                 ),
                 const SizedBox(width: 8),
@@ -4855,27 +4855,37 @@ class _ScheduledAdEditorDialogState
             ),
           ),
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 5),
+            padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                IconButton(
-                  tooltip: 'Mensagem anterior',
-                  onPressed: _messagePage > 0
-                      ? () => _goToMessage(_messagePage - 1)
-                      : null,
-                  icon: const Icon(Icons.chevron_left_rounded),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _messagePage > 0
+                        ? () => _goToMessage(_messagePage - 1)
+                        : null,
+                    icon: const Icon(Icons.arrow_back_rounded),
+                    label: const Text('Anterior'),
+                  ),
                 ),
-                Text(
-                  '${_messagePage + 1} de $pageCount',
-                  style: TextStyle(color: wa.textMuted, fontSize: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  child: Text(
+                    '${_messagePage + 1} de $pageCount',
+                    style: TextStyle(
+                      color: wa.textMuted,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
                 ),
-                IconButton(
-                  tooltip: 'Próxima mensagem',
-                  onPressed: _messagePage < pageCount - 1
-                      ? () => _goToMessage(_messagePage + 1)
-                      : null,
-                  icon: const Icon(Icons.chevron_right_rounded),
+                Expanded(
+                  child: FilledButton.icon(
+                    onPressed: _messagePage < pageCount - 1
+                        ? () => _goToMessage(_messagePage + 1)
+                        : null,
+                    icon: const Icon(Icons.arrow_forward_rounded),
+                    label: const Text('Próxima'),
+                  ),
                 ),
               ],
             ),
@@ -5165,7 +5175,7 @@ class _ScheduledAdBubblePreview extends StatelessWidget {
         clipBehavior: Clip.antiAlias,
         elevation: 1,
         child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 430),
+          constraints: const BoxConstraints(maxWidth: 600),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
