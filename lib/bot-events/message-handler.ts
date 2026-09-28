@@ -111,6 +111,7 @@ import {
   getChatMessage,
   getUserAvatar,
   getGroupInfo,
+  pinMessageInChat,
   markMessageRead,
   promoteGroupParticipant,
   demoteGroupParticipant,
@@ -17391,6 +17392,8 @@ const convertStickerSourceToWebp = async (
       winnersCount: winnersValue,
       maxParticipants: maxParticipantsValue,
       createdAt: new Date().toISOString(),
+      winnerMediaUrl: "/botadmin-landing/sweepstake-winner-v1.png",
+      winnerMediaType: "image",
     };
 
     try {
@@ -17409,6 +17412,15 @@ const convertStickerSourceToWebp = async (
         metadata: sweepstakeMetadata,
         messageKey: message.id ?? null,
       });
+      if (pollResponse.messageId) {
+        await pinMessageInChat(client, {
+          chatId: message.chatId,
+          messageId: pollResponse.messageId,
+          fromMe: true,
+        }).catch((error) => {
+          console.warn("[sweepstakes] failed to pin poll", { pollId: pollResponse.pollId, error });
+        });
+      }
     } catch (error) {
       console.error("[sweepstakes] failed to persist sweepstake", { error });
       await sendTextMessage(client, {

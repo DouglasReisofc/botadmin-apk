@@ -1508,6 +1508,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             durationUnit: draft.durationUnit,
             maxParticipants: draft.maxParticipants,
             winnersCount: draft.winnersCount,
+            winnerMessageTemplate: draft.winnerMessageTemplate,
+            winnerMediaUrl: draft.winnerMediaUrl,
             internal: thread.isInternalGroup,
           );
       if (!mounted) return;
@@ -14669,12 +14671,16 @@ class _SweepstakeDraft {
     required this.durationUnit,
     required this.maxParticipants,
     required this.winnersCount,
+    required this.winnerMessageTemplate,
+    required this.winnerMediaUrl,
   });
   final String question;
   final int durationValue;
   final String durationUnit;
   final int maxParticipants;
   final int winnersCount;
+  final String? winnerMessageTemplate;
+  final String? winnerMediaUrl;
 }
 
 class _SweepstakeDialog extends StatefulWidget {
@@ -14688,6 +14694,10 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
   final _duration = TextEditingController(text: '60');
   final _limit = TextEditingController(text: '100');
   final _winners = TextEditingController(text: '1');
+  final _winnerMessage = TextEditingController();
+  final _winnerMedia = TextEditingController(
+    text: '/botadmin-landing/sweepstake-winner-v1.png',
+  );
   String _unit = 'm';
 
   @override
@@ -14696,19 +14706,88 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
     _duration.dispose();
     _limit.dispose();
     _winners.dispose();
+    _winnerMessage.dispose();
+    _winnerMedia.dispose();
     super.dispose();
+  }
+
+  Future<void> _configureWinnerMessage() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.celebration_rounded, color: Color(0xFFFFB300)),
+            SizedBox(width: 8),
+            Text('Mensagem do ganhador'),
+          ],
+        ),
+        content: SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: _winnerMessage,
+                  minLines: 4,
+                  maxLines: 8,
+                  maxLength: 2000,
+                  decoration: const InputDecoration(
+                    labelText: 'Mensagem personalizada (opcional)',
+                    hintText: '🎉 Parabéns, {{pushname}}! Você venceu {{premio}}!',
+                    helperText: '{{pushname}}  {{numero}}  {{premio}}  {{participantes}}  {{ganhadores}}',
+                  ),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _winnerMedia,
+                  decoration: const InputDecoration(
+                    labelText: 'Mídia do resultado (URL opcional)',
+                    hintText: '/botadmin-landing/sweepstake-winner-v1.png',
+                    helperText: 'A imagem padrão já vem configurada. Você pode informar outra URL pública.',
+                    prefixIcon: Icon(Icons.image_outlined),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Concluir'),
+          ),
+        ],
+      ),
+    );
+    if (mounted) setState(() {});
   }
 
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     return AlertDialog(
+      constraints: BoxConstraints(
+        maxWidth: size.width > 900 ? 760 : size.width - 24,
+        maxHeight: size.height - 56,
+      ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
-      title: const Row(
+      title: Row(
         children: [
-          Icon(Icons.emoji_events_rounded, color: Color(0xFFFFB300)),
-          SizedBox(width: 10),
-          Text('Novo sorteio'),
+          const Icon(Icons.emoji_events_rounded, color: Color(0xFFFFB300)),
+          const SizedBox(width: 10),
+          const Expanded(child: Text('Novo sorteio')),
+          IconButton(
+            tooltip: 'Configurar mensagem do ganhador',
+            onPressed: _configureWinnerMessage,
+            icon: Icon(
+              Icons.edit_note_rounded,
+              color: _winnerMessage.text.trim().isEmpty
+                  ? null
+                  : const Color(0xFF00A884),
+            ),
+          ),
         ],
       ),
       content: ConstrainedBox(
@@ -14797,6 +14876,12 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
                 durationUnit: _unit,
                 maxParticipants: limit,
                 winnersCount: winners,
+                winnerMessageTemplate: _winnerMessage.text.trim().isEmpty
+                    ? null
+                    : _winnerMessage.text.trim(),
+                winnerMediaUrl: _winnerMedia.text.trim().isEmpty
+                    ? null
+                    : _winnerMedia.text.trim(),
               ),
             );
           },

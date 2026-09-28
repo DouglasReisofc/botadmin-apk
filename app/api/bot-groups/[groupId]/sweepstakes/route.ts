@@ -9,7 +9,7 @@ import {
   listSweepstakesForGroup,
   type BotSweepstakeOption,
 } from "lib/bot-sweepstakes";
-import { resolveWhatsappLidsToPhones, sendPollMessage } from "lib/wuzapi";
+import { pinMessageInChat, resolveWhatsappLidsToPhones, sendPollMessage } from "lib/wuzapi";
 import type { BotGroup } from "types/bot-groups";
 
 const DURATION_MULTIPLIERS: Record<string, number> = {
@@ -220,6 +220,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
     );
   }
 
+  const winnerMessageTemplate = typeof payload.winnerMessageTemplate === "string"
+    ? payload.winnerMessageTemplate.trim().slice(0, 2000)
+    : "";
+  const winnerMediaUrl = typeof payload.winnerMediaUrl === "string"
+    ? payload.winnerMediaUrl.trim().slice(0, 2048)
+    : "";
+
   try {
     const existing = await findActiveSweepstakeByGroup(instance.id, group.remoteId);
     if (existing) {
@@ -301,6 +308,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
     winnersCount,
     maxParticipants,
     createdByUserId: userId,
+    winnerMessageTemplate: winnerMessageTemplate || null,
+    winnerMediaUrl: winnerMediaUrl || "/botadmin-landing/sweepstake-winner-v1.png",
+    winnerMediaType: "image",
   };
 
   try {
@@ -319,6 +329,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
       metadata,
       messageKey: null,
     });
+    if (pollMessageId) {
+      await pinMessageInChat(
+        { baseUrl: instance.serverBaseUrl, token: instance.token },
+        { chatId: group.remoteId, messageId: pollMessageId, fromMe: true },
+      ).catch((error) => {
+        console.warn("Failed to pin sweepstake poll", { groupId, pollMessageId, error });
+      });
+    }
   } catch (error) {
     console.error("Failed to persist sweepstake", { groupId, error });
     return NextResponse.json(

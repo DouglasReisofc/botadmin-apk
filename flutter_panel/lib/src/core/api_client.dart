@@ -2577,6 +2577,8 @@ class BotAdminApiClient {
     required String durationUnit,
     required int maxParticipants,
     required int winnersCount,
+    String? winnerMessageTemplate,
+    String? winnerMediaUrl,
     bool internal = false,
   }) async {
     final json = await postJson(
@@ -2587,6 +2589,10 @@ class BotAdminApiClient {
         'durationUnit': durationUnit,
         'maxParticipants': maxParticipants,
         'winnersCount': winnersCount,
+        if (winnerMessageTemplate != null && winnerMessageTemplate.trim().isNotEmpty)
+          'winnerMessageTemplate': winnerMessageTemplate.trim(),
+        if (winnerMediaUrl != null && winnerMediaUrl.trim().isNotEmpty)
+          'winnerMediaUrl': winnerMediaUrl.trim(),
       },
     );
     return SweepstakeGroupSnapshot.fromJson(json);

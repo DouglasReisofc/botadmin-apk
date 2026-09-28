@@ -9,6 +9,7 @@ import {
   listSweepstakesForGroup,
 } from "lib/bot-sweepstakes";
 import { deleteMessageForEveryone, sendTextMessage } from "lib/wuzapi";
+import { deleteWhatsappConversationMessageForUser } from "lib/whatsapp-conversations";
 
 const shouldNotify = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -105,6 +106,7 @@ export async function POST(
             chatId: sweepstake.groupJid,
             messageId: sweepstake.pollMessageId,
             participant: undefined,
+            fromMe: true,
           },
         );
       } catch (error) {
@@ -140,6 +142,15 @@ export async function POST(
       }
     }
   }
+
+  await deleteWhatsappConversationMessageForUser(
+    user.id,
+    instance.id,
+    sweepstake.groupJid,
+    sweepstake.pollMessageId,
+  ).catch((error) => {
+    console.warn("Failed to delete cancelled sweepstake poll from BotAdmin chat", { sweepstakeId, error });
+  });
 
   const metadata = {
     ...(typeof sweepstake.metadata === "object" && sweepstake.metadata ? sweepstake.metadata : {}),

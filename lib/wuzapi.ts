@@ -884,11 +884,14 @@ export const downloadViewOnce = async (
 
 export const deleteMessageForEveryone = async (
   client: WuzapiClient,
-  params: { chatId: string; messageId: string; participant?: string | null },
+  params: { chatId: string; messageId: string; participant?: string | null; fromMe?: boolean },
 ) => {
   const payload: Record<string, unknown> = {
     Id: params.messageId,
   };
+  if (typeof params.fromMe === "boolean") {
+    payload.FromMe = params.fromMe;
+  }
   applyRecipientToPayload(payload, params.chatId);
   if (params.participant) {
     const trimmed = String(params.participant).trim();

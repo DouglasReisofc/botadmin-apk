@@ -10,8 +10,9 @@ import {
   listSweepstakesForGroup,
   pickSweepstakeWinners,
 } from "lib/bot-sweepstakes";
-import { sendTextMessage } from "lib/wuzapi";
+import { deleteMessageForEveryone, sendMediaMessage, sendTextMessage } from "lib/wuzapi";
 import { normalizeJid } from "lib/whatsapp";
+import { deleteWhatsappConversationMessageForUser } from "lib/whatsapp-conversations";
 
 const shouldNotify = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -28,6 +29,31 @@ const shouldNotify = (value: unknown): boolean => {
     }
   }
   return true;
+};
+
+const renderWinnerMessage = (
+  template: string,
+  winner: { jid: string; displayName: string | null },
+  sweepstake: { question: string; participants: unknown[] },
+  winnersCount: number,
+): string => {
+  const phone = normalizeJid(winner.jid);
+  const pushname = winner.displayName?.trim() || phone || "participante";
+  return template
+    .replace(/\{\{\s*pushname\s*\}\}/gi, pushname)
+    .replace(/\{\{\s*numero\s*\}\}/gi, phone)
+    .replace(/\{\{\s*jid\s*\}\}/gi, winner.jid)
+    .replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question)
+    .replace(/\{\{\s*participantes\s*\}\}/gi, String(sweepstake.participants.length))
+    .replace(/\{\{\s*ganhadores\s*\}\}/gi, String(winnersCount))
+    .trim();
+};
+
+const resolveWinnerMediaUrl = (value: unknown): string | null => {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const raw = value.trim();
+  if (/^https?:\/\//i.test(raw)) return raw;
+  return `https://botadmin.shop/${raw.replace(/^\/+/, "")}`;
 };
 
 export async function POST(
@@ -90,26 +116,71 @@ export async function POST(
   );
   const winners = pickSweepstakeWinners(eligibleParticipants, sweepstake.winnersCount);
   const concludedAt = new Date();
+  const metadataRecord = sweepstake.metadata && typeof sweepstake.metadata === "object"
+    ? sweepstake.metadata as Record<string, unknown>
+    : {};
 
   if (notify && instance.serverBaseUrl && instance.token) {
-    const announcement = buildSweepstakeAnnouncement(sweepstake, winners);
+    const configuredTemplate = typeof metadataRecord.winnerMessageTemplate === "string"
+      ? metadataRecord.winnerMessageTemplate.trim()
+      : "";
+    const announcement = configuredTemplate
+      ? {
+          body: winners.length > 0
+            ? winners.map((winner) => renderWinnerMessage(configuredTemplate, winner, sweepstake, winners.length)).join("\n\n")
+            : configuredTemplate.replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question),
+          mentions: winners.map((winner) => winner.jid).filter((jid) => /@(s\.whatsapp\.net|c\.us)$/i.test(jid)),
+        }
+      : buildSweepstakeAnnouncement(sweepstake, winners);
+    const client = { baseUrl: instance.serverBaseUrl, token: instance.token };
+    const winnerMediaUrl = resolveWinnerMediaUrl(metadataRecord.winnerMediaUrl);
     try {
-      await sendTextMessage(
-        { baseUrl: instance.serverBaseUrl, token: instance.token },
-        {
+      if (winnerMediaUrl) {
+        await sendMediaMessage(client, {
+          to: sweepstake.groupJid,
+          media: winnerMediaUrl,
+          mediaType: "image",
+          mimeType: "image/png",
+          filename: "parabens-voce-venceu.png",
+          caption: announcement.body,
+          mentions: announcement.mentions,
+          useExternalUrl: true,
+        });
+      } else {
+        await sendTextMessage(client, {
           to: sweepstake.groupJid,
           body: announcement.body,
           mentions: announcement.mentions,
-        },
-      );
+        });
+      }
     } catch (error) {
       console.error("Failed to announce sweepstake result via panel", { sweepstakeId, error });
     }
   }
 
-  const existingMetadata = (sweepstake.metadata && typeof sweepstake.metadata === "object")
-    ? { ...sweepstake.metadata }
-    : {};
+  // The poll is only an interaction surface. Once the draw is closed, remove
+  // it from WhatsApp and from the BotAdmin conversation so only the result
+  // announcement remains visible.
+  if (instance.serverBaseUrl && instance.token && sweepstake.pollMessageId) {
+    try {
+      await deleteMessageForEveryone(
+        { baseUrl: instance.serverBaseUrl, token: instance.token },
+        { chatId: sweepstake.groupJid, messageId: sweepstake.pollMessageId, fromMe: true },
+      );
+    } catch (error) {
+      console.warn("Failed to delete finished sweepstake poll from WhatsApp", { sweepstakeId, error });
+    }
+  }
+  await deleteWhatsappConversationMessageForUser(
+    user.id,
+    instance.id,
+    sweepstake.groupJid,
+    sweepstake.pollMessageId,
+  ).catch((error) => {
+    console.warn("Failed to delete finished sweepstake poll from BotAdmin chat", { sweepstakeId, error });
+  });
+
+  const existingMetadata = { ...metadataRecord };
 
   const metadata = {
     ...existingMetadata,
