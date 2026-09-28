@@ -2326,7 +2326,8 @@ img {
   overflow: hidden;
 }
 .sweepstake-details {
-  width: min(960px, calc(100vw - 28px));
+  width: min(1100px, calc(100vw - 28px));
+  max-height: min(88dvh, 900px);
 }
 .sweepstake-details .sweepstake-participants {
   max-height: min(52vh, 500px);
@@ -2371,6 +2372,20 @@ img {
 }
 .sweepstake-header-actions svg {
   width: 17px;
+}
+.sweepstake-add-member-button {
+  width: auto !important;
+  min-width: 42px;
+  padding: 0 12px;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 18px !important;
+  color: var(--accent, #008f78);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sweepstake-add-member-button:disabled {
+  opacity: .55;
 }
 .sweepstake-grid {
   display: grid;
@@ -2441,6 +2456,9 @@ img {
   .active-sweepstake-button {
     right: 12px;
     bottom: 78px;
+  }
+  .sweepstake-add-member-button span {
+    display: none;
   }
 }
 @media (min-width: 521px) and (max-width: 700px) {

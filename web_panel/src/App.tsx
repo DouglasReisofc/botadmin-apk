@@ -2833,7 +2833,7 @@ const renderMessageBody = (
         title={`Abrir conversa com ${target.name || part.slice(1)}`}
         onClick={() => onMention({ jid: target.jid, name: target.name })}
       >
-        {part}
+        @{target.name || part.slice(1)}
       </button>
     );
   });
@@ -3766,13 +3766,15 @@ function SweepstakeDetailsModal({
             >
               <RefreshCw className={busy ? "spin" : ""} />
             </button>
-            {canDraw && members.length > 0 && (
+            {canDraw && (
               <button
+                className="sweepstake-add-member-button"
                 onClick={() => setMemberPicker((value) => !value)}
-                disabled={busy}
-                title="Adicionar participante"
+                disabled={busy || members.length === 0}
+                title={members.length ? "Adicionar participante" : "Carregando membros do grupo"}
               >
                 <UserPlus />
+                <span>Adicionar participante</span>
               </button>
             )}
             <button onClick={onClose} disabled={busy} aria-label="Fechar">

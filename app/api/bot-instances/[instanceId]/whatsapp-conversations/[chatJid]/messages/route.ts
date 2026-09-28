@@ -98,6 +98,40 @@ const parseBeforeCursor = (request: Request): string | null => {
   }
 };
 
+const identityDigits = (value: unknown) => String(value ?? "").replace(/\D+/g, "");
+
+const applyGroupMentionIdentities = async (
+  messages: WhatsappConversationMessage[],
+  userId: number,
+  instanceId: number,
+  chatJid: string,
+) => {
+  if (getWhatsappChatType(chatJid) !== "group") return messages;
+  const groups = await listGroupsForUser(userId).catch(() => []);
+  const group = groups.find(
+    (entry) => entry.instanceId === instanceId && normalizeWhatsappChatJid(entry.remoteId) === chatJid,
+  );
+  if (!group?.participants?.length) return messages;
+  return messages.map((message) => {
+    if (!message.mentionedJids?.length) return message;
+    const mentionTargets = message.mentionedJids.map((jid) => {
+      const raw = String(jid).trim();
+      const member = group.participants.find((entry) =>
+        String(entry.id || "").trim().toLowerCase() === raw.toLowerCase() ||
+        (identityDigits(entry.id) && identityDigits(entry.id) === identityDigits(raw)),
+      );
+      const existing = message.mentionTargets?.find((target) =>
+        String(target.jid).trim().toLowerCase() === raw.toLowerCase(),
+      );
+      return {
+        jid: raw,
+        name: existing?.name || member?.name || member?.displayName || member?.pushName || null,
+      };
+    });
+    return { ...message, mentionTargets };
+  });
+};
+
 const inferMediaType = (mimeType: string): SendMediaPayload["mediaType"] => {
   const normalized = mimeType.toLowerCase();
   if (normalized.startsWith("image/")) return "image";
@@ -851,12 +885,14 @@ export async function GET(request: Request, context: Context) {
         before: parseBeforeCursor(request),
       },
     );
-    const cachedMessages = await applyCachedSenderIdentities(
-      messagePage.messages,
-      {
+    const cachedMessages = await applyGroupMentionIdentities(
+      await applyCachedSenderIdentities(messagePage.messages, {
         userId: storageUserId,
         instanceId: instance.id,
-      },
+      }),
+      storageUserId,
+      instance.id,
+      chatJid,
     );
 
     // Fast path used by Flutter prefetch/cache warmup: return recent messages only.
