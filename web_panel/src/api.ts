@@ -460,6 +460,8 @@ export const api = {
     request<{ group?: InternalGroup & JsonRecord; members?: JsonRecord[] }>(
       `/api/internal-groups/${groupId}`,
     ),
+  groupParticipants: (groupId: number | string) =>
+    request<{ participants?: JsonRecord[] }>(`/api/bot-groups/${groupId}/participants`),
   internalGroupInvitePreview: (token: string) =>
     request<{ preview?: JsonRecord }>(
       `/api/internal-groups/invite/preview?token=${encodeURIComponent(token)}`,
@@ -1012,11 +1014,12 @@ export const api = {
   addGroupSweepstakeParticipant: (
     groupId: number | string,
     sweepstakeId: number | string,
-    userId: number,
+    participant: { userId?: number; jid?: string; displayName?: string | null },
+    internal = false,
   ) =>
     request<SweepstakeGroupSnapshot>(
-      `/api/internal-groups/${groupId}/sweepstakes/${sweepstakeId}/participants`,
-      { method: "POST", body: JSON.stringify({ userId }) },
+      `${internal ? "/api/internal-groups" : "/api/bot-groups"}/${groupId}/sweepstakes/${sweepstakeId}/participants`,
+      { method: "POST", body: JSON.stringify(participant) },
     ),
   calls: (instanceId: number) =>
     request<JsonRecord>(`/api/bot-instances/${instanceId}/whatsapp-calls`),

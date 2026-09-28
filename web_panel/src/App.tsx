@@ -3729,7 +3729,7 @@ function SweepstakeDetailsModal({
   onRefresh: () => void;
   onDraw: () => void;
   onCancel: () => void;
-  onAddMember: (userId: number) => void;
+  onAddMember: (userId: number, jid?: string, displayName?: string) => void;
 }) {
   const [memberPicker, setMemberPicker] = useState(false);
   const participantIds = new Set(
@@ -3785,18 +3785,22 @@ function SweepstakeDetailsModal({
             <b>Adicionar participante</b>
             <div>
               {members.map((member) => {
-                const userId = Number(member.userId || member.id || 0);
+                const userId = Number(member.userId || 0);
                 const jid = String(
-                  member.userId || member.id || member.jid || "",
+                  member.jid || member.id || member.userId || "",
                 );
-                const disabled = !userId || participantIds.has(jid);
+                const disabled = (!userId && !jid) || participantIds.has(jid) || participantIds.has(String(member.userId || ""));
                 return (
                   <button
                     key={jid || String(member.email)}
                     disabled={disabled || busy}
                     onClick={() => {
                       setMemberPicker(false);
-                      onAddMember(userId);
+                      onAddMember(
+                        userId,
+                        jid,
+                        String(member.name || member.displayName || member.pushName || ""),
+                      );
                     }}
                   >
                     <Avatar
@@ -4267,10 +4271,14 @@ function Chat({
     setSweepstakeDetailsOpen(true);
     if (sweepstakeInternal && sweepstakeGroupId) {
       try {
-        const result = await api.internalGroup(sweepstakeGroupId);
+        const result = sweepstakeInternal
+          ? await api.internalGroup(sweepstakeGroupId)
+          : await api.groupParticipants(sweepstakeGroupId);
         setSweepstakeMembers(
           Array.isArray((result as unknown as JsonRecord).members)
             ? ((result as unknown as JsonRecord).members as JsonRecord[])
+            : Array.isArray((result as unknown as JsonRecord).participants)
+              ? ((result as unknown as JsonRecord).participants as JsonRecord[])
             : [],
         );
       } catch {
@@ -4328,7 +4336,7 @@ function Chat({
       setSweepstakeBusy(false);
     }
   };
-  const addSweepstakeMember = async (userId: number) => {
+  const addSweepstakeMember = async (userId: number, jid?: string, displayName?: string) => {
     if (!activeSweepstake || sweepstakeBusy || !sweepstakeGroupId) return;
     setSweepstakeBusy(true);
     try {
@@ -4336,7 +4344,8 @@ function Chat({
         await api.addGroupSweepstakeParticipant(
           sweepstakeGroupId,
           activeSweepstake.id,
-          userId,
+          { userId: userId || undefined, jid, displayName },
+          sweepstakeInternal,
         ),
       );
     } catch (cause) {
@@ -5058,7 +5067,9 @@ function Chat({
           onRefresh={() => void loadSweepstakes()}
           onDraw={() => void finalizeSweepstake()}
           onCancel={() => void cancelSweepstake()}
-          onAddMember={(userId) => void addSweepstakeMember(userId)}
+          onAddMember={(userId, jid, displayName) =>
+            void addSweepstakeMember(userId, jid, displayName)
+          }
         />
       )}
       {interactiveList && (
