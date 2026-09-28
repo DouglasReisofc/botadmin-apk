@@ -1846,7 +1846,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       // Poll-vote webhooks from older EasyZap builds arrived as a second,
       // inbound empty "Enquete" message. The real poll bubble is outbound and
       // contains the options; hide only this malformed duplicate.
-      final emptyPollVote = !message.fromMe &&
+      final emptyPollVote =
           message.pollOptions.isEmpty &&
           message.text.trim().toLowerCase() == 'enquete';
       return !emptyPollVote;
