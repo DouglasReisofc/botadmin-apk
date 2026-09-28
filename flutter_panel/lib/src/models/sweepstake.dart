@@ -11,10 +11,22 @@ class SweepstakeParticipant {
 
   factory SweepstakeParticipant.fromJson(Map<String, dynamic> json) =>
       SweepstakeParticipant(
-        jid: '${json['jid'] ?? json['userId'] ?? ''}',
-        displayName: json['displayName']?.toString(),
+        jid: _cleanJid('${json['jid'] ?? json['userId'] ?? ''}'),
+        displayName: _cleanName(json['displayName']?.toString()),
         joinedAt: DateTime.tryParse('${json['joinedAt'] ?? ''}'),
       );
+}
+
+String _cleanJid(String value) => value
+    .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
+    .trim();
+
+String? _cleanName(String? value) {
+  final clean = (value ?? '')
+      .replaceAll(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)\b', caseSensitive: false), '')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+  return clean.isEmpty ? null : clean;
 }
 
 class SweepstakeSummary {

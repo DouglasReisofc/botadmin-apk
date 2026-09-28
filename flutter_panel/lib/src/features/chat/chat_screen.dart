@@ -1549,6 +1549,16 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 if (mounted) setState(() => _sweepstakes = snapshot);
                 return snapshot.active.firstOrNull ?? active;
               },
+        onRemoveMember: (member) async {
+          final snapshot = await ref.read(apiClientProvider).removeGroupSweepstakeParticipant(
+            groupId: groupId,
+            sweepstakeId: active.id,
+            participantJid: member.jid,
+            internal: thread.isInternalGroup,
+          );
+          if (mounted) setState(() => _sweepstakes = snapshot);
+          return snapshot.active.firstOrNull ?? active;
+        },
         onRefresh: () async {
           await _refreshSweepstakes(thread);
           return _sweepstakes?.active.firstOrNull ?? active;
@@ -14790,6 +14800,7 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
     required this.onCancel,
     this.members = const [],
     this.onAddMember,
+    this.onRemoveMember,
   });
   final SweepstakeSummary sweepstake;
   final bool canDraw;
@@ -14798,6 +14809,7 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
   final Future<void> Function() onCancel;
   final List<_MentionCandidate> members;
   final Future<SweepstakeSummary> Function(_MentionCandidate member)? onAddMember;
+  final Future<SweepstakeSummary> Function(SweepstakeParticipant member)? onRemoveMember;
   @override
   State<_SweepstakeDetailsDialog> createState() =>
       _SweepstakeDetailsDialogState();
@@ -14806,6 +14818,7 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
 class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
   late SweepstakeSummary _sweepstake = widget.sweepstake;
   bool _busy = false;
+  String _memberQuery = '';
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -14885,6 +14898,13 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                               'dd/MM HH:mm',
                             ).format(person.joinedAt!.toLocal()),
                           ),
+                    trailing: widget.canDraw && widget.onRemoveMember != null
+                        ? IconButton(
+                            tooltip: 'Remover participante',
+                            onPressed: _busy ? null : () => _removeMember(person),
+                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFD32F2F)),
+                          )
+                        : null,
                   );
                 },
               ),
@@ -14926,12 +14946,28 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
       builder: (dialogContext) => AlertDialog(
         title: const Text('Adicionar participante'),
         content: SizedBox(
-          width: 360,
-          height: 360,
-          child: ListView.builder(
-            itemCount: widget.members.length,
+          width: 420,
+          height: 440,
+          child: Column(
+            children: [
+              TextField(
+                autofocus: true,
+                decoration: const InputDecoration(
+                  prefixIcon: Icon(Icons.search_rounded),
+                  hintText: 'Pesquisar por nome ou número',
+                ),
+                onChanged: (value) => setState(() => _memberQuery = value.trim().toLowerCase()),
+              ),
+              const SizedBox(height: 8),
+              Expanded(child: Builder(builder: (_) {
+            final members = widget.members.where((person) {
+              final haystack = '${person.label} ${person.subtitle} ${person.jid}'.toLowerCase();
+              return _memberQuery.isEmpty || haystack.contains(_memberQuery);
+            }).toList(growable: false);
+            return ListView.builder(
+            itemCount: members.length,
             itemBuilder: (_, index) {
-              final person = widget.members[index];
+              final person = members[index];
               final alreadyAdded = _sweepstake.participants.any(
                 (entry) => entry.jid == person.jid,
               );
@@ -14952,6 +14988,9 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                     : () => Navigator.of(dialogContext).pop(person),
               );
             },
+          );
+              })),
+            ],
           ),
         ),
       ),
@@ -14963,6 +15002,22 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
       if (mounted) {
         setState(() => _sweepstake = updated);
         showSuccessToast(context, 'Participante adicionado.');
+      }
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _removeMember(SweepstakeParticipant member) async {
+    if (widget.onRemoveMember == null || _busy) return;
+    setState(() => _busy = true);
+    try {
+      final updated = await widget.onRemoveMember!(member);
+      if (mounted) {
+        setState(() => _sweepstake = updated);
+        showSuccessToast(context, 'Participante removido.');
       }
     } catch (error) {
       if (mounted) showErrorToast(context, error);

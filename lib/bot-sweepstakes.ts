@@ -1,4 +1,4 @@
-import { randomInt, randomUUID } from "crypto";
+import { createHash, randomInt, randomUUID } from "crypto";
 import { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 
 import { ensureBotSweepstakesTable, getDb } from "lib/db";
@@ -389,9 +389,20 @@ const serializeParticipant = (
 ): BotSweepstakeParticipant => ({
   ...entry,
   hash,
-  displayName: displayName ?? entry.displayName ?? null,
+  displayName: sanitizeParticipantName(displayName ?? entry.displayName ?? null),
   lastVoteAt: timestamp,
 });
+
+const participantKey = (value: unknown): string =>
+  normalizeJid(String(value ?? "")).replace(/@(s\.whatsapp\.net|c\.us|lid)$/i, "");
+
+const sanitizeParticipantName = (value: string | null | undefined): string | null => {
+  const clean = String(value ?? "")
+    .replace(/@(s\.whatsapp\.net|c\.us|lid)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  return clean || null;
+};
 
 export const recordSweepstakeVote = async (
   sweepstake: BotSweepstake,
@@ -409,10 +420,20 @@ export const recordSweepstakeVote = async (
   if (botPhone && voterPhone && botPhone === voterPhone) {
     return { sweepstake, change: "none" };
   }
-  const wantsParticipate = vote.selectedOptionHashes.includes(sweepstake.joinOptionHash);
+  const selected = new Set(vote.selectedOptionHashes.map((value) => String(value).trim().toLowerCase()));
+  const joinOption = sweepstake.options.find((option) => option.hash === sweepstake.joinOptionHash);
+  const joinAliases = new Set([
+    sweepstake.joinOptionHash.toLowerCase(),
+    joinOption?.name?.trim().toLowerCase() ?? "",
+  ]);
+  const joinTitleHash = joinOption?.name
+    ? createHash("sha256").update(joinOption.name.trim()).digest("hex")
+    : "";
+  if (joinTitleHash) joinAliases.add(joinTitleHash);
+  const wantsParticipate = [...selected].some((value) => joinAliases.has(value));
   const timestampIso = (vote.timestamp ?? new Date()).toISOString();
   const participants = [...sweepstake.participants];
-  const existingIndex = participants.findIndex((entry) => entry.jid === vote.participantJid);
+  const existingIndex = participants.findIndex((entry) => participantKey(entry.jid) === participantKey(vote.participantJid));
 
   let change: SweepstakeVoteResult["change"] = "none";
   let limitReached = false;
@@ -427,7 +448,7 @@ export const recordSweepstakeVote = async (
         participants.push({
           jid: vote.participantJid,
           hash: sweepstake.joinOptionHash,
-          displayName: vote.displayName ?? null,
+          displayName: sanitizeParticipantName(vote.displayName),
           joinedAt: timestampIso,
           lastVoteAt: timestampIso,
         });
@@ -470,6 +491,21 @@ export const recordSweepstakeVote = async (
   };
 
   return { sweepstake: updatedSweepstake, change, limitReached };
+};
+
+export const removeSweepstakeParticipant = async (
+  sweepstake: BotSweepstake,
+  participantJid: string,
+): Promise<BotSweepstake> => {
+  await ensureTable();
+  const participants = sweepstake.participants.filter(
+    (entry) => participantKey(entry.jid) !== participantKey(participantJid),
+  );
+  await getDb().query(
+    "UPDATE bot_sweepstakes SET participants = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'",
+    [JSON.stringify(participants), sweepstake.id],
+  );
+  return { ...sweepstake, participants, updatedAt: new Date().toISOString() };
 };
 
 export const pickSweepstakeWinners = (

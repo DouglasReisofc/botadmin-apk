@@ -1957,6 +1957,29 @@ export const addInternalGroupSweepstakeParticipant = async (
   return listInternalGroupSweepstakes(groupId, userId);
 };
 
+export const removeInternalGroupSweepstakeParticipant = async (
+  groupId: number,
+  userId: number,
+  sweepstakeId: number,
+  participantUserId: number,
+) => {
+  await assertManager(groupId, userId);
+  await ensureInternalGroupTables();
+  const [rows] = await getDb().query<InternalSweepstakeRow[]>(
+    `SELECT * FROM internal_group_sweepstakes WHERE id = ? AND group_id = ? AND status = 'active' LIMIT 1`,
+    [sweepstakeId, groupId],
+  );
+  const row = rows?.[0];
+  if (!row) throw new InternalGroupError("Este sorteio não está mais ativo.", 409);
+  const participants = parseJsonColumn<Array<Record<string, unknown>>>(row.participants, [])
+    .filter((entry) => Number(entry.userId) !== participantUserId);
+  await getDb().query(
+    `UPDATE internal_group_sweepstakes SET participants = ?, updated_at = NOW() WHERE id = ? AND status = 'active'`,
+    [JSON.stringify(participants), sweepstakeId],
+  );
+  return listInternalGroupSweepstakes(groupId, userId);
+};
+
 export const runInternalGroupMessageAction = async (
   groupId: number,
   messageId: number,

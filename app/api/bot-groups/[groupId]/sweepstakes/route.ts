@@ -259,6 +259,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
         question: pollQuestion,
         options: ["Participar ✅", "Não participar ❌"],
         selectableOptionsCount: 1,
+        mentions: (group.participants ?? [])
+          .map((participant) => participant.jid || participant.id || participant.phone)
+          .filter((jid): jid is string => typeof jid === "string" && jid.trim().length > 0),
         mentionAll: true,
       },
     );

@@ -2631,6 +2631,38 @@ class BotAdminApiClient {
     return SweepstakeGroupSnapshot.fromJson(json);
   }
 
+  Future<SweepstakeGroupSnapshot> removeGroupSweepstakeParticipant({
+    required int groupId,
+    required int sweepstakeId,
+    required String participantJid,
+    bool internal = false,
+  }) async {
+    if (internal) {
+      return removeInternalGroupSweepstakeParticipant(
+        groupId: groupId,
+        sweepstakeId: sweepstakeId,
+        participantUserId: int.tryParse(participantJid) ?? 0,
+      );
+    }
+    final json = await deleteJson(
+      '${_sweepstakeBasePath(groupId, internal: false)}/$sweepstakeId/participants',
+      data: {'jid': participantJid},
+    );
+    return SweepstakeGroupSnapshot.fromJson(json);
+  }
+
+  Future<SweepstakeGroupSnapshot> removeInternalGroupSweepstakeParticipant({
+    required int groupId,
+    required int sweepstakeId,
+    required int participantUserId,
+  }) async {
+    final json = await deleteJson(
+      '/api/internal-groups/$groupId/sweepstakes/$sweepstakeId/participants',
+      data: {'userId': participantUserId},
+    );
+    return SweepstakeGroupSnapshot.fromJson(json);
+  }
+
   Future<Map<String, dynamic>> uploadRaffleMedia({
     required Uint8List bytes,
     required String fileName,
