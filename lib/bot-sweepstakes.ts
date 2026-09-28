@@ -368,6 +368,62 @@ export const findActiveSweepstakeByPoll = async (
   return mapSweepstakeRow(rows[0]);
 };
 
+/**
+ * Poll webhooks can arrive through a connected sibling instance while the
+ * poll itself belongs to another instance of the same account/group. Resolve
+ * the active sweepstake by owner user + chat as a transport-independent
+ * fallback so votes are not lost just because the webhook route changed.
+ */
+export const findActiveSweepstakeByPollForUser = async (
+  userId: number,
+  groupJid: string,
+  pollId: string,
+): Promise<BotSweepstake | null> => {
+  await ensureTable();
+  const db = getDb();
+  const [rows] = await db.query<SweepstakeRow[]>(
+    `
+      SELECT s.*
+      FROM bot_sweepstakes s
+      INNER JOIN bot_instances bi ON bi.id = s.instance_id
+      WHERE bi.user_id = ?
+        AND s.group_jid = ?
+        AND (s.poll_id = ? OR s.poll_message_id = ?)
+        AND s.status = 'active'
+      ORDER BY s.id DESC
+      LIMIT 1
+    `,
+    [userId, groupJid, pollId, pollId],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapSweepstakeRow(rows[0]);
+};
+
+/** Last-resort lookup for webhook transports that belong to a different
+ * account/instance row than the owner of the poll. Poll IDs are generated per
+ * message and are globally unique enough for the group-scoped lookup. */
+export const findActiveSweepstakeByPollForGroup = async (
+  groupJid: string,
+  pollId: string,
+): Promise<BotSweepstake | null> => {
+  await ensureTable();
+  const db = getDb();
+  const [rows] = await db.query<SweepstakeRow[]>(
+    `
+      SELECT *
+      FROM bot_sweepstakes
+      WHERE group_jid = ?
+        AND (poll_id = ? OR poll_message_id = ?)
+        AND status = 'active'
+      ORDER BY id DESC
+      LIMIT 1
+    `,
+    [groupJid, pollId, pollId],
+  );
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  return mapSweepstakeRow(rows[0]);
+};
+
 export const getSweepstakeById = async (id: number): Promise<BotSweepstake | null> => {
   await ensureTable();
   const db = getDb();

@@ -62,6 +62,8 @@ import {
   createSweepstake,
   findActiveSweepstakeByGroup,
   findActiveSweepstakeByPoll,
+  findActiveSweepstakeByPollForGroup,
+  findActiveSweepstakeByPollForUser,
   recordSweepstakeVote,
 } from "lib/bot-sweepstakes";
 import type { BotSweepstakeOption } from "types/bot-sweepstakes";
@@ -14482,7 +14484,16 @@ export const handleMessageUpsert = async (
   // "Enquete" bubble every time somebody votes in a BotAdmin sweepstake.
   const incomingSweepstakeVote = extractSweepstakePollVote(payload, message);
   const activeSweepstakeForStorage = incomingSweepstakeVote
-    ? await findActiveSweepstakeByPoll(context.instance.id, incomingSweepstakeVote.pollId).catch(() => null)
+    ? await findActiveSweepstakeByPoll(context.instance.id, incomingSweepstakeVote.pollId).catch(() => null) ??
+      await findActiveSweepstakeByPollForUser(
+        context.instance.userId,
+        message.chatId,
+        incomingSweepstakeVote.pollId,
+      ).catch(() => null) ??
+      await findActiveSweepstakeByPollForGroup(
+        message.chatId,
+        incomingSweepstakeVote.pollId,
+      ).catch(() => null)
     : null;
   if (!activeSweepstakeForStorage) {
     try {
@@ -15657,22 +15668,44 @@ export const handleMessageUpsert = async (
   const sweepstakeVote = extractSweepstakePollVote(payload, message);
   if (sweepstakeVote) {
     try {
-      const activeSweepstake = await findActiveSweepstakeByPoll(
-        context.instance.id,
-        sweepstakeVote.pollId,
-      );
+      const activeSweepstake =
+        await findActiveSweepstakeByPoll(context.instance.id, sweepstakeVote.pollId) ??
+        await findActiveSweepstakeByPollForUser(
+          context.instance.userId,
+          message.chatId,
+          sweepstakeVote.pollId,
+        ) ??
+        await findActiveSweepstakeByPollForGroup(
+          message.chatId,
+          sweepstakeVote.pollId,
+        );
 
       if (activeSweepstake) {
         // `normalizeJid` intentionally returns digits only, so checking its
         // result for `@lid` can never work. Keep the source-domain flag from
         // the webhook parser and resolve the LID before persisting the vote.
+        const ownerInstance = activeSweepstake.instanceId === context.instance.id
+          ? context.instance
+          : await getInstanceById(activeSweepstake.instanceId).catch(() => null);
+        const voteClient = ownerInstance && activeSweepstake.instanceId !== context.instance.id
+          ? {
+              baseUrl: ownerInstance.serverBaseUrl,
+              token: ownerInstance.token,
+              conversation: {
+                userId: ownerInstance.userId,
+                instanceId: ownerInstance.id,
+                instanceName: ownerInstance.name,
+                instancePhone: ownerInstance.phone,
+              },
+            }
+          : client;
         const isLidVoter = sweepstakeVote.participantIsLid;
         const resolvedLidProfiles = isLidVoter
-          ? await resolveWhatsappLidProfiles(client, [sweepstakeVote.participantJid]).catch(() => new Map())
+          ? await resolveWhatsappLidProfiles(voteClient, [sweepstakeVote.participantJid]).catch(() => new Map())
           : new Map();
         const resolvedLid = resolvedLidProfiles.get(sweepstakeVote.participantJid);
         const fallbackLidPhones = isLidVoter && !resolvedLid?.phone
-          ? await resolveWhatsappLidsToPhones(client, [`${sweepstakeVote.participantJid}@lid`]).catch(() => new Map())
+          ? await resolveWhatsappLidsToPhones(voteClient, [`${sweepstakeVote.participantJid}@lid`]).catch(() => new Map())
           : new Map();
         const resolvedPhone = resolvedLid?.phone ?? fallbackLidPhones.get(sweepstakeVote.participantJid) ?? null;
         if (isLidVoter && !resolvedPhone) {
@@ -15689,8 +15722,8 @@ export const handleMessageUpsert = async (
           ? `${resolvedPhone}@s.whatsapp.net`
           : `${sweepstakeVote.participantJid}@s.whatsapp.net`;
         await applyWhatsappPollVoteForUser({
-          userId: context.instance.userId,
-          instanceId: context.instance.id,
+          userId: ownerInstance?.userId ?? context.instance.userId,
+          instanceId: activeSweepstake.instanceId,
           chatJid: message.chatId,
           // EasyZap identifies a vote by the original creation message key.
           // Older payloads sometimes expose the logical poll id instead;
@@ -15699,8 +15732,8 @@ export const handleMessageUpsert = async (
           voterJid,
           selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
           voterName: sweepstakeVote.displayName ?? resolvedLid?.name ?? null,
-          ownJid: context.instance.phone
-            ? `${context.instance.phone}@s.whatsapp.net`
+          ownJid: ownerInstance?.phone
+            ? `${ownerInstance.phone}@s.whatsapp.net`
             : null,
           timestamp: sweepstakeVote.timestamp ?? null,
         }).catch((error) => {
