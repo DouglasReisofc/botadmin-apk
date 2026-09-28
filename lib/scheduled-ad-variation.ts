@@ -1,6 +1,16 @@
 import { randomInt } from "node:crypto";
 import type { BotGroupAd, BotGroupAdMessageVariant } from "types/bot-groups";
 
+const mediaIdentity = (media: BotGroupAdMessageVariant["media"]): string | null => {
+  if (!media || typeof media !== "object") return null;
+  const source = media as Record<string, unknown>;
+  const ref = [source.path, source.url, source.fileName]
+    .find((value) => typeof value === "string" && value.trim()) as string | undefined;
+  if (!ref) return null;
+  const kind = typeof source.mediaType === "string" ? source.mediaType.trim().toLowerCase() : "";
+  return `${kind}:${ref.trim().split("?")[0]}`;
+};
+
 export const chooseScheduledAdMessage = (
   ad: BotGroupAd,
 ): { message: BotGroupAdMessageVariant; index: number } => {
@@ -32,10 +42,24 @@ export const chooseScheduledAdMessage = (
     const index = randomInt(snapshots.length);
     return { message: snapshots[index], index };
   }
-  const choice = randomInt(snapshots.length - 1);
-  const index = previous >= 0 && previous < snapshots.length && choice >= previous
-    ? choice + 1 : choice;
-  return { message: snapshots[index], index };
+  const previousMedia = previous >= 0 && previous < snapshots.length
+    ? mediaIdentity(snapshots[previous].media)
+    : null;
+  const candidates = snapshots
+    .map((snapshot, index) => ({ snapshot, index }))
+    .filter(({ index, snapshot }) => {
+      if (index === previous) return false;
+      // Evita repetir a mesma mídia quando ela foi cadastrada em mais de uma
+      // variação. Se não houver outra mídia, a regra de não repetir o índice
+      // continua valendo como fallback.
+      return previousMedia === null || mediaIdentity(snapshot.media) !== previousMedia;
+    });
+  const pool = candidates.length > 0
+    ? candidates
+    : snapshots.map((snapshot, index) => ({ snapshot, index })).filter(({ index }) => index !== previous);
+  const selected = pool[randomInt(pool.length)];
+  const index = selected.index;
+  return { message: selected.snapshot, index };
 };
 
 export const chooseScheduledAdVariation = (
