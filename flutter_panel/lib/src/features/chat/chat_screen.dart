@@ -1848,7 +1848,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       // contains the options; hide only this malformed duplicate.
       final emptyPollVote = !message.fromMe &&
           message.pollOptions.isEmpty &&
-          message.normalizedType == 'poll' &&
           message.text.trim().toLowerCase() == 'enquete';
       return !emptyPollVote;
     });

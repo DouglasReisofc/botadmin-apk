@@ -5,13 +5,13 @@
     "type": "apk",
     "fileName": "app-release.apk",
     "url": "/downloads/android/app-release.apk",
-    "sizeBytes": 90699673,
-    "updatedAt": "2026-09-21T04:04:39.000Z",
+    "sizeBytes": 90716101,
+    "updatedAt": "2026-09-21T23:26:00.000Z",
     "buildType": "release",
-    "versionName": "0.1.314",
-    "versionCode": 320
+    "versionName": "0.1.315",
+    "versionCode": 321
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "APK Flutter nativo 0.1.314 (320): modal de pagamento com confetes, texto centralizado, acesso rápido aos perfis WhatsApp, aviso de conexão e histórico de cobranças pagas."
+  "details": "APK Flutter nativo 0.1.315 (321): reprodução de áudio autenticada no painel web e nativo, além do seletor de grupo para abrir diretamente as ativações do robô."
 }

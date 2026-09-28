@@ -11,6 +11,7 @@ import {
   pickSweepstakeWinners,
 } from "lib/bot-sweepstakes";
 import { sendTextMessage } from "lib/wuzapi";
+import { normalizeJid } from "lib/whatsapp";
 
 const shouldNotify = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -83,7 +84,11 @@ export async function POST(
     // Ignora corpo ausente ou inválido e utiliza padrão notify = true
   }
 
-  const winners = pickSweepstakeWinners(sweepstake.participants, sweepstake.winnersCount);
+  const botPhone = String(instance.phone || "").replace(/\D+/g, "");
+  const eligibleParticipants = sweepstake.participants.filter((participant) =>
+    !botPhone || normalizeJid(participant.jid).replace(/\D+/g, "") !== botPhone,
+  );
+  const winners = pickSweepstakeWinners(eligibleParticipants, sweepstake.winnersCount);
   const concludedAt = new Date();
 
   if (notify && instance.serverBaseUrl && instance.token) {

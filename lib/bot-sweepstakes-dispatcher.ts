@@ -119,7 +119,21 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
     return;
   }
 
-  const participants = sweepstake.participants;
+  const botPhone = String(sweepstake.instance.phone || "").replace(/\D+/g, "");
+  const botLids = sweepstake.participants
+    .filter((entry) => entry.jid.toLowerCase().endsWith("@lid") || /^\d{14,}$/.test(entry.jid))
+    .map((entry) => entry.jid);
+  const resolvedBotLids = botLids.length && sweepstake.instance.baseUrl && sweepstake.instance.token
+    ? await resolveWhatsappLidsToPhones(
+      { baseUrl: sweepstake.instance.baseUrl, token: sweepstake.instance.token },
+      botLids,
+    ).catch(() => new Map<string, string>())
+    : new Map<string, string>();
+  const participants = sweepstake.participants.filter((entry) => {
+    const direct = normalizeJid(entry.jid).replace(/\D+/g, "");
+    const resolved = resolvedBotLids.get(entry.jid.replace(/@lid$/i, ""))?.replace(/\D+/g, "") || "";
+    return !(botPhone && (direct === botPhone || resolved === botPhone));
+  });
   const winners = pickSweepstakeWinners(participants, sweepstake.winnersCount);
   const concludedAt = new Date();
 

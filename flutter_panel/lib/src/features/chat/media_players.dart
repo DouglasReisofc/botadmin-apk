@@ -51,10 +51,24 @@ bool _isAuthenticatedMediaEndpoint(String url) {
   final path = Uri.tryParse(trimmed)?.path ?? '';
   if (path.startsWith('/api/support/media/') ||
       path.startsWith('/api/admin/support/media/') ||
-      path.startsWith('/uploads/support/')) return true;
+      path.startsWith('/uploads/support/'))
+    return true;
   return (value.contains('/whatsapp-conversations/') &&
           value.contains('/media')) ||
       (value.contains('/internal-groups/') && value.contains('/media/'));
+}
+
+bool _isSameOriginMediaUrl(String url) {
+  if (!kIsWeb) return false;
+  final target = Uri.tryParse(url);
+  final base = Uri.tryParse(AppConfig.apiBaseUrl.trim());
+  if (target == null || base == null || !target.hasScheme || !base.hasScheme) {
+    return false;
+  }
+  return target.scheme == base.scheme &&
+      target.host.toLowerCase() == base.host.toLowerCase() &&
+      (target.port == 0 ? 443 : target.port) ==
+          (base.port == 0 ? 443 : base.port);
 }
 
 /// Resolves a URL that video/audio elements can play (blob on web when auth needed).
@@ -63,6 +77,7 @@ Future<_PlayableSource> _resolvePlayableSource(
   String rawUrl, {
   String? preferredMime,
   bool forceRefresh = false,
+  bool preferDirectWeb = true,
 }) async {
   final absolute = resolvePlaybackUrl(rawUrl);
   if (absolute.startsWith('blob:') || absolute.startsWith('data:')) {
@@ -78,6 +93,20 @@ Future<_PlayableSource> _resolvePlayableSource(
       _isAuthenticatedMediaEndpoint(rawUrl) ||
       _isAuthenticatedMediaEndpoint(absolute);
   final cookie = await ref.read(apiClientProvider).readSessionCookieHeader();
+
+  // On the web, same-origin audio endpoints must be opened directly first.
+  // The browser attaches the HttpOnly session cookie to the media request,
+  // while a Dio/XHR prefetch may not have access to that cookie and turns a
+  // valid audio into a misleading 401/blob playback error.  The authenticated
+  // byte download below remains the fallback for browsers or endpoints that
+  // cannot be played directly.
+  if (preferDirectWeb && _isSameOriginMediaUrl(absolute)) {
+    return _PlayableSource(
+      url: absolute,
+      mimeType: preferredMime,
+      isBlob: false,
+    );
+  }
 
   if (!needsAuthFetch) {
     return _PlayableSource(
@@ -876,6 +905,7 @@ class _InlineAudioPlayerState extends ConsumerState<InlineAudioPlayer>
           widget.url,
           preferredMime: widget.mimeType ?? 'audio/ogg',
           forceRefresh: true,
+          preferDirectWeb: false,
         );
         if (!mounted || token != _loadToken) {
           if (source.isBlob) revokeMediaBlobUrl(source.url);

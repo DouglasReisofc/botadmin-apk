@@ -356,11 +356,11 @@ export const findActiveSweepstakeByPoll = async (
       SELECT *
       FROM bot_sweepstakes
       WHERE instance_id = ?
-        AND poll_id = ?
+        AND (poll_id = ? OR poll_message_id = ?)
         AND status = 'active'
       LIMIT 1
     `,
-    [instanceId, pollId],
+    [instanceId, pollId, pollId],
   );
   if (!Array.isArray(rows) || rows.length === 0) {
     return null;

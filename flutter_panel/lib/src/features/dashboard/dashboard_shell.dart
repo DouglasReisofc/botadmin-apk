@@ -134,8 +134,13 @@ final conversationListFilterProvider =
     );
 
 final readConversationKeysProvider =
-    NotifierProvider<ReadConversationKeysController, Set<String>>(
-      ReadConversationKeysController.new,
+  NotifierProvider<ReadConversationKeysController, Set<String>>(
+    ReadConversationKeysController.new,
+  );
+
+final conversationSelectionProvider =
+    NotifierProvider<ConversationSelectionController, Set<String>>(
+      ConversationSelectionController.new,
     );
 
 final groupSearchProvider = NotifierProvider<SearchQueryController, String>(
@@ -351,6 +356,27 @@ class ReadConversationKeysController extends Notifier<Set<String>> {
     if (key == null || !state.contains(key)) return;
     final next = <String>{...state}..remove(key);
     state = next;
+  }
+}
+
+class ConversationSelectionController extends Notifier<Set<String>> {
+  @override
+  Set<String> build() => <String>{};
+
+  void toggle(String key) {
+    if (key.trim().isEmpty) return;
+    final next = <String>{...state};
+    if (!next.add(key)) next.remove(key);
+    state = next;
+  }
+
+  void selectAll(Iterable<String> keys) {
+    state = keys.where((key) => key.trim().isNotEmpty).toSet();
+  }
+
+  void clear() {
+    if (state.isEmpty) return;
+    state = <String>{};
   }
 }
 
@@ -3608,18 +3634,19 @@ class _ProfileSwitcherButton extends ConsumerWidget {
           value: 'new',
           height: 48,
           child: _ProfileMenuAction(
-            icon: Icons.add_circle_outline_rounded,
-            label: 'Novo perfil',
+            icon: Icons.phone_in_talk_rounded,
+            label: 'Novo perfil WhatsApp',
           ),
         ),
-        const PopupMenuItem<String>(
-          value: 'download-app',
-          height: 48,
-          child: _ProfileMenuAction(
-            icon: Icons.android_rounded,
-            label: 'Baixar aplicativo',
+        if (kIsWeb)
+          const PopupMenuItem<String>(
+            value: 'download-app',
+            height: 48,
+            child: _ProfileMenuAction(
+              icon: Icons.android_rounded,
+              label: 'Baixar aplicativo',
+            ),
           ),
-        ),
         const PopupMenuItem<String>(
           value: 'logout',
           height: 48,
@@ -3857,18 +3884,18 @@ class _ConversationProfileAccessCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
     final connected = instance?.isConnected == true;
+    // The profile shortcut is intentionally only an action prompt. Once the
+    // selected WhatsApp is connected it should disappear instead of taking
+    // space above the conversation filters.
+    if (connected) return const SizedBox.shrink();
     final waiting = instance?.isAwaitingPair == true;
-    final title = instance == null ? 'Conecte seu WhatsApp' : instance!.name;
+    final title = instance == null ? 'WhatsApp desconectado' : instance!.name;
     final status = instance == null
-        ? 'Crie um perfil para começar a conversar'
-        : connected
-        ? 'WhatsApp conectado'
+        ? 'Conecte seu primeiro WhatsApp para começar a automatizar'
         : waiting
         ? 'Aguardando conexão'
-        : 'WhatsApp desconectado';
-    final color = connected
-        ? const Color(0xFF138A4B)
-        : waiting
+        : 'WhatsApp desconectado — conecte para começar a automatizar';
+    final color = waiting
         ? const Color(0xFFD97706)
         : const Color(0xFFB42318);
     return Material(
@@ -3889,15 +3916,11 @@ class _ConversationProfileAccessCard extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 19,
-                backgroundColor: connected
-                    ? wa.panel
-                    : color.withValues(alpha: .12),
+                backgroundColor: color.withValues(alpha: .12),
                 child: Icon(
-                  connected
-                      ? Icons.verified_rounded
-                      : Icons.qr_code_scanner_rounded,
+                  Icons.qr_code_scanner_rounded,
                   size: 20,
-                  color: connected ? wa.accent : color,
+                  color: color,
                 ),
               ),
               const SizedBox(width: 10),
@@ -4502,14 +4525,15 @@ class _WhatsAppListHeader extends ConsumerWidget {
                   contentPadding: EdgeInsets.zero,
                 ),
               ),
-              PopupMenuItem(
-                value: _ListAction.downloadApp,
-                child: ListTile(
-                  leading: Icon(Icons.android_rounded),
-                  title: Text('Baixar aplicativo'),
-                  contentPadding: EdgeInsets.zero,
+              if (kIsWeb)
+                PopupMenuItem(
+                  value: _ListAction.downloadApp,
+                  child: ListTile(
+                    leading: Icon(Icons.android_rounded),
+                    title: Text('Baixar aplicativo'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
                 ),
-              ),
             ],
           ),
         ],
@@ -5810,6 +5834,64 @@ class _PreparedConversation {
   final String rowKey;
 }
 
+class _ConversationSelectionToolbar extends StatelessWidget {
+  const _ConversationSelectionToolbar({
+    required this.selectedCount,
+    required this.allSelected,
+    required this.onSelectAll,
+    required this.onClear,
+  });
+
+  final int selectedCount;
+  final bool allSelected;
+  final VoidCallback onSelectAll;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final wa = WaTheme.of(context);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: wa.accentSoft,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: wa.accent.withValues(alpha: .28)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.check_circle_rounded, color: wa.accent, size: 20),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '$selectedCount selecionada(s)',
+              style: TextStyle(
+                color: wa.textPrimary,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+          TextButton.icon(
+            onPressed: onSelectAll,
+            icon: Icon(
+              allSelected
+                  ? Icons.deselect_rounded
+                  : Icons.select_all_rounded,
+              size: 19,
+            ),
+            label: Text(allSelected ? 'Limpar tudo' : 'Selecionar tudo'),
+          ),
+          IconButton(
+            tooltip: 'Sair da seleção',
+            onPressed: onClear,
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ConversationList extends ConsumerStatefulWidget {
   const _ConversationList({
     required this.data,
@@ -5880,6 +5962,8 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
     final query = ref.watch(conversationSearchProvider).trim().toLowerCase();
     final ConversationListFilter filter =
         widget.fixedFilter ?? ref.watch(conversationListFilterProvider);
+    final selectedConversationKeys = ref.watch(conversationSelectionProvider);
+    final selectionMode = selectedConversationKeys.isNotEmpty;
     final readConversationKeys = ref.watch(readConversationKeysProvider);
     final data = widget.data;
     final safeThreads = _safeConversationThreads(data.threads)
@@ -5899,6 +5983,12 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                     thread.lastMessage.toLowerCase().contains(query);
               })
               .toList(growable: false);
+    final visibleThreadKeys = threads
+        .map(_conversationThreadKey)
+        .toSet();
+    final allVisibleSelected =
+        visibleThreadKeys.isNotEmpty &&
+        visibleThreadKeys.every(selectedConversationKeys.contains);
 
     // O(1) group lookup instead of scanning groups for every row.
     final groupsByJid = <String, BotGroup>{
@@ -6087,17 +6177,8 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                               height: 36,
                               value: _ListAction.newProfile,
                               child: _WhatsAppMenuItem(
-                                icon: Icons.add_circle_outline_rounded,
-                                label: 'Novo perfil',
-                              ),
-                            ),
-                          if (compact)
-                            const PopupMenuItem(
-                              height: 36,
-                              value: _ListAction.newConversation,
-                              child: _WhatsAppMenuItem(
-                                icon: Icons.add_comment_outlined,
-                                label: 'Nova conversa',
+                                icon: Icons.phone_in_talk_rounded,
+                                label: 'Novo perfil WhatsApp',
                               ),
                             ),
                           if (compact) const PopupMenuDivider(height: 8),
@@ -6129,12 +6210,29 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                           ),
                           const PopupMenuItem(
                             height: 36,
-                            value: _ListAction.downloadApp,
+                            value: _ListAction.manageConnections,
                             child: _WhatsAppMenuItem(
-                              icon: Icons.android_rounded,
-                              label: 'Baixar aplicativo',
+                              icon: Icons.link_rounded,
+                              label: 'Gerenciar conexões WhatsApp',
                             ),
                           ),
+                          const PopupMenuItem(
+                            height: 36,
+                            value: _ListAction.apiRest,
+                            child: _WhatsAppMenuItem(
+                              icon: Icons.api_rounded,
+                              label: 'API REST',
+                            ),
+                          ),
+                          if (kIsWeb)
+                            const PopupMenuItem(
+                              height: 36,
+                              value: _ListAction.downloadApp,
+                              child: _WhatsAppMenuItem(
+                                icon: Icons.android_rounded,
+                                label: 'Baixar aplicativo',
+                              ),
+                            ),
                           const PopupMenuDivider(height: 8),
                           const PopupMenuItem(
                             height: 36,
@@ -6161,22 +6259,6 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                               label: 'Selecionar conversas',
                             ),
                           ),
-                          PopupMenuItem(
-                            height: 36,
-                            value: _ListAction.lists,
-                            child: _WhatsAppMenuItem(
-                              icon: Icons.contacts_outlined,
-                              label: 'Listas',
-                            ),
-                          ),
-                          PopupMenuItem(
-                            height: 36,
-                            value: _ListAction.markAllRead,
-                            child: _WhatsAppMenuItem(
-                              icon: Icons.mark_chat_read_outlined,
-                              label: 'Marcar todas como lidas',
-                            ),
-                          ),
                           const PopupMenuDivider(height: 8),
                           const PopupMenuItem(
                             height: 36,
@@ -6191,11 +6273,30 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
                     ],
                   ),
                 if (widget.showTopHeader) const SizedBox(height: 10),
+                if (selectionMode)
+                  _ConversationSelectionToolbar(
+                    selectedCount: selectedConversationKeys.length,
+                    allSelected: allVisibleSelected,
+                    onSelectAll: () {
+                      final controller = ref.read(
+                        conversationSelectionProvider.notifier,
+                      );
+                      if (allVisibleSelected) {
+                        controller.clear();
+                      } else {
+                        controller.selectAll(visibleThreadKeys);
+                      }
+                    },
+                    onClear: () => ref
+                        .read(conversationSelectionProvider.notifier)
+                        .clear(),
+                  ),
                 _SearchBox(
                   hint: 'Pesquisar ou começar uma nova conversa',
                   searchProvider: conversationSearchProvider,
                 ),
-                if (filter != ConversationListFilter.internalGroups) ...[
+                if (filter != ConversationListFilter.internalGroups &&
+                    activeInstance?.isConnected != true) ...[
                   const SizedBox(height: 10),
                   _ConversationProfileAccessCard(
                     instance: activeInstance,
@@ -6350,6 +6451,16 @@ class _ConversationListState extends ConsumerState<_ConversationList> {
         ref
             .read(dashboardSectionProvider.notifier)
             .select(DashboardSection.settings);
+        break;
+      case _ListAction.manageConnections:
+        ref
+            .read(dashboardSectionProvider.notifier)
+            .select(DashboardSection.profiles);
+        break;
+      case _ListAction.apiRest:
+        ref
+            .read(dashboardSectionProvider.notifier)
+            .select(DashboardSection.apiRest);
         break;
       case _ListAction.refresh:
         ref.invalidate(dashboardSnapshotProvider);
@@ -8172,12 +8283,19 @@ class _ConversationTile extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     // Only this row rebuilds when its selected state flips (not the whole list).
     final active = ref.watch(
-      selectedThreadProvider.select(
+        selectedThreadProvider.select(
         (selected) =>
             selected != null &&
             selected.chatJid == item.chatJid &&
             selected.instanceId == item.instanceId,
       ),
+    );
+    final bulkKey = _conversationThreadKey(item.thread);
+    final bulkSelected = ref.watch(
+      conversationSelectionProvider.select((keys) => keys.contains(bulkKey)),
+    );
+    final selectionMode = ref.watch(
+      conversationSelectionProvider.select((keys) => keys.isNotEmpty),
     );
     final unread = item.unread;
     final wa = WaTheme.of(context);
@@ -8188,22 +8306,18 @@ class _ConversationTile extends ConsumerWidget {
       color: active ? wa.selectedRow : wa.panel,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        onLongPressStart: (details) {
-          if (item.thread.isSupport) {
+        onTap: () {
+          if (selectionMode) {
+            ref.read(conversationSelectionProvider.notifier).toggle(bulkKey);
+          } else {
             onTap();
-            return;
           }
-          // Mobile: pressionar a conversa abre opções.
-          unawaited(
-            _showConversationContextMenu(
-              context: context,
-              ref: ref,
-              globalPosition: details.globalPosition,
-              thread: item.thread,
-              group: item.group,
-            ),
-          );
+        },
+        onLongPressStart: (details) {
+          // Pressionar uma conversa entra no modo de seleção, como no
+          // WhatsApp. O menu contextual continua disponível pelo botão
+          // direito no desktop.
+          ref.read(conversationSelectionProvider.notifier).toggle(bulkKey);
         },
         onSecondaryTapDown: (details) {
           if (item.thread.isSupport) {
@@ -8235,6 +8349,24 @@ class _ConversationTile extends ConsumerWidget {
               padding: const EdgeInsets.fromLTRB(23, 7, 24, 7),
               child: Row(
                 children: [
+                  if (selectionMode) ...[
+                    SizedBox(
+                      width: 30,
+                      height: 30,
+                      child: Checkbox(
+                        value: bulkSelected,
+                        onChanged: (_) => ref
+                            .read(conversationSelectionProvider.notifier)
+                            .toggle(bulkKey),
+                        shape: const CircleBorder(),
+                        side: BorderSide(color: wa.textMuted),
+                        activeColor: wa.accent,
+                        materialTapTargetSize:
+                            MaterialTapTargetSize.shrinkWrap,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
                   Tooltip(
                     message: 'Ver foto',
                     child: GestureDetector(
@@ -8708,17 +8840,8 @@ class _MobileDashboardHeader extends ConsumerWidget {
                     height: 36,
                     value: _ListAction.newProfile,
                     child: _WhatsAppMenuItem(
-                      icon: Icons.add_circle_outline_rounded,
-                      label: 'Novo perfil',
-                    ),
-                  ),
-                if (!isPartner)
-                  const PopupMenuItem(
-                    height: 36,
-                    value: _ListAction.newConversation,
-                    child: _WhatsAppMenuItem(
-                      icon: Icons.add_comment_outlined,
-                      label: 'Nova conversa',
+                      icon: Icons.phone_in_talk_rounded,
+                      label: 'Novo perfil WhatsApp',
                     ),
                   ),
                 const PopupMenuDivider(height: 8),
@@ -8753,6 +8876,24 @@ class _MobileDashboardHeader extends ConsumerWidget {
                 if (!isPartner)
                   const PopupMenuItem(
                     height: 36,
+                    value: _ListAction.manageConnections,
+                    child: _WhatsAppMenuItem(
+                      icon: Icons.link_rounded,
+                      label: 'Gerenciar conexões WhatsApp',
+                    ),
+                  ),
+                if (!isPartner)
+                  const PopupMenuItem(
+                    height: 36,
+                    value: _ListAction.apiRest,
+                    child: _WhatsAppMenuItem(
+                      icon: Icons.api_rounded,
+                      label: 'API REST',
+                    ),
+                  ),
+                if (!isPartner && kIsWeb)
+                  const PopupMenuItem(
+                    height: 36,
                     value: _ListAction.downloadApp,
                     child: _WhatsAppMenuItem(
                       icon: Icons.android_rounded,
@@ -8776,24 +8917,6 @@ class _MobileDashboardHeader extends ConsumerWidget {
                     child: _WhatsAppMenuItem(
                       icon: Icons.check_box_outlined,
                       label: 'Selecionar conversas',
-                    ),
-                  ),
-                if (!isPartner)
-                  const PopupMenuItem(
-                    height: 36,
-                    value: _ListAction.lists,
-                    child: _WhatsAppMenuItem(
-                      icon: Icons.contacts_outlined,
-                      label: 'Listas',
-                    ),
-                  ),
-                if (!isPartner)
-                  const PopupMenuItem(
-                    height: 36,
-                    value: _ListAction.markAllRead,
-                    child: _WhatsAppMenuItem(
-                      icon: Icons.mark_chat_read_outlined,
-                      label: 'Marcar todas como lidas',
                     ),
                   ),
                 const PopupMenuDivider(height: 8),
@@ -8868,10 +8991,20 @@ Future<void> _handleMobileHeaderAction(
         );
       }
       break;
-    case _ListAction.settings:
+      case _ListAction.settings:
+        ref
+            .read(dashboardSectionProvider.notifier)
+            .select(DashboardSection.settings);
+        break;
+    case _ListAction.manageConnections:
       ref
           .read(dashboardSectionProvider.notifier)
-          .select(DashboardSection.settings);
+          .select(DashboardSection.profiles);
+      break;
+    case _ListAction.apiRest:
+      ref
+          .read(dashboardSectionProvider.notifier)
+          .select(DashboardSection.apiRest);
       break;
     case _ListAction.refresh:
       ref.invalidate(dashboardSnapshotProvider);
@@ -9347,6 +9480,8 @@ enum _ListAction {
   support,
   toggleTheme,
   settings,
+  manageConnections,
+  apiRest,
   refresh,
   downloadApp,
   favoriteMessages,

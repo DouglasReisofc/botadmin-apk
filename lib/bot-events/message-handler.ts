@@ -15660,7 +15660,10 @@ export const handleMessageUpsert = async (
           userId: context.instance.userId,
           instanceId: context.instance.id,
           chatJid: message.chatId,
-          pollMessageId: sweepstakeVote.pollId,
+          // EasyZap identifies a vote by the original creation message key.
+          // Older payloads sometimes expose the logical poll id instead;
+          // use the persisted creation id so the existing bubble is updated.
+          pollMessageId: activeSweepstake.pollMessageId || sweepstakeVote.pollId,
           voterJid,
           selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
           voterName: sweepstakeVote.displayName ?? resolvedLid?.name ?? null,
