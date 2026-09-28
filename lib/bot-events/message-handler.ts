@@ -83,7 +83,6 @@ import {
   listGroupsForUser,
   createGroupForUserFromRemoteId,
   getGroupForInstanceByRemoteId,
-  getGroupForInstanceOrPhoneByRemoteId,
   isGroupLicenseActive,
   removeGroupMenuBackgroundForUser,
   updateGroupMenuBackgroundForUser,
@@ -14435,38 +14434,10 @@ export const handleMessageUpsert = async (
   let preloadedGroup: BotGroup | null = null;
   if (isGroupJid(message.chatId)) {
     try {
-      preloadedGroup = await getGroupForInstanceOrPhoneByRemoteId(context.instance.id, message.chatId);
-      if (preloadedGroup && preloadedGroup.instanceId !== context.instance.id) {
-        const incomingInstance = sourceInstance;
-        const linkedInstance = await getInstanceById(preloadedGroup.instanceId);
-        if (linkedInstance) {
-          const incomingPhone = String(incomingInstance.phone || '').replace(/\D+/g, '');
-          const linkedPhone = String(linkedInstance.phone || '').replace(/\D+/g, '');
-          console.info("[bot-events] resolved linked group from sibling instance", {
-            incomingUserId: context.instance.userId,
-            incomingInstanceId: context.instance.id,
-            linkedUserId: linkedInstance.userId,
-            linkedInstanceId: linkedInstance.id,
-            transportInstanceId: incomingInstance.id,
-            linkedSessionStatus: linkedInstance.sessionStatus,
-            groupId: preloadedGroup.id,
-            chatId: message.chatId,
-            phone: linkedInstance.phone || context.instance.phone || null,
-          });
-          invalidateGroupByRemoteIdCache(context.instance.id, message.chatId);
-          // Prefer the configured owner while it is connected. An incoming
-          // webhook is itself proof that the source transport is available,
-          // so it is the recovery path when the owner session is offline.
-          context.transportInstance =
-            incomingPhone &&
-            linkedPhone &&
-            incomingPhone !== linkedPhone &&
-            linkedInstance.sessionStatus === "conectado"
-              ? linkedInstance
-              : incomingInstance;
-          context.instance = linkedInstance;
-        }
-      }
+      // Every bot must use only the group configuration belonging to the
+      // instance that delivered this webhook. Do not fall back to a sibling
+      // instance/account when two customers share the same WhatsApp group.
+      preloadedGroup = await getGroupForInstanceByRemoteId(context.instance.id, message.chatId);
     } catch (error) {
       console.warn("[bot-events] failed to resolve linked group before message handling", {
         userId: context.instance.userId,
@@ -14684,7 +14655,7 @@ export const handleMessageUpsert = async (
       }
       invalidateGroupByRemoteIdCache(context.instance.id, remoteId);
       try {
-        loadedGroup = await getGroupForInstanceOrPhoneByRemoteId(
+        loadedGroup = await getGroupForInstanceByRemoteId(
           context.instance.id,
           remoteId,
         );

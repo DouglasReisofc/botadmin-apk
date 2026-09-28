@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { getCurrentUser } from "lib/auth";
 import { handleMessageUpsert } from "lib/bot-events/message-handler";
 import { BotInstanceError, refreshInstanceStatus } from "lib/bot-instances";
+import { findActiveSweepstakeByPollForGroup } from "lib/bot-sweepstakes";
 import { deleteMessageForEveryone, pinMessageInChat, sendInteractiveResponse, sendPollVoteMessage, sendReactionMessage } from "lib/wuzapi";
 import { resolveChatConversationAccess } from "lib/whatsapp-conversation-access";
 import {
@@ -420,6 +421,9 @@ export async function POST(request: Request, context: Context) {
       }
 
       const pollFromMe = stored?.direction === "outbound";
+      const botAdminSweepstake = isGroupJid(chatJid)
+        ? await findActiveSweepstakeByPollForGroup(chatJid, messageId).catch(() => null)
+        : null;
       const rawRecord = recordValue(stored?.raw);
       const rawSender = recordValue(rawRecord?.sender ?? rawRecord?.Sender);
       const pollSenderJid = pollFromMe
@@ -434,6 +438,19 @@ export async function POST(request: Request, context: Context) {
           rawSender?.Jid,
           stored?.senderJid,
         );
+      if (pollFromMe || botAdminSweepstake) {
+        // Outbound polls are control messages sent by this instance (not a
+        // vote UI for the bot itself). EasyZap cannot encrypt a self-vote
+        // without the original poll secret, so make this a harmless no-op
+        // instead of surfacing a misleading key error to the operator.
+        return NextResponse.json({
+          ok: true,
+          action: "poll_vote",
+          remoteVoteSent: false,
+          skipped: true,
+          message: "Esta enquete foi enviada pelo robô e aceita votos apenas dos participantes.",
+        });
+      }
       try {
         await sendPollVoteMessage(client, {
           chatId: chatJid,

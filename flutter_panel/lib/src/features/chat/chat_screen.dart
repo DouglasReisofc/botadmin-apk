@@ -9697,10 +9697,16 @@ class _PollBubble extends StatelessWidget {
                       option: options[index],
                       highestVoteCount: highestVoteCount,
                       showBottomSpacing: index < options.length - 1,
-                      onTap: () => onRunMessageAction('poll_vote', {
-                        'optionId': options[index].id,
-                        'optionTitle': options[index].title,
-                      }),
+                      // A poll sent by this instance is an outbound control
+                      // message (for example a BotAdmin sweepstake). The bot
+                      // must never try to vote in its own poll: the original
+                      // WhatsApp poll key is not available for that action.
+                      onTap: message.fromMe
+                          ? null
+                          : () => onRunMessageAction('poll_vote', {
+                              'optionId': options[index].id,
+                              'optionTitle': options[index].title,
+                            }),
                     ),
                 const SizedBox(height: 2),
                 Align(
@@ -9857,13 +9863,13 @@ class _PollOptionRow extends StatelessWidget {
     required this.option,
     required this.highestVoteCount,
     required this.showBottomSpacing,
-    required this.onTap,
+    this.onTap,
   });
 
   final ChatPollOption option;
   final int highestVoteCount;
   final bool showBottomSpacing;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {
