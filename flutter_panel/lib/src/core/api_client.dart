@@ -2619,11 +2619,14 @@ class BotAdminApiClient {
   Future<SweepstakeGroupSnapshot> addGroupSweepstakeParticipant({
     required int groupId,
     required int sweepstakeId,
-    required int participantUserId,
+    int? participantUserId,
+    String? participantJid,
+    String? displayName,
+    bool internal = true,
   }) async {
     final json = await postJson(
-      '${_sweepstakeBasePath(groupId, internal: true)}/$sweepstakeId/participants',
-      data: {'userId': participantUserId},
+      '${_sweepstakeBasePath(groupId, internal: internal)}/$sweepstakeId/participants',
+      data: {'userId': participantUserId, 'jid': participantJid, 'displayName': displayName},
     );
     return SweepstakeGroupSnapshot.fromJson(json);
   }

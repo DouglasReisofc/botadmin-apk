@@ -329,7 +329,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   },
                 )
                 .toList()
-          : await api.loadGroupParticipants(widget.group?.id ?? 0);
+          : await api.loadGroupParticipants(widget.group?.id ?? thread.linkedGroupId ?? 0);
       if (thread.isInternalGroup) {
         _restrictMemberPrivateChat = thread.membersCanStartPv == false;
       }
@@ -1524,6 +1524,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     final active = _sweepstakes?.active.firstOrNull;
     final groupId = _sweepstakeGroupId(thread);
     if (active == null || groupId == null) return;
+    await _loadMentionCandidates(thread);
+    if (!mounted) return;
     await showDialog<void>(
       context: context,
       builder: (_) => _SweepstakeDetailsDialog(
@@ -1531,20 +1533,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         canDraw:
             thread.instanceIsAdmin == true ||
             thread.internalGroupRole == 'owner',
-        members: thread.isInternalGroup ? _mentionCandidates : const [],
-        onAddMember: thread.isInternalGroup
-            ? (participantUserId) async {
+        members: _mentionCandidates,
+        onAddMember: (member) async {
                 final snapshot = await ref
                     .read(apiClientProvider)
                     .addGroupSweepstakeParticipant(
                       groupId: groupId,
                       sweepstakeId: active.id,
-                      participantUserId: participantUserId,
+                      participantUserId: thread.isInternalGroup ? int.tryParse(member.jid) : null,
+                      participantJid: member.jid,
+                      displayName: member.label,
+                      internal: thread.isInternalGroup,
                     );
                 if (mounted) setState(() => _sweepstakes = snapshot);
                 return snapshot.active.firstOrNull ?? active;
-              }
-            : null,
+              },
         onRefresh: () async {
           await _refreshSweepstakes(thread);
           return _sweepstakes?.active.firstOrNull ?? active;
@@ -8705,6 +8708,13 @@ class _LinkifiedMessageTextState extends State<_LinkifiedMessageText> {
     final spans = <InlineSpan>[];
     final matches =
         <({int start, int end, String value, bool url, String? jid})>[];
+    for (final entry in widget.mentionTargets.entries) {
+      final number = entry.value.split('@').first.split(':').first;
+      if (number.isEmpty || entry.key == entry.value || entry.key == number) continue;
+      for (final match in RegExp('@${RegExp.escape(number)}(?![0-9])').allMatches(text)) {
+        matches.add((start: match.start, end: match.end, value: '@${entry.key}', url: false, jid: entry.value));
+      }
+    }
     for (final match in _urlRegex.allMatches(text)) {
       final raw = match.group(0) ?? '';
       final display = _trimTrailingPunctuation(raw);
@@ -14786,7 +14796,7 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
   final Future<void> Function() onDraw;
   final Future<void> Function() onCancel;
   final List<_MentionCandidate> members;
-  final Future<SweepstakeSummary> Function(int userId)? onAddMember;
+  final Future<SweepstakeSummary> Function(_MentionCandidate member)? onAddMember;
   @override
   State<_SweepstakeDetailsDialog> createState() =>
       _SweepstakeDetailsDialogState();
@@ -14813,6 +14823,7 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     return AlertDialog(
+      constraints: BoxConstraints(maxWidth: size.width > 800 ? 1080 : size.width - 24),
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
       title: Row(
         children: [
@@ -14836,18 +14847,16 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
             icon: const Icon(Icons.refresh_rounded),
           ),
           if (widget.canDraw && widget.onAddMember != null)
-            IconButton(
-              tooltip: 'Adicionar membro',
+            TextButton.icon(
               onPressed: _busy ? null : _addMember,
               icon: const Icon(Icons.person_add_alt_1_rounded),
+              label: const Text('Adicionar participante'),
             ),
         ],
       ),
-      content: ConstrainedBox(
-        constraints: BoxConstraints(
-          maxWidth: size.width - 48,
-          maxHeight: size.height - 240,
-        ),
+      content: SizedBox(
+        width: size.width > 800 ? 1000 : size.width - 72,
+        height: (size.height * .62).clamp(200.0, 600.0),
         child: _sweepstake.participants.isEmpty
             ? const Center(child: Text('Ainda não há participantes.'))
             : ListView.builder(
@@ -14947,14 +14956,9 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
       ),
     );
     if (member == null || widget.onAddMember == null || _busy) return;
-    final userId = int.tryParse(member.jid);
-    if (userId == null || userId <= 0) {
-      if (mounted) showErrorToast(context, 'Membro inválido.');
-      return;
-    }
     setState(() => _busy = true);
     try {
-      final updated = await widget.onAddMember!(userId);
+      final updated = await widget.onAddMember!(member);
       if (mounted) {
         setState(() => _sweepstake = updated);
         showSuccessToast(context, 'Participante adicionado.');

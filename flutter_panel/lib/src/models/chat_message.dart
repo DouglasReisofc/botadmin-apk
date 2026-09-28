@@ -506,7 +506,7 @@ class ChatMessage {
         json['clientMessageId'],
         json['client_message_id'],
       ),
-      text: text ?? '',
+      text: _displayMentionNames(text ?? '', json['mentionTargets']),
       timestamp: _asDate(
         json['timestamp'] ?? json['createdAt'] ?? json['messageTimestamp'],
       ),
@@ -612,6 +612,19 @@ class ChatMessage {
       receipts: _parseReceipts(json['receipts']),
     );
   }
+}
+
+String _displayMentionNames(String text, Object? targets) {
+  if (targets is! List) return text;
+  for (final target in targets) {
+    if (target is! Map) continue;
+    final jid = (target['jid'] ?? '').toString();
+    final name = (target['name'] ?? '').toString().trim();
+    final number = jid.split('@').first.split(':').first;
+    if (name.isEmpty || number.isEmpty || name == number) continue;
+    text = text.replaceAll(RegExp('@${RegExp.escape(number)}(?![0-9])'), '@$name');
+  }
+  return text;
 }
 
 MessageLocalStatus? _parseLocalStatus(Object? value) {
