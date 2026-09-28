@@ -329,7 +329,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                   },
                 )
                 .toList()
-          : await api.loadGroupParticipants(widget.group?.id ?? thread.linkedGroupId ?? 0);
+          : await api.loadGroupParticipants(
+              widget.group?.id ?? thread.linkedGroupId ?? 0,
+            );
       if (thread.isInternalGroup) {
         _restrictMemberPrivateChat = thread.membersCanStartPv == false;
       }
@@ -1538,26 +1540,30 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
             thread.internalGroupRole == 'owner',
         members: _mentionCandidates,
         onAddMember: (member) async {
-                final snapshot = await ref
-                    .read(apiClientProvider)
-                    .addGroupSweepstakeParticipant(
-                      groupId: groupId,
-                      sweepstakeId: active.id,
-                      participantUserId: thread.isInternalGroup ? int.tryParse(member.jid) : null,
-                      participantJid: member.jid,
-                      displayName: member.label,
-                      internal: thread.isInternalGroup,
-                    );
-                if (mounted) setState(() => _sweepstakes = snapshot);
-                return snapshot.active.firstOrNull ?? active;
-              },
+          final snapshot = await ref
+              .read(apiClientProvider)
+              .addGroupSweepstakeParticipant(
+                groupId: groupId,
+                sweepstakeId: active.id,
+                participantUserId: thread.isInternalGroup
+                    ? int.tryParse(member.jid)
+                    : null,
+                participantJid: member.jid,
+                displayName: member.label,
+                internal: thread.isInternalGroup,
+              );
+          if (mounted) setState(() => _sweepstakes = snapshot);
+          return snapshot.active.firstOrNull ?? active;
+        },
         onRemoveMember: (member) async {
-          final snapshot = await ref.read(apiClientProvider).removeGroupSweepstakeParticipant(
-            groupId: groupId,
-            sweepstakeId: active.id,
-            participantJid: member.jid,
-            internal: thread.isInternalGroup,
-          );
+          final snapshot = await ref
+              .read(apiClientProvider)
+              .removeGroupSweepstakeParticipant(
+                groupId: groupId,
+                sweepstakeId: active.id,
+                participantJid: member.jid,
+                internal: thread.isInternalGroup,
+              );
           if (mounted) setState(() => _sweepstakes = snapshot);
           return snapshot.active.firstOrNull ?? active;
         },
@@ -1854,7 +1860,8 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       final pollTitle = message.displayText.trim().isNotEmpty
           ? message.displayText.trim()
           : (message.mediaTitle ?? '').trim();
-      final emptyPollVote = message.resolvedMediaKind == 'poll' &&
+      final emptyPollVote =
+          message.resolvedMediaKind == 'poll' &&
           message.pollOptions.isEmpty &&
           (pollTitle.isEmpty || pollTitle.toLowerCase() == 'enquete');
       return !emptyPollVote;
@@ -8738,9 +8745,18 @@ class _LinkifiedMessageTextState extends State<_LinkifiedMessageText> {
         <({int start, int end, String value, bool url, String? jid})>[];
     for (final entry in widget.mentionTargets.entries) {
       final number = entry.value.split('@').first.split(':').first;
-      if (number.isEmpty || entry.key == entry.value || entry.key == number) continue;
-      for (final match in RegExp('@${RegExp.escape(number)}(?![0-9])').allMatches(text)) {
-        matches.add((start: match.start, end: match.end, value: '@${entry.key}', url: false, jid: entry.value));
+      if (number.isEmpty || entry.key == entry.value || entry.key == number)
+        continue;
+      for (final match in RegExp(
+        '@${RegExp.escape(number)}(?![0-9])',
+      ).allMatches(text)) {
+        matches.add((
+          start: match.start,
+          end: match.end,
+          value: '@${entry.key}',
+          url: false,
+          jid: entry.value,
+        ));
       }
     }
     for (final match in _urlRegex.allMatches(text)) {
@@ -14097,7 +14113,10 @@ class _MentionCandidate {
     final jid =
         (json['jid'] ?? json['id'] ?? json['userId'] ?? json['user_id'] ?? '')
             .toString()
-            .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
+            .replaceFirst(
+              RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false),
+              '',
+            )
             .trim();
     final label =
         (json['name'] ??
@@ -14110,7 +14129,10 @@ class _MentionCandidate {
             .trim();
     final subtitle = (json['phone'] ?? json['number'] ?? json['role'] ?? jid)
         .toString()
-        .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
+        .replaceFirst(
+          RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false),
+          '',
+        )
         .trim();
     return _MentionCandidate(
       jid: jid,
@@ -14689,21 +14711,21 @@ class _SweepstakeDraft {
   final String? winnerMediaUrl;
 }
 
-class _SweepstakeDialog extends StatefulWidget {
+class _SweepstakeDialog extends ConsumerStatefulWidget {
   const _SweepstakeDialog();
   @override
-  State<_SweepstakeDialog> createState() => _SweepstakeDialogState();
+  ConsumerState<_SweepstakeDialog> createState() => _SweepstakeDialogState();
 }
 
-class _SweepstakeDialogState extends State<_SweepstakeDialog> {
+class _SweepstakeDialogState extends ConsumerState<_SweepstakeDialog> {
   final _question = TextEditingController();
   final _duration = TextEditingController(text: '60');
   final _limit = TextEditingController(text: '100');
   final _winners = TextEditingController(text: '1');
   final _winnerMessage = TextEditingController();
-  final _winnerMedia = TextEditingController(
-    text: '/botadmin-landing/sweepstake-winner-v1.png',
-  );
+  String? _winnerMediaUrl = '/botadmin-landing/sweepstake-winner-v1.png';
+  Uint8List? _winnerMediaPreviewBytes;
+  bool _winnerMediaUploading = false;
   String _unit = 'm';
 
   @override
@@ -14713,8 +14735,171 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
     _limit.dispose();
     _winners.dispose();
     _winnerMessage.dispose();
-    _winnerMedia.dispose();
     super.dispose();
+  }
+
+  Future<void> _pickWinnerMedia() async {
+    if (_winnerMediaUploading) return;
+    final file = await openFile(
+      acceptedTypeGroups: const [
+        XTypeGroup(
+          label: 'Imagem do resultado',
+          extensions: ['jpg', 'jpeg', 'png', 'webp', 'gif'],
+        ),
+      ],
+    );
+    if (file == null) return;
+    final bytes = await file.readAsBytes();
+    if (bytes.isEmpty) {
+      if (mounted)
+        showErrorToast(context, 'Arquivo vazio. Escolha outra mídia.');
+      return;
+    }
+    final mimeType = file.mimeType ?? _sweepstakeMimeType(file.name);
+    const mediaType = 'image';
+    setState(() {
+      _winnerMediaUploading = true;
+      _winnerMediaPreviewBytes = bytes;
+    });
+    try {
+      final uploaded = await ref
+          .read(apiClientProvider)
+          .uploadRaffleMedia(
+            bytes: bytes,
+            fileName: file.name,
+            mimeType: mimeType,
+            mediaType: mediaType,
+            previousPath:
+                _winnerMediaUrl != null &&
+                    _winnerMediaUrl!.startsWith('/uploads/users/')
+                ? _winnerMediaUrl
+                : null,
+          );
+      final uploadedUrl = (uploaded['url'] ?? uploaded['path'])
+          ?.toString()
+          .trim();
+      if (uploadedUrl == null || uploadedUrl.isEmpty) {
+        throw StateError('O servidor não retornou a URL da mídia.');
+      }
+      if (!mounted) return;
+      setState(() => _winnerMediaUrl = uploadedUrl);
+      showSuccessToast(context, 'Mídia do resultado enviada.');
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _winnerMediaPreviewBytes = null);
+      showErrorToast(context, 'Não foi possível enviar a mídia: $error');
+    } finally {
+      if (mounted) setState(() => _winnerMediaUploading = false);
+    }
+  }
+
+  void _clearWinnerMedia() {
+    setState(() {
+      _winnerMediaUrl = null;
+      _winnerMediaPreviewBytes = null;
+    });
+  }
+
+  Widget _winnerMediaCard() {
+    final source = _winnerMediaUrl;
+    final isVideo =
+        source != null &&
+        RegExp(
+          r'\.(mp4|mov|webm)(?:[?#].*)?$',
+          caseSensitive: false,
+        ).hasMatch(source);
+    final preview = _winnerMediaPreviewBytes != null
+        ? Image.memory(_winnerMediaPreviewBytes!, fit: BoxFit.cover)
+        : source == null
+        ? const Center(
+            child: Icon(Icons.image_not_supported_outlined, size: 36),
+          )
+        : isVideo
+        ? const Center(child: Icon(Icons.play_circle_outline_rounded, size: 42))
+        : Image.network(
+            _absoluteMediaUrl(source) ?? source,
+            fit: BoxFit.cover,
+            errorBuilder: (_, __, ___) => const Center(
+              child: Icon(Icons.broken_image_outlined, size: 36),
+            ),
+          );
+    return Container(
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 132, maxHeight: 230),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F4F5),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD5DEE2)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          Positioned.fill(child: preview),
+          Positioned(
+            left: 10,
+            top: 10,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: Colors.black.withOpacity(.56),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+                child: Text(
+                  source == null ? 'Sem mídia' : 'Mídia do ganhador',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          if (_winnerMediaUploading)
+            const Positioned.fill(
+              child: ColoredBox(
+                color: Color(0x66000000),
+                child: Center(
+                  child: CircularProgressIndicator(color: Colors.white),
+                ),
+              ),
+            ),
+          Positioned(
+            right: 8,
+            top: 8,
+            child: Row(
+              children: [
+                IconButton.filledTonal(
+                  tooltip: 'Trocar mídia',
+                  onPressed: _winnerMediaUploading ? null : _pickWinnerMedia,
+                  icon: const Icon(Icons.edit_rounded, size: 18),
+                ),
+                if (source != null)
+                  IconButton.filledTonal(
+                    tooltip: 'Remover mídia',
+                    onPressed: _winnerMediaUploading ? null : _clearWinnerMedia,
+                    icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                  ),
+              ],
+            ),
+          ),
+          if (source == null && !_winnerMediaUploading)
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: 10,
+              child: Center(
+                child: FilledButton.tonalIcon(
+                  onPressed: _pickWinnerMedia,
+                  icon: const Icon(Icons.upload_rounded, size: 18),
+                  label: const Text('Adicionar mídia'),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
   }
 
   Future<void> _configureWinnerMessage() async {
@@ -14741,20 +14926,22 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
                   maxLength: 2000,
                   decoration: const InputDecoration(
                     labelText: 'Mensagem personalizada (opcional)',
-                    hintText: '🎉 Parabéns, {{pushname}}! Você venceu {{premio}}!',
-                    helperText: '{{pushname}}  {{numero}}  {{premio}}  {{participantes}}  {{ganhadores}}',
+                    hintText:
+                        '🎉 Parabéns, {{pushname}}! Você venceu {{premio}}!',
+                    helperText:
+                        '{{pushname}}  {{numero}}  {{premio}}  {{participantes}}  {{ganhadores}}',
                   ),
                 ),
                 const SizedBox(height: 12),
-                TextField(
-                  controller: _winnerMedia,
-                  decoration: const InputDecoration(
-                    labelText: 'Mídia do resultado (URL opcional)',
-                    hintText: '/botadmin-landing/sweepstake-winner-v1.png',
-                    helperText: 'A imagem padrão já vem configurada. Você pode informar outra URL pública.',
-                    prefixIcon: Icon(Icons.image_outlined),
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    'Mídia enviada ao anunciar o ganhador',
+                    style: Theme.of(context).textTheme.titleSmall,
                   ),
                 ),
+                const SizedBox(height: 8),
+                _winnerMediaCard(),
               ],
             ),
           ),
@@ -14775,10 +14962,10 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
     final size = MediaQuery.sizeOf(context);
     return AlertDialog(
       constraints: BoxConstraints(
-        maxWidth: size.width > 900 ? 760 : size.width - 24,
-        maxHeight: size.height - 56,
+        maxWidth: size.width > 1100 ? 980 : size.width - 24,
+        maxHeight: size.height - 40,
       ),
-      insetPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 24),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
       title: Row(
         children: [
           const Icon(Icons.emoji_events_rounded, color: Color(0xFFFFB300)),
@@ -14808,12 +14995,27 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
               TextField(
                 controller: _question,
                 autofocus: true,
+                minLines: 2,
+                maxLines: 5,
                 maxLength: 160,
+                keyboardType: TextInputType.multiline,
+                textInputAction: TextInputAction.newline,
                 decoration: const InputDecoration(
                   labelText: 'O que será sorteado?',
-                  hintText: 'Ex.: Kit de produtos BotAdmin',
+                  hintText:
+                      'Ex.: Kit de produtos BotAdmin\nDigite outra linha se quiser',
                 ),
               ),
+              const SizedBox(height: 10),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Imagem ou vídeo do anúncio final',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+              ),
+              const SizedBox(height: 8),
+              _winnerMediaCard(),
               const SizedBox(height: 8),
               Row(
                 children: [
@@ -14885,9 +15087,7 @@ class _SweepstakeDialogState extends State<_SweepstakeDialog> {
                 winnerMessageTemplate: _winnerMessage.text.trim().isEmpty
                     ? null
                     : _winnerMessage.text.trim(),
-                winnerMediaUrl: _winnerMedia.text.trim().isEmpty
-                    ? null
-                    : _winnerMedia.text.trim(),
+                winnerMediaUrl: _winnerMediaUrl,
               ),
             );
           },
@@ -14916,8 +15116,10 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
   final Future<void> Function() onDraw;
   final Future<void> Function() onCancel;
   final List<_MentionCandidate> members;
-  final Future<SweepstakeSummary> Function(_MentionCandidate member)? onAddMember;
-  final Future<SweepstakeSummary> Function(SweepstakeParticipant member)? onRemoveMember;
+  final Future<SweepstakeSummary> Function(_MentionCandidate member)?
+  onAddMember;
+  final Future<SweepstakeSummary> Function(SweepstakeParticipant member)?
+  onRemoveMember;
   @override
   State<_SweepstakeDetailsDialog> createState() =>
       _SweepstakeDetailsDialogState();
@@ -14945,7 +15147,9 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
   Widget build(BuildContext context) {
     final size = MediaQuery.sizeOf(context);
     return AlertDialog(
-      constraints: BoxConstraints(maxWidth: size.width > 800 ? 1080 : size.width - 24),
+      constraints: BoxConstraints(
+        maxWidth: size.width > 800 ? 1080 : size.width - 24,
+      ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 24),
       title: Row(
         children: [
@@ -15009,8 +15213,13 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                     trailing: widget.canDraw && widget.onRemoveMember != null
                         ? IconButton(
                             tooltip: 'Remover participante',
-                            onPressed: _busy ? null : () => _removeMember(person),
-                            icon: const Icon(Icons.delete_outline_rounded, color: Color(0xFFD32F2F)),
+                            onPressed: _busy
+                                ? null
+                                : () => _removeMember(person),
+                            icon: const Icon(
+                              Icons.delete_outline_rounded,
+                              color: Color(0xFFD32F2F),
+                            ),
                           )
                         : null,
                   );
@@ -15064,40 +15273,55 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                   prefixIcon: Icon(Icons.search_rounded),
                   hintText: 'Pesquisar por nome ou número',
                 ),
-                onChanged: (value) => setState(() => _memberQuery = value.trim().toLowerCase()),
+                onChanged: (value) =>
+                    setState(() => _memberQuery = value.trim().toLowerCase()),
               ),
               const SizedBox(height: 8),
-              Expanded(child: Builder(builder: (_) {
-            final members = widget.members.where((person) {
-              final haystack = '${person.label} ${person.subtitle} ${person.jid}'.toLowerCase();
-              return _memberQuery.isEmpty || haystack.contains(_memberQuery);
-            }).toList(growable: false);
-            return ListView.builder(
-            itemCount: members.length,
-            itemBuilder: (_, index) {
-              final person = members[index];
-              final alreadyAdded = _sweepstake.participants.any(
-                (entry) => entry.jid == person.jid,
-              );
-              return ListTile(
-                enabled: !alreadyAdded,
-                leading: CircleAvatar(
-                  child: Text(person.label.characters.first.toUpperCase()),
+              Expanded(
+                child: Builder(
+                  builder: (_) {
+                    final members = widget.members
+                        .where((person) {
+                          final haystack =
+                              '${person.label} ${person.subtitle} ${person.jid}'
+                                  .toLowerCase();
+                          return _memberQuery.isEmpty ||
+                              haystack.contains(_memberQuery);
+                        })
+                        .toList(growable: false);
+                    return ListView.builder(
+                      itemCount: members.length,
+                      itemBuilder: (_, index) {
+                        final person = members[index];
+                        final alreadyAdded = _sweepstake.participants.any(
+                          (entry) => entry.jid == person.jid,
+                        );
+                        return ListTile(
+                          enabled: !alreadyAdded,
+                          leading: CircleAvatar(
+                            child: Text(
+                              person.label.characters.first.toUpperCase(),
+                            ),
+                          ),
+                          title: Text(person.label),
+                          subtitle: person.subtitle.isEmpty
+                              ? null
+                              : Text(person.subtitle),
+                          trailing: alreadyAdded
+                              ? const Icon(
+                                  Icons.check_circle,
+                                  color: Color(0xFF008069),
+                                )
+                              : null,
+                          onTap: alreadyAdded
+                              ? null
+                              : () => Navigator.of(dialogContext).pop(person),
+                        );
+                      },
+                    );
+                  },
                 ),
-                title: Text(person.label),
-                subtitle: person.subtitle.isEmpty
-                    ? null
-                    : Text(person.subtitle),
-                trailing: alreadyAdded
-                    ? const Icon(Icons.check_circle, color: Color(0xFF008069))
-                    : null,
-                onTap: alreadyAdded
-                    ? null
-                    : () => Navigator.of(dialogContext).pop(person),
-              );
-            },
-          );
-              })),
+              ),
             ],
           ),
         ),
@@ -16903,6 +17127,21 @@ String? _absoluteMediaUrl(String? value) {
   if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
   final normalized = raw.startsWith('/') ? raw : '/$raw';
   return '${AppConfig.apiBaseUrl}$normalized';
+}
+
+String _sweepstakeMimeType(String fileName) {
+  final extension = fileName.toLowerCase().split('.').last;
+  const types = <String, String>{
+    'jpg': 'image/jpeg',
+    'jpeg': 'image/jpeg',
+    'png': 'image/png',
+    'webp': 'image/webp',
+    'gif': 'image/gif',
+    'mp4': 'video/mp4',
+    'mov': 'video/quicktime',
+    'webm': 'video/webm',
+  };
+  return types[extension] ?? 'application/octet-stream';
 }
 
 String _mediaKind(ChatMessage message) {
