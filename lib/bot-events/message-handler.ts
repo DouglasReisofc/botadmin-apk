@@ -19263,11 +19263,27 @@ const convertStickerSourceToWebp = async (
       reactBotInterage("🧠");
       return true;
     }
+    const rawMessageJsonForAudio = JSON.stringify(message.raw ?? {}).toLowerCase();
+    const quotedAudioMedia = Boolean(
+      message.quotedMessageId &&
+      /quoted(?:message|msg|_message)?[\s\S]{0,1800}(?:audiomessage|audio\/ogg|audio\/opus|mimetype)/i.test(
+        rawMessageJsonForAudio,
+      ) &&
+      (rawMessageJsonForAudio.includes("audiomessage") ||
+        rawMessageJsonForAudio.includes("audio/ogg") ||
+        rawMessageJsonForAudio.includes("audio/opus")),
+    );
     const isSystemAudioBotInterage =
       botInterageAudioEnabled &&
       aiProvider === "chatgpt_system" &&
       runtimeConfig !== null &&
       (currentBotInterageMediaKind === "audio" ||
+        // A reply to a voice note may contain only the bot mention (for
+        // example “@Aluka”). In that shape the current message is text, so
+        // detect the quoted WhatsApp media node itself instead of guessing
+        // from the user's words. It must use the native audio pipeline just
+        // like a note recorded at this moment.
+        quotedAudioMedia ||
         // A text message replying to an audio must use the same native audio
         // endpoint as a directly sent voice note.  Otherwise the audio was
         // uploaded as a generic attachment and the model often answered the
