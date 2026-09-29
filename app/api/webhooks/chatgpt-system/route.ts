@@ -12,6 +12,7 @@ import {
   botInterageGroupConversationKey,
   saveBotInterageSystemConversation,
   submitBotInterageSystemAskJob,
+  requestBotInterageSystemDecision,
 } from "lib/botinterage-system";
 import {
   isNaturalBotAdminMcpRequest,
@@ -20,7 +21,6 @@ import {
   resolveBotAdminMcpContext,
 } from "lib/chatgpt-phone";
 import { createBotInterageChatCompletion } from "lib/apis/botinterage";
-import { parseAudioRaffleRequest } from "lib/botinterage-raffle-intent";
 import { getInstanceForUser } from "lib/bot-instances";
 import { getGroupSettings } from "lib/bot-group-settings";
 import { getBotInterageTtsRuntimeConfig } from "lib/admin-botinterage-tts-config";
@@ -653,24 +653,45 @@ export async function POST(request: Request) {
       return messageId;
     };
 
-    const handleAudioBotAdminToolRequest = async (transcription: string, allowContinuation = false): Promise<boolean> => {
-      const raffleIntent = /\b(?:sorteio|enquete|ganhador(?:es)?|pr[eê]mio|participar|pix|centavos?)\b/i.test(transcription);
-      if (!raffleIntent || !transcription.trim() || isInternalDelivery) return false;
-      // O endpoint privado atual não implementa tool_calls. Não delegue este
-      // pedido ao ChatGPT (que pode criar um agendamento próprio): extraia os
-      // campos explícitos e invoque o MCP do BotAdmin diretamente.
-      const request = parseAudioRaffleRequest(transcription, Date.now(), allowContinuation);
-      if (!request) return false;
-      if (request.missing) {
+    const handleAudioBotAdminToolRequest = async (transcription: string, _allowContinuation = false): Promise<boolean> => {
+      if (!transcription.trim() || isInternalDelivery) return false;
+      const decisionPrompt = [
+        "Você é o roteador de ações do BotAdmin. Analise a solicitação transcrita e escolha a ação correta.",
+        "Responda SOMENTE com JSON válido, sem markdown, no formato:",
+        '{"action":"create_group_sweepstake|none","prize":"","endsAt":"","winnersCount":1,"mentionAll":false,"missing":[]}',
+        "Use create_group_sweepstake somente quando a pessoa estiver pedindo para criar ou publicar um sorteio real no grupo. Não transforme divulgação, exemplo de texto ou pedido para escrever mensagem em sorteio.",
+        "Se faltar prêmio, encerramento ou quantidade de ganhadores, mantenha a ação e liste os nomes dos campos ausentes em missing. endsAt deve ser ISO 8601 com fuso quando informado.",
+        `Solicitação transcrita: ${transcription}`,
+      ].join("\n");
+      let decision: Record<string, unknown> | null = null;
+      try {
+        const answer = await requestBotInterageSystemDecision(decisionPrompt);
+        const match = answer?.match(/\{[\s\S]*\}/);
+        if (match) {
+          const parsed = JSON.parse(match[0]);
+          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) decision = parsed as Record<string, unknown>;
+        }
+      } catch (error) {
+        console.warn("[bot-interage] decisão estruturada do áudio indisponível", { jobId, error });
+        return false;
+      }
+      if (!decision || decision.action !== "create_group_sweepstake") return false;
+      const missing = Array.isArray(decision.missing)
+        ? decision.missing.filter((value): value is string => typeof value === "string" && value.trim())
+        : [];
+      const prize = typeof decision.prize === "string" ? decision.prize.trim() : "";
+      const endsAt = typeof decision.endsAt === "string" ? decision.endsAt.trim() : "";
+      const winnersCount = Number(decision.winnersCount);
+      if (missing.length > 0 || !prize || !endsAt || !Number.isInteger(winnersCount) || winnersCount < 1) {
         const messageId = await sendJobText("Para criar a enquete, informe o prêmio, quantos ganhadores e em quanto tempo termina o sorteio.");
         await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
         return true;
       }
       const result = await executeBotAdminMcpTool("botadmin_create_group_sweepstake", {
-        prize: request.prize,
-        endsAt: request.endsAt,
-        winnersCount: request.winnersCount,
-        mentionAll: request.mentionAll,
+        prize,
+        endsAt,
+        winnersCount,
+        mentionAll: decision.mentionAll === true,
         groupId: job.groupId,
         groupRemoteId: job.chatId,
         senderJid: job.senderJid,

@@ -344,6 +344,25 @@ const askEndpoint = (baseUrl: string): string => {
     : `${normalized}/v1/ask?delivery=webhook`;
 };
 
+/** Ask the native module for a short structured routing decision. */
+export const requestBotInterageSystemDecision = async (prompt: string): Promise<string | null> => {
+  const config = await getBotInterageRuntimeConfig();
+  if (!config.enabled || !config.baseUrl || !config.token) return null;
+  const response = await submitSystemJobWithRetry(askEndpoint(config.baseUrl).replace("?delivery=webhook", ""), {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.token}`,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ prompt: prompt.trim(), model: "auto", provider: "chatgpt", temperature: 0 }),
+  }, 60_000);
+  const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
+  if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
+  const answer = payload?.answer ?? payload?.assistant_answer ?? payload?.response ?? payload?.text;
+  return typeof answer === "string" && answer.trim() ? answer.trim() : null;
+};
+
 /**
  * Submit every normal BotInterage turn to the same multimodal assistant
  * endpoint. The assistant decides whether the answer is text, an image, a
