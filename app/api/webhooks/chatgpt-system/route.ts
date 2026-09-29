@@ -34,6 +34,7 @@ import {
   sendMediaMessage,
   sendReactionMessage,
   sendTextMessage,
+  deleteMessageForEveryone,
   type WuzapiClient,
 } from "lib/wuzapi";
 
@@ -654,7 +655,7 @@ export async function POST(request: Request) {
       return messageId;
     };
 
-    const handleAudioBotAdminToolRequest = async (transcription: string): Promise<boolean> => {
+    const handleAudioBotAdminToolRequest = async (transcription: string, initialAnswer?: string | null): Promise<boolean> => {
       if (!transcription.trim() || isInternalDelivery) return false;
       const pendingKey = redisKey("botinterage", "pending-action", job.instanceId, job.groupId, job.senderJid);
       const pending = await redisGetJson<Record<string, unknown>>(pendingKey);
@@ -671,7 +672,7 @@ export async function POST(request: Request) {
       ].join("\n");
       let decision: Record<string, unknown> | null = null;
       try {
-        const answer = await requestBotInterageSystemDecision(decisionPrompt);
+        const answer = initialAnswer?.trim() || await requestBotInterageSystemDecision(decisionPrompt);
         const match = answer?.match(/\{[\s\S]*\}/);
         if (match) {
           const parsed = JSON.parse(match[0]);
@@ -715,6 +716,17 @@ export async function POST(request: Request) {
       const answer = outcome?.ok === true
         ? "Sorteio publicado! Participe votando na enquete acima."
         : String(outcome?.message);
+      // The voice note is an operational command, not group content. Once
+      // the MCP confirms publication, revoke the original audio for everyone
+      // so neither the audio nor a later transcription remains visible.
+      if (outcome?.ok === true && client && job.whatsappMessageId) {
+        await deleteMessageForEveryone(client, {
+          chatId: job.chatId,
+          messageId: job.whatsappMessageId,
+          participant: job.senderJid,
+          fromMe: false,
+        }).catch((error) => console.warn("[bot-interage] não foi possível apagar áudio do comando", { jobId, error }));
+      }
       const messageId = await sendJobText(answer);
       await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
       return true;
@@ -876,7 +888,7 @@ export async function POST(request: Request) {
     const currentRequest = !isAudioJob
       ? (job.prompt.match(/\[SOLICITAÇÃO ATUAL\]\s*([\s\S]*)$/i)?.[1]?.trim() || null)
       : null;
-    if (isAudioJob && transcription && await handleAudioBotAdminToolRequest(transcription)) {
+    if (isAudioJob && transcription && await handleAudioBotAdminToolRequest(transcription, answer)) {
       return NextResponse.json({ ok: true, delivered: true, type: jobType, botadmin_tool: true });
     }
     if (!isAudioJob && currentRequest && await handleAudioBotAdminToolRequest(currentRequest)) {

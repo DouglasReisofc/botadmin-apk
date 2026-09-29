@@ -20174,6 +20174,7 @@ const convertStickerSourceToWebp = async (
         "Mesmo que o áudio citado tenha sido gravado antes, trate-o como a entrada atual desta solicitação e não como uma resposta antiga.",
         "Não reutilize imagens, arquivos, intenções ou respostas de outros grupos ou de turnos anteriores.",
         "Escute/transcreva o áudio antes de responder e execute a tarefa pedida sobre o conteúdo dele.",
+        "Se o pedido falado for para criar um sorteio real no grupo, retorne somente JSON no formato {\"action\":\"create_group_sweepstake\",\"prize\":\"\",\"endsAt\":\"\",\"winnersCount\":1,\"mentionAll\":false,\"missing\":[]}; para qualquer outro pedido responda normalmente.",
         "Se a solicitação pedir resumo, resumo deve ser baseado exclusivamente no áudio; se pedir criação, use o áudio como contexto e entregue o arquivo/texto solicitado.",
         trimmedInput || "Transcreva o áudio e responda ao que foi pedido.",
       ].join("\n");
