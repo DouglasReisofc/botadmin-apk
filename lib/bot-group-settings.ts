@@ -2927,7 +2927,7 @@ const normalizeAutoResponseStep = (
   if (!raw || typeof raw !== "object") return null;
   const source = raw as Record<string, unknown>;
   const typeRaw = String(source.type ?? "text").trim().toLowerCase();
-  const type = ["text", "media", "buttons", "http"].includes(typeRaw)
+  const type = ["text", "media", "buttons", "message", "http"].includes(typeRaw)
     ? (typeRaw as BotAutoResponseStep["type"])
     : "text";
   const delayRaw = Number(source.delayMs ?? source.delay_ms ?? source.delay ?? 0);
@@ -2945,6 +2945,13 @@ const normalizeAutoResponseStep = (
   if (type === "buttons") {
     const buttons = normalizeAutoResponseButtons(source.buttons ?? source.responseButtons ?? null);
     return buttons ? { id, type, delayMs, buttons } : null;
+  }
+  if (type === "message") {
+    const text = typeof source.text === "string" ? source.text.trim() : "";
+    const media = normalizeAutoResponseMedia(source.media ?? null);
+    const buttons = normalizeAutoResponseButtons(source.buttons ?? null);
+    if (!text && !media && !buttons) return null;
+    return { id, type, delayMs, text, media, buttons };
   }
   const httpRaw = source.http && typeof source.http === "object" ? source.http as Record<string, unknown> : source;
   const url = typeof httpRaw.url === "string" ? httpRaw.url.trim() : "";

@@ -7398,6 +7398,8 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
   late String _stepMediaType;
   late String _stepMethod;
   late List<Map<String, dynamic>> _responseSteps;
+  late List<Map<String, dynamic>> _messageCards;
+  int _activeCard = 0;
   bool _httpTesting = false;
   Map<String, dynamic>? _httpTestResult;
   List<String> _httpSuggestions = const [];
@@ -7425,6 +7427,22 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
     _responseSteps = widget.item.responseSteps
         .map((entry) => Map<String, dynamic>.from(entry))
         .toList();
+    _messageCards = _responseSteps
+        .where((entry) => entry['type'] != 'http')
+        .map((entry) => <String, dynamic>{
+              'id': entry['id'] ?? 'message_${DateTime.now().microsecondsSinceEpoch}',
+              'type': 'message',
+              'delayMs': entry['delayMs'] ?? 0,
+              'text': entry['text'] ?? entry['buttons']?['body'] ?? entry['media']?['caption'] ?? '',
+              if (entry['media'] is Map) 'media': Map<String, dynamic>.from(entry['media'] as Map),
+              if (entry['buttons'] is Map) 'buttons': Map<String, dynamic>.from(entry['buttons'] as Map),
+            })
+        .toList();
+    if (_messageCards.isEmpty) {
+      _messageCards = [
+        {'id': 'message_${DateTime.now().microsecondsSinceEpoch}', 'type': 'message', 'delayMs': 0, 'text': _response.text},
+      ];
+    }
   }
 
   @override
@@ -7582,27 +7600,127 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
     if (normalized.isEmpty) return;
     final key = _stepSaveAs.text.trim().isEmpty ? 'api' : _stepSaveAs.text.trim();
     final token = '{{${key}.${normalized}}}';
-    final selection = _response.selection;
-    final text = _response.text;
+    final card = _messageCards[_activeCard.clamp(0, _messageCards.length - 1)];
+    final text = card['text']?.toString() ?? '';
+    final selection = TextSelection.collapsed(offset: text.length);
     final start = selection.isValid && selection.start >= 0 ? selection.start : text.length;
     final end = selection.isValid && selection.end >= start ? selection.end : start;
-    _response.value = TextEditingValue(
-      text: text.replaceRange(start, end, token),
-      selection: TextSelection.collapsed(offset: start + token.length),
-    );
+    card['text'] = text.replaceRange(start, end, token);
     setState(() => _flowVariables[token] = token);
+  }
+
+  Future<void> _editCardText(int index) async {
+    final controller = TextEditingController(text: _messageCards[index]['text']?.toString() ?? '');
+    final value = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Texto da mensagem'),
+      content: TextField(controller: controller, minLines: 5, maxLines: 12, autofocus: true, decoration: const InputDecoration(hintText: 'Escreva a mensagem...', alignLabelWithHint: true)),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(context, controller.text), child: const Text('Aplicar'))],
+    ));
+    controller.dispose();
+    if (value != null && mounted) setState(() => _messageCards[index]['text'] = value);
+  }
+
+  Future<void> _editCardMedia(int index) async {
+    final controller = TextEditingController(text: (_messageCards[index]['media'] as Map?)?['url']?.toString() ?? '');
+    final value = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: const Text('Mídia da mensagem'),
+      content: TextField(controller: controller, autofocus: true, decoration: const InputDecoration(labelText: 'URL pública da mídia', prefixIcon: Icon(Icons.link_rounded))),
+      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('Aplicar'))],
+    ));
+    controller.dispose();
+    if (value != null && mounted) setState(() {
+      if (value.isEmpty) _messageCards[index].remove('media');
+      else _messageCards[index]['media'] = {'url': value, 'mediaType': 'image', 'caption': _messageCards[index]['text']};
+    });
+  }
+
+  List<GroupReplyButton> _cardButtons(Map<String, dynamic> card) {
+    final raw = (card['buttons'] as Map?)?['buttons'];
+    if (raw is! List) return [];
+    return raw.whereType<Map>().map((b) => GroupReplyButton(
+      id: b['id']?.toString() ?? 'button_${b.hashCode}', label: b['text']?.toString() ?? '', type: b['type']?.toString() ?? 'reply',
+      command: b['command']?.toString(), args: b['args']?.toString(), url: b['url']?.toString(), phoneNumber: b['phoneNumber']?.toString(), copyCode: b['copyCode']?.toString(),
+    )).toList();
+  }
+
+  Map<String, dynamic> _saveSteps() {
+    final result = <Map<String, dynamic>>[];
+    for (final step in _responseSteps.where((entry) => entry['type'] == 'http')) result.add(step);
+    for (final card in _messageCards) {
+      final copy = Map<String, dynamic>.from(card);
+      copy['type'] = 'message';
+      result.add(copy);
+    }
+    return {'steps': result};
+  }
+
+  void _addHttpStep() {
+    final url = _stepUrl.text.trim();
+    if (!RegExp(r'^https?://', caseSensitive: false).hasMatch(url)) {
+      showErrorToast(context, 'Informe uma URL HTTPS válida para a consulta.');
+      return;
+    }
+    Map<String, dynamic>? headers;
+    try {
+      final value = jsonDecode(_stepHeadersJson.text);
+      if (value is Map) headers = Map<String, dynamic>.from(value);
+    } catch (_) {
+      showErrorToast(context, 'Headers precisam estar em JSON válido.');
+      return;
+    }
+    setState(() {
+      _responseSteps.removeWhere((step) => step['type'] == 'http');
+      _responseSteps.insert(0, {
+        'id': 'http_${DateTime.now().microsecondsSinceEpoch}',
+        'type': 'http',
+        'delayMs': 0,
+        'http': {
+          'url': url,
+          'method': _stepMethod,
+          'headers': headers,
+          'body': _stepBody.text.trim().isEmpty ? null : _stepBody.text,
+          'responsePath': _stepPath.text.trim().isEmpty ? null : _stepPath.text.trim(),
+          'saveAs': _stepSaveAs.text.trim().isEmpty ? 'api' : _stepSaveAs.text.trim(),
+        },
+      });
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Editar auto resposta'),
-      content: SizedBox(
-        width: 620,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
+    final scheme = Theme.of(context).colorScheme;
+    final cardIndex = _activeCard.clamp(0, _messageCards.length - 1);
+    final card = _messageCards[cardIndex];
+    final media = card['media'] is Map ? Map<String, dynamic>.from(card['media'] as Map) : null;
+    final buttons = _cardButtons(card);
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1280, maxHeight: 900),
+        child: Column(children: [
+          Padding(padding: const EdgeInsets.fromLTRB(22, 14, 14, 10), child: Row(children: [
+            const Icon(Icons.auto_awesome_rounded), const SizedBox(width: 10), const Expanded(child: Text('Configurar auto resposta', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800))),
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')),
+            const SizedBox(width: 8),
+            FilledButton.icon(onPressed: () {
+              final saved = _saveSteps()['steps'] as List<Map<String, dynamic>>;
+              Navigator.of(context).pop(widget.item.copyWith(triggers: _matchAny ? const [] : _lineList(_triggers.text), responseText: _messageCards.map((e) => e['text']?.toString() ?? '').where((e) => e.trim().isNotEmpty).join('\n\n'), matchMode: _matchMode, matchAnyMessage: _matchAny, responseSteps: saved));
+            }, icon: const Icon(Icons.save_rounded), label: const Text('Salvar')),
+          ])),
+          const Divider(height: 1),
+          Expanded(child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Expanded(flex: 7, child: Padding(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [const Expanded(child: Text('Mensagens', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800))), Text('${_messageCards.length} mensagem(ns)', style: TextStyle(color: scheme.onSurfaceVariant)), const SizedBox(width: 10), IconButton.filled(onPressed: () => setState(() { _messageCards.add({'id': 'message_${DateTime.now().microsecondsSinceEpoch}', 'type': 'message', 'delayMs': 0, 'text': ''}); _activeCard = _messageCards.length - 1; }), icon: const Icon(Icons.add_rounded), tooltip: 'Adicionar mensagem')]),
+              const SizedBox(height: 10),
+              Expanded(child: Card(clipBehavior: Clip.antiAlias, child: Column(children: [
+                Padding(padding: const EdgeInsets.fromLTRB(16, 10, 12, 8), child: Row(children: [Text('Mensagem ${cardIndex + 1}', style: const TextStyle(fontWeight: FontWeight.w700)), const Spacer(), if (_messageCards.length > 1) IconButton(onPressed: () => setState(() { _messageCards.removeAt(cardIndex); _activeCard = (_activeCard - 1).clamp(0, _messageCards.length - 2); }), icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Excluir mensagem')])),
+                Expanded(child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: _ScheduledAdBubblePreview(caption: card['text']?.toString() ?? '', media: media == null ? null : GroupScheduledAdMedia.fromJson(media), localMediaBytes: null, uploading: false, buttons: buttons, onEditText: () => _editCardText(cardIndex), onPickMedia: () => _editCardMedia(cardIndex), onClearMedia: media == null ? null : () => setState(() => card.remove('media')), onAddButton: buttons.length < 3 ? () async { final edited = await showDialog<GroupReplyButton>(context: context, builder: (_) => _ButtonEditDialog(button: GroupReplyButton.newDraft(buttons.length).copyWith(label: '', command: ''))); if (edited != null && mounted) setState(() { final map = Map<String, dynamic>.from(card['buttons'] as Map? ?? {'type': 'button_reply', 'body': ''}); final list = List<Map<String, dynamic>>.from((map['buttons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map))); list.add({'id': edited.id, 'text': edited.label, 'type': edited.type, if (edited.url != null) 'url': edited.url, if (edited.phoneNumber != null) 'phoneNumber': edited.phoneNumber, if (edited.copyCode != null) 'copyCode': edited.copyCode}); map['buttons'] = list; card['buttons'] = map; }); } : null, onEditButton: (_) {}, onRemoveButton: (_) {})),
+                ),
+                Padding(padding: const EdgeInsets.fromLTRB(16, 6, 16, 14), child: Row(children: [const Text('Atraso (ms)'), const SizedBox(width: 8), SizedBox(width: 100, child: TextFormField(initialValue: '${card['delayMs'] ?? 0}', keyboardType: TextInputType.number, onChanged: (value) => card['delayMs'] = int.tryParse(value) ?? 0, decoration: const InputDecoration(isDense: true))), const Spacer(), IconButton(onPressed: cardIndex > 0 ? () => setState(() => _activeCard--) : null, icon: const Icon(Icons.chevron_left_rounded)), Text('${cardIndex + 1} / ${_messageCards.length}'), IconButton(onPressed: cardIndex < _messageCards.length - 1 ? () => setState(() => _activeCard++) : null, icon: const Icon(Icons.chevron_right_rounded))])),
+              ]))),
+            ]))),
+            const VerticalDivider(width: 1),
+            SizedBox(width: 370, child: SingleChildScrollView(padding: const EdgeInsets.all(18), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Responder qualquer mensagem'),
@@ -7633,100 +7751,11 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                 showSelectedIcon: false,
               ),
               const SizedBox(height: 12),
-              TextField(
-                controller: _response,
-                minLines: 5,
-                maxLines: 12,
-                decoration: const InputDecoration(
-                  labelText: 'Resposta',
-                  prefixIcon: Icon(Icons.notes_rounded),
-                  alignLabelWithHint: true,
-                ),
-              ),
-              const SizedBox(height: 18),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Fluxo de respostas',
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
-                ),
-              ),
-              const SizedBox(height: 4),
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text('Adicione várias mensagens, mídias ou uma consulta REST. O delay é aplicado antes de cada etapa.'),
-              ),
-              if (_responseSteps.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                ..._responseSteps.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final step = entry.value;
-                  final type = step['type']?.toString() ?? 'text';
-                  final delay = step['delayMs']?.toString() ?? '0';
-                  final label = switch (type) {
-                    'media' => 'Mídia',
-                    'http' => 'Consulta REST/JSON',
-                    'buttons' => 'Botões',
-                    _ => 'Texto',
-                  };
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 6),
-                    child: ListTile(
-                      dense: true,
-                      leading: CircleAvatar(radius: 15, child: Text('${index + 1}')),
-                      title: Text(label),
-                      subtitle: Text('Delay: ${delay}ms · ${type == 'http' ? (step['http']?['url'] ?? '') : (step['text'] ?? step['media']?['url'] ?? '')}', maxLines: 1, overflow: TextOverflow.ellipsis),
-                      trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => setState(() => _responseSteps.removeAt(index))),
-                    ),
-                  );
-                }),
-              ],
-              const SizedBox(height: 8),
-              DropdownButtonFormField<String>(
-                value: _stepType,
-                decoration: const InputDecoration(labelText: 'Tipo da próxima etapa', prefixIcon: Icon(Icons.add_task_rounded)),
-                items: const [
-                  DropdownMenuItem(value: 'text', child: Text('Texto')),
-                  DropdownMenuItem(value: 'media', child: Text('Mídia por URL')),
-                  DropdownMenuItem(value: 'buttons', child: Text('Botões')),
-                  DropdownMenuItem(value: 'http', child: Text('Consulta REST/JSON')),
-                ],
-                onChanged: (value) => setState(() => _stepType = value ?? 'text'),
-              ),
-              const SizedBox(height: 8),
-              if (_stepType == 'text')
-                TextField(controller: _stepText, minLines: 2, maxLines: 5, decoration: const InputDecoration(labelText: 'Texto da etapa', alignLabelWithHint: true))
-              else ...[
+              const SizedBox(height: 14),
+              ExpansionTile(title: const Text('Consulta REST / JSON', style: TextStyle(fontWeight: FontWeight.w800)), initiallyExpanded: _responseSteps.any((e) => e['type'] == 'http'), children: [
                 TextField(controller: _stepUrl, decoration: InputDecoration(labelText: _stepType == 'http' ? 'URL HTTPS da API' : 'URL pública da mídia', prefixIcon: const Icon(Icons.link_rounded))),
                 const SizedBox(height: 8),
-                if (_stepType == 'media')
-                  Row(children: [
-                    Expanded(child: DropdownButtonFormField<String>(value: _stepMediaType, decoration: const InputDecoration(labelText: 'Tipo'), items: const [DropdownMenuItem(value: 'image', child: Text('Imagem')), DropdownMenuItem(value: 'video', child: Text('Vídeo')), DropdownMenuItem(value: 'audio', child: Text('Áudio')), DropdownMenuItem(value: 'document', child: Text('Documento')), DropdownMenuItem(value: 'sticker', child: Text('Figurinha'))], onChanged: (value) => setState(() => _stepMediaType = value ?? 'image'))),
-                    const SizedBox(width: 8),
-                    Expanded(child: TextField(controller: _stepText, decoration: const InputDecoration(labelText: 'Legenda (opcional)'))),
-                  ])
-                else if (_stepType == 'buttons') ...[
-                  TextField(
-                    controller: _stepButtonsBody,
-                    onChanged: (_) => setState(() {}),
-                    decoration: const InputDecoration(labelText: 'Mensagem acima dos botões'),
-                  ),
-                  const SizedBox(height: 10),
-                  _ScheduledAdBubblePreview(
-                    caption: _stepButtonsBody.text,
-                    media: null,
-                    localMediaBytes: null,
-                    uploading: false,
-                    buttons: _stepButtons,
-                    onEditText: () {},
-                    onPickMedia: null,
-                    onClearMedia: null,
-                    onAddButton: _stepButtons.length < 3 ? () => _editStepButton() : null,
-                    onEditButton: (index) => _editStepButton(index),
-                    onRemoveButton: (index) => setState(() => _stepButtons.removeAt(index)),
-                  ),
-                ]
-                else ...[
+                ...[
                   Row(children: [Expanded(child: DropdownButtonFormField<String>(value: _stepMethod, decoration: const InputDecoration(labelText: 'Método'), items: const [DropdownMenuItem(value: 'GET', child: Text('GET')), DropdownMenuItem(value: 'POST', child: Text('POST')), DropdownMenuItem(value: 'PUT', child: Text('PUT')), DropdownMenuItem(value: 'PATCH', child: Text('PATCH'))], onChanged: (value) => setState(() => _stepMethod = value ?? 'GET'))), const SizedBox(width: 8), Expanded(child: TextField(controller: _stepSaveAs, decoration: const InputDecoration(labelText: 'Salvar como (opcional)')))],),
                   const SizedBox(height: 8),
                   TextField(controller: _stepBody, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Body JSON (opcional)', hintText: '{"query":"{{mensagem}}"}', alignLabelWithHint: true)),
@@ -7745,6 +7774,8 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                       label: Text(_httpTesting ? 'Testando...' : 'Testar API'),
                     ),
                   ),
+                  const SizedBox(height: 8),
+                  FilledButton.icon(onPressed: _addHttpStep, icon: const Icon(Icons.add_link_rounded), label: const Text('Adicionar consulta ao fluxo')),
                   if (_httpTestResult != null) ...[
                     const SizedBox(height: 10),
                     Container(
@@ -7777,32 +7808,11 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                     ],
                   ],
                 ],
-              ],
-              const SizedBox(height: 8),
-              Row(children: [Expanded(child: TextField(controller: _stepDelay, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Delay antes desta etapa (ms)'))), const SizedBox(width: 8), FilledButton.icon(onPressed: _addResponseStep, icon: const Icon(Icons.add), label: const Text('Adicionar etapa'))]),
-            ],
-          ),
-        ),
+              ]),
+            ]))),
+          ])),
+        ]),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton.icon(
-          onPressed: () => Navigator.of(context).pop(
-            widget.item.copyWith(
-              triggers: _matchAny ? const [] : _lineList(_triggers.text),
-              responseText: _response.text,
-              matchMode: _matchMode,
-              matchAnyMessage: _matchAny,
-              responseSteps: _responseSteps,
-            ),
-          ),
-          icon: const Icon(Icons.save_rounded),
-          label: const Text('Salvar'),
-        ),
-      ],
     );
   }
 }

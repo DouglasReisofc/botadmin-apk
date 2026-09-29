@@ -50,7 +50,7 @@ export type BotAutoResponseButtons =
 /** A single item in a multi-message autoresponse flow. */
 export type BotAutoResponseStep = {
   id: string;
-  type: "text" | "media" | "buttons" | "http";
+  type: "text" | "media" | "buttons" | "message" | "http";
   delayMs: number;
   text?: string | null;
   media?: BotAutoResponseMedia | null;

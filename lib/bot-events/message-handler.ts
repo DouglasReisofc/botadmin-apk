@@ -33671,6 +33671,14 @@ const convertStickerSourceToWebp = async (
             await sendAutoResponseMedia(resolveAutoresponseObject(step.media, variables) as BotGroupAutoResponseMedia);
           } else if (step.type === "buttons" && step.buttons) {
             await sendAutoResponseButtons(resolveAutoresponseObject(step.buttons, variables), null);
+          } else if (step.type === "message") {
+            const message = resolveAutoresponseObject(step, variables) as typeof step;
+            let captionSent: string | null = null;
+            if (message.media) captionSent = await sendAutoResponseMedia(message.media as BotGroupAutoResponseMedia);
+            const text = typeof message.text === "string" ? message.text.trim() : "";
+            let buttonsSent = false;
+            if (message.buttons) buttonsSent = await sendAutoResponseButtons(message.buttons, text || captionSent);
+            if (text && !buttonsSent && captionSent !== text) await sendAutoResponseText(text);
           }
         }
         return true;
