@@ -2586,6 +2586,29 @@ void _openConversationThreadFromList(WidgetRef ref, ConversationThread thread) {
     );
   }
   ref.read(selectedThreadProvider.notifier).select(visibleThread);
+  // Do not let a stale directory snapshot keep a real WhatsApp group locked.
+  // The first paint remains immediate; the live permission refresh replaces
+  // only this selected thread as soon as the group metadata returns.
+  if (visibleThread.isGroup && !visibleThread.isInternalGroup) {
+    final selectedKey = '${visibleThread.instanceId}:${visibleThread.chatJid}';
+    unawaited(() async {
+      try {
+        final refreshed = await ref
+            .read(apiClientProvider)
+            .refreshConversationThread(visibleThread);
+        if (refreshed != null &&
+            '${refreshed.instanceId}:${refreshed.chatJid}' == selectedKey) {
+          final current = ref.read(selectedThreadProvider);
+          if (current != null &&
+              '${current.instanceId}:${current.chatJid}' == selectedKey) {
+            ref.read(selectedThreadProvider.notifier).select(refreshed);
+          }
+        }
+      } catch (_) {
+        // The cached thread remains usable if the WhatsApp worker is offline.
+      }
+    }());
+  }
 }
 
 void _openSupportConversation(WidgetRef ref, DashboardSnapshot data) {

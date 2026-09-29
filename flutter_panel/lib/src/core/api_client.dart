@@ -1879,6 +1879,24 @@ class BotAdminApiClient {
     );
   }
 
+  /// Refreshes the live group permission flags when a conversation is opened.
+  /// The directory is intentionally cached for a fast first paint, but the
+  /// composer must use the current WhatsApp admin/announce state.
+  Future<ConversationThread?> refreshConversationThread(
+    ConversationThread thread,
+  ) async {
+    if (thread.isInternalGroup || thread.instanceId <= 0) return thread;
+    final json = await getJson(
+      '/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${Uri.encodeComponent(thread.chatJid)}',
+    );
+    final raw = json['thread'];
+    if (raw is! Map) return null;
+    return ConversationThread.fromJson(
+      raw.cast<String, dynamic>(),
+      fallbackInstanceId: thread.instanceId,
+    );
+  }
+
   Future<bool> setConversationNotificationsMuted(
     ConversationThread thread, {
     required bool muted,
