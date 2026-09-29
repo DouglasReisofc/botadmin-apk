@@ -671,13 +671,24 @@ export async function POST(request: Request) {
         `Solicitação transcrita: ${transcription}`,
       ].join("\n");
       let decision: Record<string, unknown> | null = null;
-      try {
-        const answer = initialAnswer?.trim() || await requestBotInterageSystemDecision(decisionPrompt);
-        const match = answer?.match(/\{[\s\S]*\}/);
-        if (match) {
+      const parseDecision = (candidate: string | null | undefined): Record<string, unknown> | null => {
+        const match = candidate?.match(/\{[\s\S]*\}/);
+        if (!match) return null;
+        try {
           const parsed = JSON.parse(match[0]);
-          if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) decision = parsed as Record<string, unknown>;
+          return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+            ? parsed as Record<string, unknown>
+            : null;
+        } catch {
+          return null;
         }
+      };
+      try {
+        // Native voice can already return the structured action. Reuse it to
+        // avoid an extra model round-trip, but fall back to the decision model
+        // when the voice answer is ordinary prose.
+        decision = parseDecision(initialAnswer);
+        if (!decision) decision = parseDecision(await requestBotInterageSystemDecision(decisionPrompt));
       } catch (error) {
         console.warn("[bot-interage] decisão estruturada do áudio indisponível", { jobId, error });
         return false;
