@@ -1048,11 +1048,12 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         if (event.eventType == 'internal-group.message.receipt') {
           _applyInternalReceiptEvent(event);
         }
-        if (event.eventType == 'internal-group.message.created' &&
-            event.payload?['action']?.toString().startsWith(
-                  'sweepstake.participant.',
-                ) ==
-                true) {
+        if (event.payload?['action'] == 'poll.vote' ||
+            (event.eventType == 'internal-group.message.created' &&
+                event.payload?['action']?.toString().startsWith(
+                      'sweepstake.participant.',
+                    ) ==
+                    true)) {
           unawaited(_refreshSweepstakes(thread));
         }
         if (event.eventType == 'internal-group.group.deleted') {
@@ -1569,7 +1570,13 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         },
         onRefresh: () async {
           await _refreshSweepstakes(thread);
-          return _sweepstakes?.active.firstOrNull ?? active;
+          return _sweepstakes?.active
+                  .where((entry) => entry.id == active.id)
+                  .firstOrNull ??
+              _sweepstakes?.history
+                  .where((entry) => entry.id == active.id)
+                  .firstOrNull ??
+              active;
         },
         onDraw: () async {
           final snapshot = await ref
@@ -15131,6 +15138,39 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
   late SweepstakeSummary _sweepstake = widget.sweepstake;
   bool _busy = false;
   String _memberQuery = '';
+  Timer? _participantsRefreshTimer;
+  bool _refreshingParticipants = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _participantsRefreshTimer = Timer.periodic(
+      const Duration(seconds: 3),
+      (_) => unawaited(_refreshParticipants()),
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) unawaited(_refreshParticipants());
+    });
+  }
+
+  @override
+  void dispose() {
+    _participantsRefreshTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _refreshParticipants() async {
+    if (_busy || _refreshingParticipants || !_sweepstake.isActive) return;
+    _refreshingParticipants = true;
+    try {
+      final refreshed = await widget.onRefresh();
+      if (mounted && !_busy) setState(() => _sweepstake = refreshed);
+    } catch (_) {
+      // Retry while this dialog is open, keeping the last successful list.
+    } finally {
+      _refreshingParticipants = false;
+    }
+  }
 
   Future<void> _run(Future<void> Function() action) async {
     if (_busy) return;
@@ -15166,12 +15206,7 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
           ),
           IconButton(
             tooltip: 'Atualizar participantes',
-            onPressed: _busy
-                ? null
-                : () async {
-                    final refreshed = await widget.onRefresh();
-                    if (mounted) setState(() => _sweepstake = refreshed);
-                  },
+            onPressed: _busy ? null : _refreshParticipants,
             icon: const Icon(Icons.refresh_rounded),
           ),
           if (widget.canDraw && widget.onAddMember != null)

@@ -124,18 +124,21 @@ export async function POST(
     const configuredTemplate = typeof metadataRecord.winnerMessageTemplate === "string"
       ? metadataRecord.winnerMessageTemplate.trim()
       : "";
-    const announcement = configuredTemplate
-      ? {
-          body: winners.length > 0
-            ? winners.map((winner) => renderWinnerMessage(configuredTemplate, winner, sweepstake, winners.length)).join("\n\n")
-            : configuredTemplate.replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question),
-          mentions: winners.map((winner) => winner.jid).filter((jid) => /@(s\.whatsapp\.net|c\.us)$/i.test(jid)),
-        }
-      : buildSweepstakeAnnouncement(sweepstake, winners);
+    // A winner template/media is only meaningful when there is a winner. The
+    // zero-participant result is always a plain text status, never a winner
+    // card/image with an empty announcement.
+    const announcement = winners.length > 0
+      ? configuredTemplate
+        ? {
+            body: winners.map((winner) => renderWinnerMessage(configuredTemplate, winner, sweepstake, winners.length)).join("\n\n"),
+            mentions: winners.map((winner) => winner.jid).filter((jid) => /@(s\.whatsapp\.net|c\.us)$/i.test(jid)),
+          }
+        : buildSweepstakeAnnouncement(sweepstake, winners)
+      : buildSweepstakeAnnouncement(sweepstake, []);
     const client = { baseUrl: instance.serverBaseUrl, token: instance.token };
     const winnerMediaUrl = resolveWinnerMediaUrl(metadataRecord.winnerMediaUrl);
     try {
-      if (winnerMediaUrl) {
+      if (winnerMediaUrl && winners.length > 0) {
         await sendMediaMessage(client, {
           to: sweepstake.groupJid,
           media: winnerMediaUrl,
@@ -165,7 +168,12 @@ export async function POST(
     try {
       await deleteMessageForEveryone(
         { baseUrl: instance.serverBaseUrl, token: instance.token },
-        { chatId: sweepstake.groupJid, messageId: sweepstake.pollMessageId, fromMe: true },
+        {
+          chatId: sweepstake.groupJid,
+          messageId: sweepstake.pollMessageId,
+          participant: instance.phone ? `${normalizeJid(instance.phone)}@s.whatsapp.net` : undefined,
+          fromMe: true,
+        },
       );
     } catch (error) {
       console.warn("Failed to delete finished sweepstake poll from WhatsApp", { sweepstakeId, error });

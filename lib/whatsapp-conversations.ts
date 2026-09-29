@@ -6042,8 +6042,6 @@ export const applyWhatsappPollVoteForUser = async (params: {
       .map(normalizePollVoteHash)
       .filter((value): value is string => Boolean(value)),
   );
-  if (selectedHashes.size === 0) return null;
-
   const selectableCount =
     firstNumberFromRecord(
       mediaRecord,

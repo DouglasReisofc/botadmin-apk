@@ -66,6 +66,7 @@ export type SweepstakeVoteResult = {
   sweepstake: BotSweepstake;
   change: "added" | "removed" | "none";
   limitReached?: boolean;
+  accepted?: boolean;
 };
 
 export type FinalizeSweepstakePayload = {
@@ -469,90 +470,114 @@ export const recordSweepstakeVote = async (
   // webhook handler resolves it before reaching this function; reject any
   // remaining LID defensively so manual/replayed events cannot persist it.
   if (/@lid(?:$|:)/i.test(String(vote.participantJid ?? '').trim())) {
-    return { sweepstake, change: "none" };
+    return { sweepstake, change: "none", accepted: false };
   }
-  // Defense in depth for webhooks that provide the instance number directly:
-  // the bot itself is never an eligible participant.
-  const [instanceRows] = await getDb().query<Array<{ phone: string | null }>>(
-    "SELECT phone FROM bot_instances WHERE id = ? LIMIT 1",
-    [sweepstake.instanceId],
-  );
-  const botPhone = String(instanceRows[0]?.phone || "").replace(/\D+/g, "");
-  const voterPhone = normalizeJid(vote.participantJid).replace(/\D+/g, "");
-  if (botPhone && voterPhone && botPhone === voterPhone) {
-    return { sweepstake, change: "none" };
-  }
-  const selected = new Set(vote.selectedOptionHashes.map((value) => String(value).trim().toLowerCase()));
-  const joinOption = sweepstake.options.find((option) => option.hash === sweepstake.joinOptionHash);
-  const joinAliases = new Set([
-    sweepstake.joinOptionHash.toLowerCase(),
-    joinOption?.name?.trim().toLowerCase() ?? "",
-  ]);
-  const joinTitleHash = joinOption?.name
-    ? createHash("sha256").update(joinOption.name.trim()).digest("hex")
-    : "";
-  if (joinTitleHash) joinAliases.add(joinTitleHash);
-  const wantsParticipate = [...selected].some((value) => joinAliases.has(value));
-  const timestampIso = (vote.timestamp ?? new Date()).toISOString();
-  const participants = [...sweepstake.participants];
-  const existingIndex = participants.findIndex((entry) => participantKey(entry.jid) === participantKey(vote.participantJid));
+  const connection = await getDb().getConnection();
+  try {
+    await connection.beginTransaction();
+    // Serialize votes for the same poll. A stale webhook snapshot could otherwise
+    // overwrite a vote that arrived a moment earlier on another instance.
+    const [rows] = await connection.query<SweepstakeRow[]>(
+      "SELECT * FROM bot_sweepstakes WHERE id = ? AND status = 'active' LIMIT 1 FOR UPDATE",
+      [sweepstake.id],
+    );
+    if (!rows.length) {
+      await connection.commit();
+      return { sweepstake, change: "none", accepted: false };
+    }
+    const current = mapSweepstakeRow(rows[0]);
+    // Defense in depth: the bot itself is never an eligible participant.
+    const [instanceRows] = await connection.query<Array<{ phone: string | null }>>(
+      "SELECT phone FROM bot_instances WHERE id = ? LIMIT 1",
+      [current.instanceId],
+    );
+    const botPhone = String(instanceRows[0]?.phone || "").replace(/\D+/g, "");
+    const voterPhone = normalizeJid(vote.participantJid).replace(/\D+/g, "");
+    if (botPhone && voterPhone && botPhone === voterPhone) {
+      await connection.commit();
+      return { sweepstake: current, change: "none", accepted: false };
+    }
+    const voteTime = (vote.timestamp ?? new Date()).getTime();
+    const metadata = { ...(current.metadata ?? {}) };
+    const voteTimes = { ...(metadata.pollVoteTimestamps as Record<string, number> ?? {}) };
+    const voterKey = participantKey(vote.participantJid);
+    // Replayed updates must not resurrect a withdrawn vote or change a
+    // completed poll. Keep the timestamp even when the participant leaves.
+    if (!Number.isFinite(voteTime) || voteTime > Date.parse(current.expiresAt) ||
+        voteTime < Date.parse(current.createdAt) - 1000 ||
+        voteTime <= Number(voteTimes[voterKey] ?? 0)) {
+      await connection.commit();
+      return { sweepstake: current, change: "none", accepted: false };
+    }
+    const selected = new Set(vote.selectedOptionHashes.map((value) => String(value).trim().toLowerCase()));
+    const joinOption = current.options.find((option) => option.hash === current.joinOptionHash);
+    const joinAliases = new Set([
+      current.joinOptionHash.toLowerCase(),
+      joinOption?.name?.trim().toLowerCase() ?? "",
+    ]);
+    const joinTitleHash = joinOption?.name
+      ? createHash("sha256").update(joinOption.name.trim()).digest("hex")
+      : "";
+    if (joinTitleHash) joinAliases.add(joinTitleHash);
+    const wantsParticipate = [...selected].some((value) => joinAliases.has(value));
+    const timestampIso = (vote.timestamp ?? new Date()).toISOString();
+    const participants = [...current.participants];
+    const existingIndex = participants.findIndex((entry) => participantKey(entry.jid) === participantKey(vote.participantJid));
 
-  let change: SweepstakeVoteResult["change"] = "none";
-  let limitReached = false;
-  let shouldPersist = false;
+    let change: SweepstakeVoteResult["change"] = "none";
+    let limitReached = false;
+    let shouldPersist = false;
 
-  if (wantsParticipate) {
-    if (existingIndex === -1) {
-      const limit = sweepstake.maxParticipants;
-      if (limit && participants.length >= limit) {
-        limitReached = true;
+    if (wantsParticipate) {
+      if (existingIndex === -1) {
+        const limit = current.maxParticipants;
+        if (limit && participants.length >= limit) {
+          limitReached = true;
+        } else {
+          participants.push({
+            jid: vote.participantJid,
+            hash: current.joinOptionHash,
+            displayName: sanitizeParticipantName(vote.displayName),
+            joinedAt: timestampIso,
+            lastVoteAt: timestampIso,
+          });
+          change = "added";
+          shouldPersist = true;
+        }
       } else {
-        participants.push({
-          jid: vote.participantJid,
-          hash: sweepstake.joinOptionHash,
-          displayName: sanitizeParticipantName(vote.displayName),
-          joinedAt: timestampIso,
-          lastVoteAt: timestampIso,
-        });
-        change = "added";
+        participants[existingIndex] = serializeParticipant(
+          participants[existingIndex],
+          current.joinOptionHash,
+          vote.displayName,
+          timestampIso,
+        );
         shouldPersist = true;
       }
-    } else {
-      participants[existingIndex] = serializeParticipant(
-        participants[existingIndex],
-        sweepstake.joinOptionHash,
-        vote.displayName,
-        timestampIso,
-      );
-      shouldPersist = true;
-    }
-  } else {
-    if (existingIndex !== -1) {
+    } else if (existingIndex !== -1) {
       participants.splice(existingIndex, 1);
       change = "removed";
       shouldPersist = true;
     }
-  }
 
-  if (shouldPersist) {
-    const db = getDb();
-    await db.query(
-      `
-        UPDATE bot_sweepstakes
-        SET participants = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE id = ?
-      `,
-      [JSON.stringify(participants), sweepstake.id],
+    voteTimes[voterKey] = voteTime;
+    metadata.pollVoteTimestamps = voteTimes;
+    await connection.query(
+      "UPDATE bot_sweepstakes SET participants = ?, metadata = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ? AND status = 'active'",
+      [JSON.stringify(participants), JSON.stringify(metadata), current.id],
     );
+    await connection.commit();
+    return {
+      sweepstake: { ...current, participants, metadata, updatedAt: shouldPersist ? new Date().toISOString() : current.updatedAt },
+      change,
+      limitReached,
+      accepted: true,
+    };
+  } catch (error) {
+    await connection.rollback();
+    throw error;
+  } finally {
+    connection.release();
   }
-
-  const updatedSweepstake: BotSweepstake = {
-    ...sweepstake,
-    participants,
-    updatedAt: shouldPersist ? new Date().toISOString() : sweepstake.updatedAt,
-  };
-
-  return { sweepstake: updatedSweepstake, change, limitReached };
 };
 
 export const removeSweepstakeParticipant = async (

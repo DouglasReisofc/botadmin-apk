@@ -1,4 +1,5 @@
 import path from "path";
+import { extractSweepstakePollVote, type PollVoteDetails } from "./poll-vote";
 import { promises as fs } from "fs";
 import { randomUUID } from "crypto";
 import mysql from "mysql2/promise";
@@ -6728,14 +6729,6 @@ const normalizeMessage = (payload: NormalizedWebhookPayload): NormalizedMessage 
   };
 };
 
-type PollVoteDetails = {
-  pollId: string;
-  selectedOptionHashes: string[];
-  participantJid: string;
-  participantIsLid: boolean;
-  displayName?: string | null;
-  timestamp?: Date;
-};
 
 const renderBotFlowTemplate = (value: string | null | undefined, variables: Record<string, string>): string => {
   const source = String(value ?? "");
@@ -8412,39 +8405,6 @@ const continueWaitingBotFlowCapture = async (params: {
   });
 };
 
-const collectSelectedOptionHashes = (value: unknown): string[] => {
-  if (!value && value !== 0) {
-    return [];
-  }
-  if (Array.isArray(value)) {
-    const out: string[] = [];
-    for (const entry of value) {
-      if (typeof entry === "string" && entry.trim()) {
-        out.push(entry.trim());
-        continue;
-      }
-      if (entry && typeof entry === "object") {
-        const rec = toRecord(entry);
-        const hash = firstString(
-          rec.hash,
-          rec.Hash,
-          rec.optionHash,
-          rec.OptionHash,
-          rec.id,
-          rec.Id,
-        );
-        if (hash && hash.trim()) {
-          out.push(hash.trim());
-        }
-      }
-    }
-    return out;
-  }
-  if (typeof value === "string" && value.trim()) {
-    return [value.trim()];
-  }
-  return [];
-};
 
 const deriveButtonCommandFromResponse = (
   response: NormalizedButtonResponse | null | undefined,
@@ -9180,160 +9140,6 @@ const normalizeTimestampMs = (value: number | null | undefined): number | null =
   return null;
 };
 
-const extractSweepstakePollVote = (
-  payload: NormalizedWebhookPayload,
-  message: NormalizedMessage,
-): PollVoteDetails | null => {
-  const dataRecord = toRecord(payload.data);
-  const rawRecord = toRecord(message.raw);
-  const normalizedRecord = toRecord((payload as Record<string, unknown>).normalized ?? {});
-  const infoRecord = toRecord(dataRecord.Info ?? dataRecord.info ?? {});
-
-  const pollUpdateCandidates: Record<string, unknown>[] = [];
-  const enqueueCandidate = (value: unknown) => {
-    if (value && typeof value === "object") {
-      const rec = toRecord(value);
-      if (Object.keys(rec).length > 0) {
-        pollUpdateCandidates.push(rec);
-      }
-    }
-  };
-
-  enqueueCandidate(dataRecord.pollUpdate);
-  enqueueCandidate(dataRecord.PollUpdate);
-  enqueueCandidate((dataRecord.Message as Record<string, unknown> | undefined)?.pollUpdateMessage);
-  enqueueCandidate((dataRecord.Message as Record<string, unknown> | undefined)?.PollUpdateMessage);
-  enqueueCandidate(rawRecord.pollUpdate);
-  enqueueCandidate(rawRecord.PollUpdate);
-  enqueueCandidate((rawRecord.Message as Record<string, unknown> | undefined)?.pollUpdateMessage);
-  enqueueCandidate((rawRecord.Message as Record<string, unknown> | undefined)?.PollUpdateMessage);
-  enqueueCandidate((message.raw as Record<string, unknown> | undefined)?.pollUpdate);
-  enqueueCandidate((message.raw as Record<string, unknown> | undefined)?.PollUpdate);
-
-  let pollId: string | null = null;
-  let participantCandidate: string | null = null;
-  let selectedOptionHashes: string[] = [];
-  let timestampCandidate: number | null = null;
-
-  for (const candidate of pollUpdateCandidates) {
-    const creationKey = toRecord(
-      candidate.pollCreationMessageKey ??
-        candidate.PollCreationMessageKey ??
-        candidate.messageKey ??
-        candidate.MessageKey ??
-        candidate.key ??
-        candidate.Key,
-    );
-
-    if (!pollId) {
-      pollId = firstString(
-        creationKey.ID,
-        creationKey.Id,
-        creationKey.id,
-        creationKey.messageID,
-        creationKey.MessageID,
-        creationKey.messageId,
-        creationKey.MessageId,
-        candidate.pollId,
-        candidate.PollId,
-      );
-    }
-
-    if (!participantCandidate) {
-      participantCandidate = firstString(
-        creationKey.participant,
-        creationKey.Participant,
-        candidate.participant,
-        candidate.Participant,
-      );
-    }
-
-    if (!timestampCandidate) {
-      const ts = firstNumber(
-        creationKey.senderTimestampMS,
-        creationKey.SenderTimestampMS,
-        candidate.senderTimestampMS,
-        candidate.SenderTimestampMS,
-      );
-      timestampCandidate = normalizeTimestampMs(ts);
-    }
-
-    const hashes = collectSelectedOptionHashes(
-      candidate.selectedOptions ??
-        candidate.SelectedOptions ??
-        candidate.options ??
-        candidate.Options,
-    );
-    if (hashes.length) {
-      selectedOptionHashes = hashes;
-    }
-  }
-
-  if (!pollId) {
-    return null;
-  }
-
-  const participantCandidates = [
-    normalizedRecord.participant,
-    normalizedRecord.Participant,
-    normalizedRecord.participantJid,
-    normalizedRecord.participant_jid,
-    normalizedRecord.senderJid,
-    normalizedRecord.sender,
-    normalizedRecord.participantAlt,
-    normalizedRecord.ParticipantAlt,
-    infoRecord.ParticipantNormalized,
-    infoRecord.participantNormalized,
-    infoRecord.Participant,
-    infoRecord.participant,
-    infoRecord.ParticipantAlt,
-    infoRecord.participantAlt,
-    participantCandidate,
-    message.participant,
-    message.senderJid,
-  ].filter((value): value is string => typeof value === 'string' && value.trim().length > 0);
-  // Prefer the domain-qualified LID when the provider includes both a
-  // normalized bare identifier and its original JID. The bare identifier has
-  // no way to distinguish a LID from a phone number after normalizeJid().
-  const participantRaw =
-    participantCandidates.find((value) => /@lid(?:$|:)/i.test(value.trim())) ??
-    firstString(...participantCandidates);
-  const participantIsLid = participantCandidates.some((value) => /@lid(?:$|:)/i.test(value.trim()));
-  const participantJid = normalizeJid(participantRaw) || null;
-
-  if (!participantJid) {
-    return null;
-  }
-
-  const displayName =
-    firstString(
-      normalizedRecord.displayName,
-      normalizedRecord.DisplayName,
-      infoRecord.DisplayName,
-      infoRecord.displayName,
-      infoRecord.pushName,
-      infoRecord.PushName,
-      message.raw?.Info && (message.raw as any).Info?.PushName,
-    ) ?? null;
-
-  let voteTimestamp: Date | undefined;
-  if (timestampCandidate) {
-    voteTimestamp = new Date(timestampCandidate);
-  } else if (typeof message.timestamp === "number" && Number.isFinite(message.timestamp)) {
-    const normalizedTs = normalizeTimestampMs(message.timestamp);
-    voteTimestamp =
-      typeof normalizedTs === "number" ? new Date(normalizedTs) : new Date(message.timestamp * 1000);
-  }
-
-  return {
-    pollId,
-    selectedOptionHashes,
-    participantJid,
-    participantIsLid,
-    displayName,
-    timestamp: voteTimestamp,
-  };
-};
 
 const resolvePollParticipantName = async (
   client: WuzapiClient,
@@ -14404,6 +14210,95 @@ const handlePrivateMessageUpsert = async (
   }
 };
 
+const handleSweepstakePollVote = async (
+  context: BotEventContext,
+  message: NormalizedMessage,
+  vote: PollVoteDetails,
+): Promise<void> => {
+  try {
+    // A vote can arrive on any bot that shares the WhatsApp group, including
+    // one that has no BotAdmin group row. This is the sole cross-instance
+    // operation; ordinary commands and moderation stay instance-scoped.
+    const sweepstake =
+      await findActiveSweepstakeByPoll(context.instance.id, vote.pollId) ??
+      await findActiveSweepstakeByPollForUser(context.instance.userId, message.chatId!, vote.pollId) ??
+      await findActiveSweepstakeByPollForGroup(message.chatId!, vote.pollId);
+    if (!sweepstake || sweepstake.groupJid !== message.chatId) return;
+
+    const ownerInstance = sweepstake.instanceId === context.instance.id
+      ? context.instance
+      : await getInstanceById(sweepstake.instanceId);
+    if (!ownerInstance) {
+      console.warn('[sweepstakes] poll owner instance not found', { pollId: vote.pollId, instanceId: sweepstake.instanceId });
+      return;
+    }
+    const ownerClient: WuzapiClient = {
+      baseUrl: ownerInstance.serverBaseUrl,
+      token: ownerInstance.token,
+      conversation: {
+        userId: ownerInstance.userId,
+        instanceId: ownerInstance.id,
+        instanceName: ownerInstance.name,
+        instancePhone: ownerInstance.phone,
+      },
+    };
+    const lidProfiles = vote.participantIsLid
+      ? await resolveWhatsappLidProfiles(ownerClient, [vote.participantJid]).catch(() => new Map())
+      : new Map();
+    const lidProfile = lidProfiles.get(vote.participantJid);
+    const lidPhones = vote.participantIsLid && !lidProfile?.phone
+      ? await resolveWhatsappLidsToPhones(ownerClient, [`${vote.participantJid}@lid`]).catch(() => new Map())
+      : new Map();
+    const phone = vote.participantIsLid
+      ? lidProfile?.phone ?? lidPhones.get(vote.participantJid) ?? null
+      : vote.participantJid;
+    if (!phone) {
+      console.warn('[sweepstakes] poll voter LID unresolved; vote not persisted', {
+        pollId: vote.pollId,
+        lid: vote.participantJid,
+      });
+      return;
+    }
+    const voterJid = `${normalizeJid(phone)}@s.whatsapp.net`;
+    const voterName = vote.displayName ?? lidProfile?.name ??
+      await resolvePollParticipantName(ownerClient, message.chatId!, voterJid);
+    const result = await recordSweepstakeVote(sweepstake, {
+      participantJid: voterJid,
+      selectedOptionHashes: vote.selectedOptionHashes,
+      displayName: voterName,
+      timestamp: vote.timestamp,
+    });
+    if (result.accepted === false) return;
+    await applyWhatsappPollVoteForUser({
+      userId: ownerInstance.userId,
+      instanceId: ownerInstance.id,
+      chatJid: message.chatId!,
+      pollMessageId: sweepstake.pollMessageId || vote.pollId,
+      voterJid,
+      selectedOptionHashes: vote.selectedOptionHashes,
+      voterName,
+      ownJid: ownerInstance.phone ? `${ownerInstance.phone}@s.whatsapp.net` : null,
+      timestamp: vote.timestamp ?? null,
+    }).catch((error) => {
+      console.warn('[sweepstakes] poll bubble update failed after persisted vote', { pollId: vote.pollId, error });
+    });
+    console.info('[sweepstakes] poll vote reconciled', {
+      pollId: vote.pollId,
+      ownerInstanceId: ownerInstance.id,
+      sourceInstanceId: context.instance.id,
+      change: result.change,
+      participants: result.sweepstake.participants.length,
+    });
+  } catch (error) {
+    console.error('[sweepstakes] poll vote handling failed', {
+      pollId: vote.pollId,
+      group: message.chatId,
+      sourceInstanceId: context.instance.id,
+      error,
+    });
+  }
+};
+
 export const handleMessageUpsert = async (
   context: BotEventContext,
   payload: NormalizedWebhookPayload,
@@ -14417,6 +14312,15 @@ export const handleMessageUpsert = async (
 
   const message = normalizeMessage(payload);
   if (!message.chatId || isBroadcastJid(message.chatId) || isWhatsappStatusWebhookMessage(payload, message)) {
+    return;
+  }
+
+  // Reconcile a poll update before ordinary message/history/dedupe guards.
+  // Some transports use the creation-message ID for an update. Registration
+  // is idempotent and serialized by poll in recordSweepstakeVote.
+  const incomingSweepstakeVote = extractSweepstakePollVote(payload, message);
+  if (incomingSweepstakeVote) {
+    await handleSweepstakePollVote(context, message, incomingSweepstakeVote);
     return;
   }
 
@@ -14450,23 +14354,7 @@ export const handleMessageUpsert = async (
   }
 
   let storedMessage: Awaited<ReturnType<typeof recordWhatsappMessageFromNormalized>> | null = null;
-  // A poll vote is an update to the original poll, not a new conversation
-  // message. Persisting the webhook envelope here creates a second empty
-  // "Enquete" bubble every time somebody votes in a BotAdmin sweepstake.
-  const incomingSweepstakeVote = extractSweepstakePollVote(payload, message);
-  const activeSweepstakeForStorage = incomingSweepstakeVote
-    ? await findActiveSweepstakeByPoll(context.instance.id, incomingSweepstakeVote.pollId).catch(() => null) ??
-      await findActiveSweepstakeByPollForUser(
-        context.instance.userId,
-        message.chatId,
-        incomingSweepstakeVote.pollId,
-      ).catch(() => null) ??
-      await findActiveSweepstakeByPollForGroup(
-        message.chatId,
-        incomingSweepstakeVote.pollId,
-      ).catch(() => null)
-    : null;
-  if (!activeSweepstakeForStorage) {
+  {
     try {
       storedMessage = await recordWhatsappMessageFromNormalized({ instance: context.instance, message });
     } catch (error) {
@@ -15634,121 +15522,6 @@ export const handleMessageUpsert = async (
       }
       return;
     }
-  }
-
-  const sweepstakeVote = extractSweepstakePollVote(payload, message);
-  if (sweepstakeVote) {
-    try {
-      const activeSweepstake =
-        await findActiveSweepstakeByPoll(context.instance.id, sweepstakeVote.pollId) ??
-        await findActiveSweepstakeByPollForUser(
-          context.instance.userId,
-          message.chatId,
-          sweepstakeVote.pollId,
-        ) ??
-        await findActiveSweepstakeByPollForGroup(
-          message.chatId,
-          sweepstakeVote.pollId,
-        );
-
-      if (activeSweepstake) {
-        // `normalizeJid` intentionally returns digits only, so checking its
-        // result for `@lid` can never work. Keep the source-domain flag from
-        // the webhook parser and resolve the LID before persisting the vote.
-        const ownerInstance = activeSweepstake.instanceId === context.instance.id
-          ? context.instance
-          : await getInstanceById(activeSweepstake.instanceId).catch(() => null);
-        const voteClient = ownerInstance && activeSweepstake.instanceId !== context.instance.id
-          ? {
-              baseUrl: ownerInstance.serverBaseUrl,
-              token: ownerInstance.token,
-              conversation: {
-                userId: ownerInstance.userId,
-                instanceId: ownerInstance.id,
-                instanceName: ownerInstance.name,
-                instancePhone: ownerInstance.phone,
-              },
-            }
-          : client;
-        const isLidVoter = sweepstakeVote.participantIsLid;
-        const resolvedLidProfiles = isLidVoter
-          ? await resolveWhatsappLidProfiles(voteClient, [sweepstakeVote.participantJid]).catch(() => new Map())
-          : new Map();
-        const resolvedLid = resolvedLidProfiles.get(sweepstakeVote.participantJid);
-        const fallbackLidPhones = isLidVoter && !resolvedLid?.phone
-          ? await resolveWhatsappLidsToPhones(voteClient, [`${sweepstakeVote.participantJid}@lid`]).catch(() => new Map())
-          : new Map();
-        const resolvedPhone = resolvedLid?.phone ?? fallbackLidPhones.get(sweepstakeVote.participantJid) ?? null;
-        if (isLidVoter && !resolvedPhone) {
-          // Never write a LID into the participant list. A transient lookup
-          // failure is retried by the next poll event instead of corrupting
-          // the public participant identity.
-          console.warn('[sweepstakes] could not resolve poll voter LID; vote not persisted', {
-            pollId: sweepstakeVote.pollId,
-            lid: sweepstakeVote.participantJid,
-          });
-          return;
-        }
-        const voterJid = resolvedPhone
-          ? `${resolvedPhone}@s.whatsapp.net`
-          : `${sweepstakeVote.participantJid}@s.whatsapp.net`;
-        await applyWhatsappPollVoteForUser({
-          userId: ownerInstance?.userId ?? context.instance.userId,
-          instanceId: activeSweepstake.instanceId,
-          chatJid: message.chatId,
-          // EasyZap identifies a vote by the original creation message key.
-          // Older payloads sometimes expose the logical poll id instead;
-          // use the persisted creation id so the existing bubble is updated.
-          pollMessageId: activeSweepstake.pollMessageId || sweepstakeVote.pollId,
-          voterJid,
-          selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
-          voterName: sweepstakeVote.displayName ?? resolvedLid?.name ?? null,
-          ownJid: ownerInstance?.phone
-            ? `${ownerInstance.phone}@s.whatsapp.net`
-            : null,
-          timestamp: sweepstakeVote.timestamp ?? null,
-        }).catch((error) => {
-          console.warn("[sweepstakes] failed to update poll bubble after vote", {
-            pollId: sweepstakeVote.pollId,
-            error,
-          });
-        });
-        const participantDisplayName =
-          sweepstakeVote.displayName ??
-          resolvedLid?.name ??
-          await resolvePollParticipantName(client, message.chatId, sweepstakeVote.participantJid);
-        const voteResult = await recordSweepstakeVote(activeSweepstake, {
-          participantJid: voterJid,
-          selectedOptionHashes: sweepstakeVote.selectedOptionHashes,
-          displayName: participantDisplayName,
-          timestamp: sweepstakeVote.timestamp,
-        });
-
-	        if (
-	          canInteractWithBot &&
-	          voteResult.change === "added" &&
-	          typeof activeSweepstake.maxParticipants === "number" &&
-          activeSweepstake.maxParticipants > 0 &&
-          voteResult.sweepstake.participants.length === activeSweepstake.maxParticipants
-        ) {
-          const summaryLines = [
-            "✅ Limite de participantes atingido para o sorteio!",
-            "O sorteio será encerrado automaticamente no horário configurado.",
-          ];
-          await sendTextMessage(client, {
-            to: message.chatId,
-            body: summaryLines.join("\n"),
-          });
-        }
-      }
-    } catch (error) {
-      console.error("[sweepstakes] poll vote handling failed", {
-        pollId: sweepstakeVote.pollId,
-        group: message.chatId,
-        error,
-      });
-    }
-    return;
   }
 
   const coinTimezone =

@@ -3,6 +3,7 @@ import {
   finalizeSweepstake,
   listDueSweepstakes,
   pickSweepstakeWinners,
+  refreshSweepstake,
   type BotSweepstakeParticipant,
   type BotSweepstakeWithInstance,
 } from "lib/bot-sweepstakes";
@@ -95,28 +96,34 @@ const announceSweepstakeResult = async (
       .find((value) => typeof value === "string" && value.trim() && !/@lid\b/i.test(value)) as string | undefined;
     return { ...winner, jid, displayName: name?.trim() || null };
   });
-  const announcement = buildSweepstakeAnnouncement(sweepstake, resolvedWinners);
+  const announcement = resolvedWinners.length > 0
+    ? buildSweepstakeAnnouncement(sweepstake, resolvedWinners)
+    : buildSweepstakeAnnouncement(sweepstake, []);
   const metadata = sweepstake.metadata && typeof sweepstake.metadata === "object"
     ? sweepstake.metadata as Record<string, unknown>
     : {};
   const template = typeof metadata.winnerMessageTemplate === "string"
     ? metadata.winnerMessageTemplate.trim()
     : "";
-  const body = template
+  const body = resolvedWinners.length > 0 && template
     ? resolvedWinners.map((winner) => template
-      .replace(/\{\{\s*pushname\s*\}\}/gi, winner.displayName?.trim() || normalizeJid(winner.jid))
-      .replace(/\{\{\s*numero\s*\}\}/gi, normalizeJid(winner.jid))
-      .replace(/\{\{\s*jid\s*\}\}/gi, winner.jid)
-      .replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question)
-      .replace(/\{\{\s*participantes\s*\}\}/gi, String(sweepstake.participants.length))
-      .replace(/\{\{\s*ganhadores\s*\}\}/gi, String(resolvedWinners.length))
-      .trim()).join("\n\n")
+        .replace(/\{\{\s*pushname\s*\}\}/gi, winner.displayName?.trim() || normalizeJid(winner.jid))
+        .replace(/\{\{\s*numero\s*\}\}/gi, normalizeJid(winner.jid))
+        .replace(/\{\{\s*jid\s*\}\}/gi, winner.jid)
+        .replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question)
+        .replace(/\{\{\s*participantes\s*\}\}/gi, String(sweepstake.participants.length))
+        .replace(/\{\{\s*ganhadores\s*\}\}/gi, String(resolvedWinners.length))
+        .trim()).join("\n\n")
     : announcement.body;
   const mediaUrl = typeof metadata.winnerMediaUrl === "string" && metadata.winnerMediaUrl.trim()
     ? (/^https?:\/\//i.test(metadata.winnerMediaUrl.trim())
       ? metadata.winnerMediaUrl.trim()
       : `https://botadmin.shop/${metadata.winnerMediaUrl.trim().replace(/^\/+/, "")}`)
     : "https://botadmin.shop/botadmin-landing/sweepstake-winner-v1.png";
+  if (resolvedWinners.length === 0) {
+    await sendTextMessage(client, { to: sweepstake.groupJid, body, mentions: announcement.mentions });
+    return;
+  }
   await sendMediaMessage(client, {
     to: sweepstake.groupJid,
     media: mediaUrl,
@@ -145,6 +152,12 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
     return;
   }
 
+  // The due-list snapshot can predate poll votes arriving through another
+  // instance. Draw from the latest persisted participants, not that snapshot.
+  const latest = await refreshSweepstake(sweepstake.id);
+  if (!latest || latest.status !== "active") return;
+  sweepstake = { ...sweepstake, ...latest };
+
   const botPhone = String(sweepstake.instance.phone || "").replace(/\D+/g, "");
   const botLids = sweepstake.participants
     .filter((entry) => entry.jid.toLowerCase().endsWith("@lid") || /^\d{14,}$/.test(entry.jid))
@@ -164,16 +177,7 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
   const concludedAt = new Date();
 
   try {
-    if (participants.length > 0) {
-      await announceSweepstakeResult(sweepstake, winners);
-    } else {
-      // Nem todos os provedores permitem enviar mensagens vazias,
-      // mas ainda assim registramos o encerramento sem participantes.
-      await announceSweepstakeResult(
-        sweepstake,
-        winners,
-      ).catch(() => Promise.resolve());
-    }
+    await announceSweepstakeResult(sweepstake, winners);
   } catch (error) {
     console.error("[sweepstakes] Failed to announce sweepstake result", {
       sweepstakeId: sweepstake.id,
@@ -186,6 +190,7 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
       await deleteMessageForEveryone(client, {
         chatId: sweepstake.groupJid,
         messageId: sweepstake.pollMessageId,
+        participant: sweepstake.instance.phone ? `${normalizeJid(sweepstake.instance.phone)}@s.whatsapp.net` : undefined,
         fromMe: true,
       }).catch((error) => console.warn("[sweepstakes] failed to delete finished poll", { sweepstakeId: sweepstake.id, error }));
     }
@@ -200,6 +205,7 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
       winners,
       concludedAt,
       metadata: {
+        ...(sweepstake.metadata ?? {}),
         participantsCount: participants.length,
         winnersCount: winners.length,
         announcedAt: concludedAt.toISOString(),

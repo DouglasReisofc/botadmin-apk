@@ -105,7 +105,7 @@ export async function POST(
           {
             chatId: sweepstake.groupJid,
             messageId: sweepstake.pollMessageId,
-            participant: undefined,
+            participant: instance.phone ? `${instance.phone}@s.whatsapp.net` : undefined,
             fromMe: true,
           },
         );
