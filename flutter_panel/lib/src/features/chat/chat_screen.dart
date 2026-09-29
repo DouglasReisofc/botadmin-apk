@@ -14531,6 +14531,11 @@ class ConversationComposer extends StatelessWidget {
                           tooltip: 'Emojis, GIFs e figurinhas',
                           iconSize: 25,
                         ),
+                        if (showBotButton)
+                          _ComposerRobotButton(
+                            enabled: botEnabled,
+                            onPressed: onBot,
+                          ),
                         Expanded(
                           child: TextField(
                             controller: controller,
@@ -15864,6 +15869,35 @@ class _ComposerIconButton extends StatelessWidget {
       onPressed: onPressed,
       tooltip: tooltip,
       icon: Icon(icon, color: iconColor, size: iconSize),
+    );
+  }
+}
+
+class _ComposerRobotButton extends StatelessWidget {
+  const _ComposerRobotButton({required this.enabled, required this.onPressed});
+
+  final bool enabled;
+  final VoidCallback onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    const green = Color(0xFF00A884);
+    return Tooltip(
+      message: enabled ? 'Configurar ativações do robô' : 'Ativações do robô',
+      child: IconButton(
+        constraints: const BoxConstraints.tightFor(width: 40, height: 40),
+        padding: EdgeInsets.zero,
+        visualDensity: VisualDensity.compact,
+        style: IconButton.styleFrom(
+          foregroundColor: green,
+          backgroundColor: const Color(0x1A00A884),
+          hoverColor: const Color(0x2600A884),
+          highlightColor: const Color(0x3300A884),
+          shape: const CircleBorder(),
+        ),
+        onPressed: onPressed,
+        icon: const Icon(Icons.smart_toy_rounded, color: green, size: 23),
+      ),
     );
   }
 }
