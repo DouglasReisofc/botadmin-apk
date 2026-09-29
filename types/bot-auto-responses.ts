@@ -45,7 +45,25 @@ export type BotAutoResponseButtons =
       body?: string | null;
       footer?: string | null;
       buttons: BotAutoResponseCtaButton[];
-    };
+  };
+
+/** A single item in a multi-message autoresponse flow. */
+export type BotAutoResponseStep = {
+  id: string;
+  type: "text" | "media" | "buttons" | "http";
+  delayMs: number;
+  text?: string | null;
+  media?: BotAutoResponseMedia | null;
+  buttons?: BotAutoResponseButtons | null;
+  http?: {
+    url: string;
+    method: "GET" | "POST" | "PUT" | "PATCH";
+    headers?: Record<string, string>;
+    body?: string | null;
+    responsePath?: string | null;
+    saveAs?: string | null;
+  } | null;
+};
 
 export type BotAutoResponse = {
   id: string;
@@ -57,6 +75,8 @@ export type BotAutoResponse = {
   responseMedia: BotAutoResponseMedia | null;
   responseVcard: BotAutoResponseVcard | null;
   responseButtons?: BotAutoResponseButtons | null;
+  /** Ordered responses executed after a trigger. Kept optional for backwards compatibility. */
+  responseSteps?: BotAutoResponseStep[];
   createdAt: string;
   updatedAt: string;
 };

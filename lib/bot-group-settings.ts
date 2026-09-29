@@ -39,7 +39,11 @@ import type {
   BotGroupModerationActionKey,
   BotGroupModerationActions,
 } from "types/bot-groups";
-import type { BotAutoResponseButtons, BotAutoResponseReplyButton } from "types/bot-auto-responses";
+import type {
+  BotAutoResponseButtons,
+  BotAutoResponseReplyButton,
+  BotAutoResponseStep,
+} from "types/bot-auto-responses";
 import { normalizeHorapgTimeToken, parseHorapgTimesArgument } from "lib/bot-horapg";
 import { deleteUploadedFile } from "lib/uploads";
 import { normalizeTimezoneInput, resolveTimezonePreference } from "lib/timezones";
@@ -2853,6 +2857,12 @@ export const normalizeAutoResponseEntry = (
         .filter((trigger, index, array) => trigger && array.indexOf(trigger) === index)
     : [];
 
+  const rawSteps = (raw as Record<string, unknown>).responseSteps ??
+    (raw as Record<string, unknown>).response_steps;
+  const responseSteps: BotAutoResponseStep[] = Array.isArray(rawSteps)
+    ? rawSteps.map((step, index) => normalizeAutoResponseStep(step, index)).filter(Boolean) as BotAutoResponseStep[]
+    : [];
+
   return {
     id: raw.id && typeof raw.id === "string" ? raw.id : randomUUID(),
     triggers,
@@ -2881,8 +2891,9 @@ export const normalizeAutoResponseEntry = (
         (raw as Record<string, unknown>).buttonTemplate ??
         (raw as Record<string, unknown>).buttonsTemplate ??
         (raw as Record<string, unknown>).buttons ??
-        null,
+      null,
     ),
+    responseSteps,
     createdAt:
       typeof raw.createdAt === "string" && raw.createdAt.trim()
         ? raw.createdAt
@@ -2906,7 +2917,56 @@ export const normalizeAutoResponseEntry = (
         (raw as Record<string, unknown>).contact_limit ??
         null,
     ),
-  } satisfies BotGroupAutoResponse;
+} satisfies BotGroupAutoResponse;
+};
+
+const normalizeAutoResponseStep = (
+  raw: unknown,
+  index: number,
+): BotAutoResponseStep | null => {
+  if (!raw || typeof raw !== "object") return null;
+  const source = raw as Record<string, unknown>;
+  const typeRaw = String(source.type ?? "text").trim().toLowerCase();
+  const type = ["text", "media", "buttons", "http"].includes(typeRaw)
+    ? (typeRaw as BotAutoResponseStep["type"])
+    : "text";
+  const delayRaw = Number(source.delayMs ?? source.delay_ms ?? source.delay ?? 0);
+  const delayMs = Number.isFinite(delayRaw) ? Math.max(0, Math.min(120_000, Math.floor(delayRaw))) : 0;
+  const id = typeof source.id === "string" && source.id.trim() ? source.id.trim() : `step_${index + 1}`;
+  if (type === "text") {
+    const text = typeof source.text === "string" ? source.text.trim() :
+      typeof source.responseText === "string" ? source.responseText.trim() : "";
+    return text ? { id, type, delayMs, text } : null;
+  }
+  if (type === "media") {
+    const media = normalizeAutoResponseMedia(source.media ?? source.responseMedia ?? null);
+    return media ? { id, type, delayMs, media } : null;
+  }
+  if (type === "buttons") {
+    const buttons = normalizeAutoResponseButtons(source.buttons ?? source.responseButtons ?? null);
+    return buttons ? { id, type, delayMs, buttons } : null;
+  }
+  const httpRaw = source.http && typeof source.http === "object" ? source.http as Record<string, unknown> : source;
+  const url = typeof httpRaw.url === "string" ? httpRaw.url.trim() : "";
+  if (!/^https?:\/\//i.test(url)) return null;
+  const methodRaw = String(httpRaw.method ?? "GET").toUpperCase();
+  const method = (["GET", "POST", "PUT", "PATCH"].includes(methodRaw) ? methodRaw : "GET") as "GET" | "POST" | "PUT" | "PATCH";
+  const headers = httpRaw.headers && typeof httpRaw.headers === "object"
+    ? Object.fromEntries(Object.entries(httpRaw.headers as Record<string, unknown>).filter(([, value]) => typeof value === "string")) as Record<string, string>
+    : undefined;
+  return {
+    id,
+    type,
+    delayMs,
+    http: {
+      url,
+      method,
+      headers,
+      body: typeof httpRaw.body === "string" ? httpRaw.body : null,
+      responsePath: typeof httpRaw.responsePath === "string" ? httpRaw.responsePath.trim() : null,
+      saveAs: typeof httpRaw.saveAs === "string" ? httpRaw.saveAs.trim() : null,
+    },
+  };
 };
 
 const parseAutoResponses = (raw: unknown): BotGroupAutoResponse[] => {
@@ -2941,7 +3001,8 @@ const parseAutoResponses = (raw: unknown): BotGroupAutoResponse[] => {
         entry.responseText.length > 0 ||
         entry.responseMedia !== null ||
         entry.responseVcard !== null ||
-        entry.responseButtons !== null;
+        entry.responseButtons !== null ||
+        (Array.isArray(entry.responseSteps) && entry.responseSteps.length > 0);
       if (!hasPayload) {
         return false;
       }

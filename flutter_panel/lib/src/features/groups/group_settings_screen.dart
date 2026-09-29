@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:ui' show PointerDeviceKind;
 
 import 'package:file_selector/file_selector.dart';
@@ -7376,23 +7377,120 @@ class _AutoResponseEditDialog extends StatefulWidget {
 class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
   late final TextEditingController _triggers;
   late final TextEditingController _response;
+  late final TextEditingController _stepText;
+  late final TextEditingController _stepUrl;
+  late final TextEditingController _stepBody;
+  late final TextEditingController _stepPath;
+  late final TextEditingController _stepSaveAs;
+  late final TextEditingController _stepDelay;
+  late final TextEditingController _stepButtonsJson;
+  late final TextEditingController _stepHeadersJson;
   late bool _matchAny;
   late String _matchMode;
+  late String _stepType;
+  late String _stepMediaType;
+  late String _stepMethod;
+  late List<Map<String, dynamic>> _responseSteps;
 
   @override
   void initState() {
     super.initState();
     _triggers = TextEditingController(text: widget.item.triggers.join('\n'));
     _response = TextEditingController(text: widget.item.responseText);
+    _stepText = TextEditingController();
+    _stepUrl = TextEditingController();
+    _stepBody = TextEditingController();
+    _stepPath = TextEditingController();
+    _stepSaveAs = TextEditingController();
+    _stepDelay = TextEditingController(text: '0');
+    _stepButtonsJson = TextEditingController(text: '{"type":"button_reply","body":"Escolha uma opção","buttons":[{"id":"opcao_1","text":"Opção 1"}]}');
+    _stepHeadersJson = TextEditingController(text: '{"content-type":"application/json"}');
     _matchAny = widget.item.matchAnyMessage;
     _matchMode = widget.item.matchMode;
+    _stepType = 'text';
+    _stepMediaType = 'image';
+    _stepMethod = 'GET';
+    _responseSteps = widget.item.responseSteps
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList();
   }
 
   @override
   void dispose() {
     _triggers.dispose();
     _response.dispose();
+    _stepText.dispose();
+    _stepUrl.dispose();
+    _stepBody.dispose();
+    _stepPath.dispose();
+    _stepSaveAs.dispose();
+    _stepDelay.dispose();
+    _stepButtonsJson.dispose();
+    _stepHeadersJson.dispose();
     super.dispose();
+  }
+
+  void _addResponseStep() {
+    final delay = int.tryParse(_stepDelay.text.trim()) ?? 0;
+    final id = 'step_${DateTime.now().microsecondsSinceEpoch}';
+    Map<String, dynamic>? step;
+    if (_stepType == 'text' && _stepText.text.trim().isNotEmpty) {
+      step = {'id': id, 'type': 'text', 'delayMs': delay.clamp(0, 120000), 'text': _stepText.text};
+    } else if (_stepType == 'media' && _stepUrl.text.trim().isNotEmpty) {
+      step = {
+        'id': id,
+        'type': 'media',
+        'delayMs': delay.clamp(0, 120000),
+        'media': {
+          'mediaType': _stepMediaType,
+          'url': _stepUrl.text.trim(),
+          'path': null,
+          'fileName': null,
+          'mimeType': null,
+          'caption': _stepText.text.trim().isEmpty ? null : _stepText.text,
+        },
+      };
+    } else if (_stepType == 'http' && _stepUrl.text.trim().isNotEmpty) {
+      Map<String, dynamic>? headers;
+      try {
+        final decodedHeaders = jsonDecode(_stepHeadersJson.text);
+        if (decodedHeaders is Map) headers = Map<String, dynamic>.from(decodedHeaders);
+      } catch (_) {
+        headers = null;
+      }
+      step = {
+        'id': id,
+        'type': 'http',
+        'delayMs': delay.clamp(0, 120000),
+        'http': {
+          'url': _stepUrl.text.trim(),
+          'method': _stepMethod,
+          'headers': headers,
+          'body': _stepBody.text.trim().isEmpty ? null : _stepBody.text,
+          'responsePath': _stepPath.text.trim().isEmpty ? null : _stepPath.text.trim(),
+          'saveAs': _stepSaveAs.text.trim().isEmpty ? null : _stepSaveAs.text.trim(),
+        },
+      };
+    } else if (_stepType == 'buttons' && _stepButtonsJson.text.trim().isNotEmpty) {
+      try {
+        final decoded = jsonDecode(_stepButtonsJson.text);
+        if (decoded is Map<String, dynamic>) {
+          step = {'id': id, 'type': 'buttons', 'delayMs': delay.clamp(0, 120000), 'buttons': decoded};
+        }
+      } catch (_) {
+        return;
+      }
+    }
+    if (step == null) return;
+    setState(() {
+      _responseSteps.add(step!);
+      _stepText.clear();
+      _stepUrl.clear();
+      _stepBody.clear();
+      _stepPath.clear();
+      _stepSaveAs.clear();
+      _stepDelay.text = '0';
+    });
   }
 
   @override
@@ -7445,6 +7543,82 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                   alignLabelWithHint: true,
                 ),
               ),
+              const SizedBox(height: 18),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Fluxo de respostas',
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w800),
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text('Adicione várias mensagens, mídias ou uma consulta REST. O delay é aplicado antes de cada etapa.'),
+              ),
+              if (_responseSteps.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                ..._responseSteps.asMap().entries.map((entry) {
+                  final index = entry.key;
+                  final step = entry.value;
+                  final type = step['type']?.toString() ?? 'text';
+                  final delay = step['delayMs']?.toString() ?? '0';
+                  final label = switch (type) {
+                    'media' => 'Mídia',
+                    'http' => 'Consulta REST/JSON',
+                    'buttons' => 'Botões',
+                    _ => 'Texto',
+                  };
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 6),
+                    child: ListTile(
+                      dense: true,
+                      leading: CircleAvatar(radius: 15, child: Text('${index + 1}')),
+                      title: Text(label),
+                      subtitle: Text('Delay: ${delay}ms · ${type == 'http' ? (step['http']?['url'] ?? '') : (step['text'] ?? step['media']?['url'] ?? '')}', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      trailing: IconButton(icon: const Icon(Icons.delete_outline), onPressed: () => setState(() => _responseSteps.removeAt(index))),
+                    ),
+                  );
+                }),
+              ],
+              const SizedBox(height: 8),
+              DropdownButtonFormField<String>(
+                value: _stepType,
+                decoration: const InputDecoration(labelText: 'Tipo da próxima etapa', prefixIcon: Icon(Icons.add_task_rounded)),
+                items: const [
+                  DropdownMenuItem(value: 'text', child: Text('Texto')),
+                  DropdownMenuItem(value: 'media', child: Text('Mídia por URL')),
+                  DropdownMenuItem(value: 'buttons', child: Text('Botões')),
+                  DropdownMenuItem(value: 'http', child: Text('Consulta REST/JSON')),
+                ],
+                onChanged: (value) => setState(() => _stepType = value ?? 'text'),
+              ),
+              const SizedBox(height: 8),
+              if (_stepType == 'text')
+                TextField(controller: _stepText, minLines: 2, maxLines: 5, decoration: const InputDecoration(labelText: 'Texto da etapa', alignLabelWithHint: true))
+              else ...[
+                TextField(controller: _stepUrl, decoration: InputDecoration(labelText: _stepType == 'http' ? 'URL HTTPS da API' : 'URL pública da mídia', prefixIcon: const Icon(Icons.link_rounded))),
+                const SizedBox(height: 8),
+                if (_stepType == 'media')
+                  Row(children: [
+                    Expanded(child: DropdownButtonFormField<String>(value: _stepMediaType, decoration: const InputDecoration(labelText: 'Tipo'), items: const [DropdownMenuItem(value: 'image', child: Text('Imagem')), DropdownMenuItem(value: 'video', child: Text('Vídeo')), DropdownMenuItem(value: 'audio', child: Text('Áudio')), DropdownMenuItem(value: 'document', child: Text('Documento')), DropdownMenuItem(value: 'sticker', child: Text('Figurinha'))], onChanged: (value) => setState(() => _stepMediaType = value ?? 'image'))),
+                    const SizedBox(width: 8),
+                    Expanded(child: TextField(controller: _stepText, decoration: const InputDecoration(labelText: 'Legenda (opcional)'))),
+                  ])
+                else if (_stepType == 'buttons')
+                  TextField(controller: _stepButtonsJson, minLines: 4, maxLines: 8, decoration: const InputDecoration(labelText: 'Configuração dos botões (JSON)', hintText: '{"type":"button_reply","buttons":[...]}', alignLabelWithHint: true))
+                else ...[
+                  Row(children: [Expanded(child: DropdownButtonFormField<String>(value: _stepMethod, decoration: const InputDecoration(labelText: 'Método'), items: const [DropdownMenuItem(value: 'GET', child: Text('GET')), DropdownMenuItem(value: 'POST', child: Text('POST')), DropdownMenuItem(value: 'PUT', child: Text('PUT')), DropdownMenuItem(value: 'PATCH', child: Text('PATCH'))], onChanged: (value) => setState(() => _stepMethod = value ?? 'GET'))), const SizedBox(width: 8), Expanded(child: TextField(controller: _stepSaveAs, decoration: const InputDecoration(labelText: 'Salvar como (opcional)')))],),
+                  const SizedBox(height: 8),
+                  TextField(controller: _stepBody, minLines: 2, maxLines: 4, decoration: const InputDecoration(labelText: 'Body JSON (opcional)', hintText: '{"query":"{{mensagem}}"}', alignLabelWithHint: true)),
+                  const SizedBox(height: 8),
+                  TextField(controller: _stepHeadersJson, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Headers JSON (opcional)', hintText: '{"Authorization":"Bearer ..."}', alignLabelWithHint: true)),
+                  const SizedBox(height: 8),
+                  TextField(controller: _stepPath, decoration: const InputDecoration(labelText: 'Caminho JSON da resposta (opcional)', hintText: 'data.items.0.title')),
+                ],
+              ],
+              const SizedBox(height: 8),
+              Row(children: [Expanded(child: TextField(controller: _stepDelay, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Delay antes desta etapa (ms)'))), const SizedBox(width: 8), FilledButton.icon(onPressed: _addResponseStep, icon: const Icon(Icons.add), label: const Text('Adicionar etapa'))]),
             ],
           ),
         ),
@@ -7461,6 +7635,7 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
               responseText: _response.text,
               matchMode: _matchMode,
               matchAnyMessage: _matchAny,
+              responseSteps: _responseSteps,
             ),
           ),
           icon: const Icon(Icons.save_rounded),

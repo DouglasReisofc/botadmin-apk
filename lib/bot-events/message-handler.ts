@@ -340,6 +340,7 @@ import type {
   BotAutoResponse,
   BotAutoResponseMedia,
   BotAutoResponseVcard,
+  BotAutoResponseStep,
 } from "types/bot-auto-responses";
 import {
   collectAdminIdentityAliases,
@@ -7578,6 +7579,42 @@ const executeBotFlowDatabase = async (
 };
 
 const waitBotFlowDelay = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+const resolveAutoresponseTemplate = (
+  value: string,
+  variables: Record<string, unknown>,
+): string => value.replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, (_match, key: string) => {
+  const resolved = getBotFlowJsonPath(variables, key);
+  if (resolved === null || resolved === undefined) return "";
+  return typeof resolved === "string" ? resolved : stringifyBotFlowVariableValue(resolved);
+});
+
+const resolveAutoresponseObject = <T>(value: T, variables: Record<string, unknown>): T => {
+  if (typeof value === "string") return resolveAutoresponseTemplate(value, variables) as T;
+  if (Array.isArray(value)) return value.map((entry) => resolveAutoresponseObject(entry, variables)) as T;
+  if (value && typeof value === "object") {
+    const copy: Record<string, unknown> = {};
+    for (const [key, entry] of Object.entries(value as Record<string, unknown>)) {
+      copy[key] = resolveAutoresponseObject(entry, variables);
+    }
+    return copy as T;
+  }
+  return value;
+};
+
+const isSafeAutoresponseHttpUrl = (raw: string): boolean => {
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const hostname = url.hostname.toLowerCase();
+    if (["localhost", "127.0.0.1", "0.0.0.0", "::1"].includes(hostname)) return false;
+    if (/^(10|127|192\.168|169\.254)\./.test(hostname)) return false;
+    if (hostname === "::1" || hostname.startsWith("fc") || hostname.startsWith("fd")) return false;
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const prepareBotFlowOutgoingSend = async (params: {
   node: BotFlowNode;
@@ -33570,13 +33607,73 @@ const convertStickerSourceToWebp = async (
       const hasMedia = Boolean(entry.responseMedia);
       const hasVcard = Boolean(entry.responseVcard);
       const hasButtons = Boolean(entry.responseButtons);
+      const hasSteps = Array.isArray(entry.responseSteps) && entry.responseSteps.length > 0;
 
-      if (!hasText && !hasMedia && !hasVcard && !hasButtons) {
+      if (!hasText && !hasMedia && !hasVcard && !hasButtons && !hasSteps) {
         continue;
       }
 
       if (!matchesEntry(entry)) {
         continue;
+      }
+
+      // Fluxos compostos permitem combinar textos, mídias, botões e consultas
+      // HTTP em uma única autoresposta. O formato é opcional para manter
+      // compatibilidade com os gatilhos antigos de resposta única.
+      const responseSteps = Array.isArray(entry.responseSteps) ? entry.responseSteps : [];
+      if (responseSteps.length > 0) {
+        const variables: Record<string, unknown> = {
+          trigger: textContent,
+          mensagem: textContent,
+          chatId: message.chatId,
+          numero: contactDigits || "",
+          pushname: message.pushName || message.senderName || "",
+          api: {},
+        };
+        for (const step of responseSteps) {
+          const delayMs = Math.max(0, Math.min(120_000, Number(step.delayMs) || 0));
+          if (delayMs > 0) await waitBotFlowDelay(delayMs);
+          if (step.type === "http" && step.http) {
+            const url = resolveAutoresponseTemplate(step.http.url, variables);
+            if (!isSafeAutoresponseHttpUrl(url)) {
+              console.warn("[bot-events] URL HTTP de autoresposta rejeitada", { url });
+              continue;
+            }
+            try {
+              const headers = resolveAutoresponseObject(step.http.headers ?? {}, variables) as Record<string, string>;
+              const body = step.http.body ? resolveAutoresponseTemplate(step.http.body, variables) : undefined;
+              const response = await fetch(url, {
+                method: step.http.method,
+                headers: { accept: "application/json, text/plain, */*", ...headers },
+                body: step.http.method === "GET" ? undefined : body,
+                signal: AbortSignal.timeout(15_000),
+              });
+              const rawBody = await response.text();
+              let parsed: unknown = rawBody;
+              try { parsed = rawBody ? JSON.parse(rawBody) : null; } catch { /* texto puro */ }
+              const selected = step.http.responsePath
+                ? getBotFlowJsonPath(parsed, step.http.responsePath)
+                : parsed;
+              const key = step.http.saveAs || "api";
+              if (key === "api") variables.api = selected;
+              else variables[key] = selected;
+              variables.http_status = response.status;
+              variables.http_ok = response.ok;
+            } catch (error) {
+              variables.http_error = error instanceof Error ? error.message : "Falha na consulta";
+              console.error("[bot-events] Falha na consulta HTTP da autoresposta", { chatId: message.chatId, error });
+            }
+            continue;
+          }
+          if (step.type === "text" && step.text) {
+            await sendAutoResponseText(resolveAutoresponseTemplate(step.text, variables));
+          } else if (step.type === "media" && step.media) {
+            await sendAutoResponseMedia(resolveAutoresponseObject(step.media, variables) as BotGroupAutoResponseMedia);
+          } else if (step.type === "buttons" && step.buttons) {
+            await sendAutoResponseButtons(resolveAutoresponseObject(step.buttons, variables), null);
+          }
+        }
+        return true;
       }
 
       let captionSent: string | null = null;

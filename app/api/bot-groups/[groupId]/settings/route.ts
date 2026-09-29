@@ -545,7 +545,11 @@ const parseAutoResponsesInput = (
     .filter(
       (entry) =>
         entry.triggers.length > 0 &&
-        (entry.responseText.length > 0 || entry.responseMedia !== null || entry.responseVcard !== null),
+        (entry.responseText.length > 0 ||
+          entry.responseMedia !== null ||
+          entry.responseVcard !== null ||
+          entry.responseButtons !== null ||
+          (Array.isArray(entry.responseSteps) && entry.responseSteps.length > 0)),
     )
     .filter((entry) => {
       if (seen.has(entry.id)) {

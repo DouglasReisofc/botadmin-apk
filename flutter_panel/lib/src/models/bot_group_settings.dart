@@ -551,6 +551,17 @@ class GroupAutoResponseConfig {
   final String matchMode;
   final bool matchAnyMessage;
 
+  /// Ordered flow items. Kept as maps so newer server capabilities remain
+  /// forward-compatible with the Flutter panel.
+  List<Map<String, dynamic>> get responseSteps {
+    final value = raw['responseSteps'] ?? raw['response_steps'];
+    if (value is! List) return const [];
+    return value
+        .whereType<Map>()
+        .map((entry) => Map<String, dynamic>.from(entry))
+        .toList(growable: false);
+  }
+
   Map<String, dynamic> toJson() {
     return {
       ...raw,
@@ -602,9 +613,14 @@ class GroupAutoResponseConfig {
     String? responseText,
     String? matchMode,
     bool? matchAnyMessage,
+    List<Map<String, dynamic>>? responseSteps,
   }) {
     return GroupAutoResponseConfig(
-      raw: {...raw, 'updatedAt': DateTime.now().toIso8601String()},
+      raw: {
+        ...raw,
+        if (responseSteps != null) 'responseSteps': responseSteps,
+        'updatedAt': DateTime.now().toIso8601String(),
+      },
       id: id ?? this.id,
       triggers: triggers ?? this.triggers,
       responseText: responseText ?? this.responseText,
