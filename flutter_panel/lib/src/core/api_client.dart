@@ -2589,13 +2589,25 @@ class BotAdminApiClient {
         'durationUnit': durationUnit,
         'maxParticipants': maxParticipants,
         'winnersCount': winnersCount,
-        if (winnerMessageTemplate != null && winnerMessageTemplate.trim().isNotEmpty)
+        if (winnerMessageTemplate != null &&
+            winnerMessageTemplate.trim().isNotEmpty)
           'winnerMessageTemplate': winnerMessageTemplate.trim(),
-        if (winnerMediaUrl != null && winnerMediaUrl.trim().isNotEmpty)
-          'winnerMediaUrl': winnerMediaUrl.trim(),
+        'winnerMediaUrl': winnerMediaUrl?.trim(),
       },
     );
     return SweepstakeGroupSnapshot.fromJson(json);
+  }
+
+  Future<void> saveSweepstakeMessage(
+    int groupId,
+    int sweepstakeId,
+    String template,
+    String? mediaUrl,
+  ) async {
+    await postJson(
+      '/api/bot-groups/$groupId/sweepstakes/$sweepstakeId/settings',
+      data: {'winnerMessageTemplate': template, 'winnerMediaUrl': mediaUrl},
+    );
   }
 
   Future<SweepstakeGroupSnapshot> finalizeGroupSweepstake(
@@ -2632,7 +2644,11 @@ class BotAdminApiClient {
   }) async {
     final json = await postJson(
       '${_sweepstakeBasePath(groupId, internal: internal)}/$sweepstakeId/participants',
-      data: {'userId': participantUserId, 'jid': participantJid, 'displayName': displayName},
+      data: {
+        'userId': participantUserId,
+        'jid': participantJid,
+        'displayName': displayName,
+      },
     );
     return SweepstakeGroupSnapshot.fromJson(json);
   }

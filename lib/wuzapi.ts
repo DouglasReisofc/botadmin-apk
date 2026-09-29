@@ -915,6 +915,7 @@ export const pinMessageInChat = async (
     messageId: string;
     participant?: string | null;
     fromMe?: boolean;
+    pinned?: boolean;
   },
 ) => {
   const payload: Record<string, unknown> = {
@@ -930,7 +931,7 @@ export const pinMessageInChat = async (
     }
   }
 
-  await requestWuzapi(client, "/chat/message/pin", {
+  await requestWuzapi(client, params.pinned === false ? "/chat/message/unpin" : "/chat/message/pin", {
     method: "POST",
     body: payload,
   });

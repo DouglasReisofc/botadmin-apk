@@ -37,7 +37,7 @@ export async function POST(
     const body = await request.json().catch(() => ({}));
     const requestedJid = String(body?.jid ?? "").trim();
     const member = (group.participants ?? []).find((entry) =>
-      [entry.id, entry.jid, entry.phone].some((value) =>
+      [entry.id, entry.phone].some((value) =>
         value === requestedJid || digits(value) === digits(requestedJid),
       ),
     );
@@ -45,8 +45,9 @@ export async function POST(
     const displayName = String(
       body?.displayName || member.name || member.displayName || member.pushName || "",
     ).trim() || null;
+    const participantJid = member.phone?.trim() || member.id;
     await recordSweepstakeVote(sweepstake, {
-      participantJid: member.jid || member.id || member.phone,
+      participantJid,
       selectedOptionHashes: [sweepstake.joinOptionHash],
       displayName,
     });

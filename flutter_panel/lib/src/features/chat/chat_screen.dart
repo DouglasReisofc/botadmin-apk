@@ -1048,6 +1048,9 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         if (event.eventType == 'internal-group.message.receipt') {
           _applyInternalReceiptEvent(event);
         }
+        if (event.payload?['action'] == 'sweepstake.poll.removed') {
+          _removeFinishedPoll(thread, event.payload?['messageId']?.toString());
+        }
         if (event.payload?['action'] == 'poll.vote' ||
             (event.eventType == 'internal-group.message.created' &&
                 event.payload?['action']?.toString().startsWith(
@@ -1130,6 +1133,20 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     });
   }
 
+  void _removeFinishedPoll(ConversationThread thread, String? messageId) {
+    if (!mounted || messageId == null) return;
+    ref.read(conversationCacheProvider).removeMessages(thread);
+    setState(
+      () => _messages = _messages
+          .where(
+            (message) =>
+                message.remoteId != messageId && message.id != messageId,
+          )
+          .toList(),
+    );
+    unawaited(_refreshSweepstakes(thread));
+  }
+
   Future<void> _checkRealtimeEvents(ConversationThread thread) async {
     if (_checkingRealtime) return;
     final currentThread = _realtimeThread;
@@ -1167,6 +1184,15 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
         _realtimeSocket?.updateSequence(_lastRealtimeSequence);
       }
       final events = snapshot['events'];
+      if (events is List) {
+        for (final event in events.whereType<Map>()) {
+          final payload = event['payload'];
+          if (payload is Map &&
+              payload['action'] == 'sweepstake.poll.removed') {
+            _removeFinishedPoll(thread, payload['messageId']?.toString());
+          }
+        }
+      }
       if (!_realtimePrimed) {
         _realtimePrimed = true;
         _connectRealtimeSocket(thread);
@@ -1535,11 +1561,49 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
       context: context,
       builder: (_) => _SweepstakeDetailsDialog(
         sweepstake: active,
+        instanceId: thread.isInternalGroup ? null : thread.instanceId,
         canDraw:
             !thread.isInternalGroup ||
             thread.instanceIsAdmin == true ||
             thread.internalGroupRole == 'owner',
-        members: _mentionCandidates,
+        members: _mentionCandidates.map((member) {
+          final message = _messages
+              .where(
+                (m) =>
+                    (m.senderJid ?? '').split('@').first == member.jid &&
+                    m.senderAvatarUrl != null,
+              )
+              .firstOrNull;
+          return _MentionCandidate(
+            jid: member.jid,
+            label: member.label,
+            subtitle: member.subtitle,
+            avatarUrl: member.avatarUrl ?? message?.senderAvatarUrl,
+          );
+        }).toList(),
+        onConfigureMessage: thread.isInternalGroup
+            ? null
+            : (current) async {
+                final draft = await showDialog<_SweepstakeDraft>(
+                  context: context,
+                  builder: (_) => _SweepstakeDialog(
+                    resultOnly: true,
+                    initialMessage: current.winnerMessageTemplate,
+                    initialMedia: current.winnerMediaUrl,
+                  ),
+                );
+                if (draft == null) return;
+                await ref
+                    .read(apiClientProvider)
+                    .saveSweepstakeMessage(
+                      groupId,
+                      current.id,
+                      draft.winnerMessageTemplate ??
+                          _defaultSweepstakeWinnerMessage,
+                      draft.winnerMediaUrl,
+                    );
+                await _refreshSweepstakes(thread);
+              },
         onAddMember: (member) async {
           final snapshot = await ref
               .read(apiClientProvider)
@@ -14110,11 +14174,13 @@ class _MentionCandidate {
     required this.jid,
     required this.label,
     this.subtitle = '',
+    this.avatarUrl,
   });
 
   final String jid;
   final String label;
   final String subtitle;
+  final String? avatarUrl;
 
   factory _MentionCandidate.fromJson(Map<String, dynamic> json) {
     final jid =
@@ -14145,6 +14211,8 @@ class _MentionCandidate {
       jid: jid,
       label: label.isEmpty ? jid : label,
       subtitle: subtitle,
+      avatarUrl: (json['avatarUrl'] ?? json['photoUrl'] ?? json['picture'])
+          ?.toString(),
     );
   }
 }
@@ -14718,8 +14786,58 @@ class _SweepstakeDraft {
   final String? winnerMediaUrl;
 }
 
+const _defaultSweepstakeWinnerMessage =
+    '🎉 *Parabéns, {pushname}!*\nVocê venceu *{premio}*!\nGanhador: {mencao}\nParticipantes: {participantes}\n\nObrigado a todos que participaram!';
+
+class _SweepstakeMessageController extends TextEditingController {
+  _SweepstakeMessageController({super.text});
+  @override
+  TextSpan buildTextSpan({
+    required BuildContext context,
+    TextStyle? style,
+    required bool withComposing,
+  }) {
+    if (withComposing &&
+        value.composing.isValid &&
+        !value.composing.isCollapsed) {
+      return super.buildTextSpan(
+        context: context,
+        style: style,
+        withComposing: withComposing,
+      );
+    }
+    final spans = <InlineSpan>[];
+    var cursor = 0;
+    for (final match in RegExp(
+      r'\{\{?\s*(pushname|numero|jid|mencao|premio|participantes|ganhadores)\s*\}\}?',
+      caseSensitive: false,
+    ).allMatches(text)) {
+      spans.add(TextSpan(text: text.substring(cursor, match.start)));
+      spans.add(
+        TextSpan(
+          text: match.group(0),
+          style: const TextStyle(
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF00A884),
+          ),
+        ),
+      );
+      cursor = match.end;
+    }
+    spans.add(TextSpan(text: text.substring(cursor)));
+    return TextSpan(style: style, children: spans);
+  }
+}
+
 class _SweepstakeDialog extends ConsumerStatefulWidget {
-  const _SweepstakeDialog();
+  const _SweepstakeDialog({
+    this.resultOnly = false,
+    this.initialMessage,
+    this.initialMedia,
+  });
+  final bool resultOnly;
+  final String? initialMessage;
+  final String? initialMedia;
   @override
   ConsumerState<_SweepstakeDialog> createState() => _SweepstakeDialogState();
 }
@@ -14729,11 +14847,21 @@ class _SweepstakeDialogState extends ConsumerState<_SweepstakeDialog> {
   final _duration = TextEditingController(text: '60');
   final _limit = TextEditingController(text: '100');
   final _winners = TextEditingController(text: '1');
-  final _winnerMessage = TextEditingController();
+  late final _winnerMessage = _SweepstakeMessageController(
+    text: widget.initialMessage?.trim().isNotEmpty == true
+        ? widget.initialMessage
+        : _defaultSweepstakeWinnerMessage,
+  );
   String? _winnerMediaUrl = '/botadmin-landing/sweepstake-winner-v1.png';
   Uint8List? _winnerMediaPreviewBytes;
   bool _winnerMediaUploading = false;
   String _unit = 'm';
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.resultOnly) _winnerMediaUrl = widget.initialMedia;
+  }
 
   @override
   void dispose() {
@@ -14910,63 +15038,128 @@ class _SweepstakeDialogState extends ConsumerState<_SweepstakeDialog> {
   }
 
   Future<void> _configureWinnerMessage() async {
-    await showDialog<void>(
+    final result = await showDialog<_SweepstakeDraft>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.celebration_rounded, color: Color(0xFFFFB300)),
-            SizedBox(width: 8),
-            Text('Mensagem do ganhador'),
-          ],
-        ),
+      builder: (_) => _SweepstakeDialog(
+        resultOnly: true,
+        initialMessage: _winnerMessage.text,
+        initialMedia: _winnerMediaUrl,
+      ),
+    );
+    if (mounted && result != null)
+      setState(() {
+        _winnerMessage.text =
+            result.winnerMessageTemplate ?? _defaultSweepstakeWinnerMessage;
+        _winnerMediaUrl = result.winnerMediaUrl;
+        _winnerMediaPreviewBytes = null;
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final size = MediaQuery.sizeOf(context);
+    if (widget.resultOnly) {
+      return AlertDialog(
+        insetPadding: const EdgeInsets.all(16),
+        constraints: BoxConstraints(maxWidth: 960, maxHeight: size.height - 32),
+        title: const Text('Mensagem e imagem do ganhador'),
         content: SizedBox(
-          width: 620,
+          width: 850,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                _winnerMediaCard(),
+                const SizedBox(height: 16),
                 TextField(
                   controller: _winnerMessage,
-                  minLines: 4,
-                  maxLines: 8,
+                  minLines: 6,
+                  maxLines: 12,
                   maxLength: 2000,
                   decoration: const InputDecoration(
-                    labelText: 'Mensagem personalizada (opcional)',
-                    hintText:
-                        '🎉 Parabéns, {{pushname}}! Você venceu {{premio}}!',
-                    helperText:
-                        '{{pushname}}  {{numero}}  {{premio}}  {{participantes}}  {{ganhadores}}',
+                    labelText: 'Mensagem do ganhador',
+                    alignLabelWithHint: true,
                   ),
                 ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Mídia enviada ao anunciar o ganhador',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children:
+                      [
+                            'pushname',
+                            'numero',
+                            'mencao',
+                            'premio',
+                            'participantes',
+                            'ganhadores',
+                          ]
+                          .map(
+                            (key) => ActionChip(
+                              label: Text('{$key}'),
+                              onPressed: () {
+                                final selection = _winnerMessage.selection;
+                                final start = selection.isValid
+                                    ? selection.start
+                                    : _winnerMessage.text.length;
+                                final end = selection.isValid
+                                    ? selection.end
+                                    : start;
+                                _winnerMessage.value = TextEditingValue(
+                                  text: _winnerMessage.text.replaceRange(
+                                    start,
+                                    end,
+                                    '{$key}',
+                                  ),
+                                  selection: TextSelection.collapsed(
+                                    offset: start + key.length + 2,
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                          .toList(),
                 ),
                 const SizedBox(height: 8),
-                _winnerMediaCard(),
+                const Text(
+                  'Variáveis válidas ficam em negrito. A menção do ganhador é incluída automaticamente.',
+                ),
+                TextButton(
+                  onPressed: () =>
+                      _winnerMessage.text = _defaultSweepstakeWinnerMessage,
+                  child: const Text('Restaurar mensagem padrão'),
+                ),
               ],
             ),
           ),
         ),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Concluir'),
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton.icon(
+            onPressed: _winnerMediaUploading
+                ? null
+                : () => Navigator.pop(
+                    context,
+                    _SweepstakeDraft(
+                      question: '',
+                      durationValue: 60,
+                      durationUnit: 'm',
+                      maxParticipants: 100,
+                      winnersCount: 1,
+                      winnerMessageTemplate: _winnerMessage.text.trim().isEmpty
+                          ? _defaultSweepstakeWinnerMessage
+                          : _winnerMessage.text.trim(),
+                      winnerMediaUrl: _winnerMediaUrl,
+                    ),
+                  ),
+            icon: const Icon(Icons.save_outlined),
+            label: const Text('Salvar'),
           ),
         ],
-      ),
-    );
-    if (mounted) setState(() {});
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final size = MediaQuery.sizeOf(context);
+      );
+    }
     return AlertDialog(
       constraints: BoxConstraints(
         maxWidth: size.width > 1100 ? 980 : size.width - 24,
@@ -15118,13 +15311,17 @@ class _SweepstakeDetailsDialog extends StatefulWidget {
     this.members = const [],
     this.onAddMember,
     this.onRemoveMember,
+    this.onConfigureMessage,
+    this.instanceId,
   });
   final SweepstakeSummary sweepstake;
+  final int? instanceId;
   final bool canDraw;
   final Future<SweepstakeSummary> Function() onRefresh;
   final Future<void> Function() onDraw;
   final Future<void> Function() onCancel;
   final List<_MentionCandidate> members;
+  final Future<void> Function(SweepstakeSummary current)? onConfigureMessage;
   final Future<SweepstakeSummary> Function(_MentionCandidate member)?
   onAddMember;
   final Future<SweepstakeSummary> Function(SweepstakeParticipant member)?
@@ -15209,6 +15406,26 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
             onPressed: _busy ? null : _refreshParticipants,
             icon: const Icon(Icons.refresh_rounded),
           ),
+          if (widget.canDraw &&
+              _sweepstake.isActive &&
+              widget.onConfigureMessage != null)
+            IconButton(
+              tooltip: 'Configurar mensagem e imagem do ganhador',
+              icon: const Icon(Icons.edit_note_rounded),
+              onPressed: _busy
+                  ? null
+                  : () async {
+                      setState(() => _busy = true);
+                      try {
+                        await widget.onConfigureMessage!(_sweepstake);
+                      } catch (error) {
+                        if (mounted) showErrorToast(context, error);
+                      } finally {
+                        if (mounted) setState(() => _busy = false);
+                      }
+                      await _refreshParticipants();
+                    },
+            ),
           if (widget.canDraw && widget.onAddMember != null)
             TextButton.icon(
               onPressed: _busy ? null : _addMember,
@@ -15227,26 +15444,53 @@ class _SweepstakeDetailsDialogState extends State<_SweepstakeDetailsDialog> {
                 itemCount: _sweepstake.participants.length,
                 itemBuilder: (_, index) {
                   final person = _sweepstake.participants[index];
+                  final member = widget.members
+                      .where(
+                        (item) =>
+                            item.jid == person.jid ||
+                            item.subtitle.replaceAll(RegExp(r'\D'), '') ==
+                                person.jid,
+                      )
+                      .firstOrNull;
+                  final avatar = _absoluteMediaUrl(
+                    member?.avatarUrl ??
+                        (widget.instanceId == null
+                            ? null
+                            : '/api/bot-instances/${widget.instanceId}/whatsapp-conversations/${Uri.encodeComponent('${person.jid}@s.whatsapp.net')}/avatar'),
+                  );
                   return ListTile(
                     dense: true,
-                    leading: CircleAvatar(
-                      child: Text(
-                        (person.displayName ?? person.jid).characters.first
-                            .toUpperCase(),
-                      ),
+                    leading: ClipOval(
+                      child: avatar == null
+                          ? CircleAvatar(
+                              child: Text(
+                                _senderInitials(
+                                  person.displayName ?? person.jid,
+                                ),
+                              ),
+                            )
+                          : BotAdminCachedImage(
+                              imageUrl: avatar,
+                              width: 40,
+                              height: 40,
+                              fit: BoxFit.cover,
+                              errorWidget: (_, __, ___) => CircleAvatar(
+                                child: Text(
+                                  _senderInitials(
+                                    person.displayName ?? person.jid,
+                                  ),
+                                ),
+                              ),
+                            ),
                     ),
                     title: Text(
                       person.displayName?.trim().isNotEmpty == true
                           ? person.displayName!
                           : person.jid,
                     ),
-                    subtitle: person.joinedAt == null
-                        ? null
-                        : Text(
-                            DateFormat(
-                              'dd/MM HH:mm',
-                            ).format(person.joinedAt!.toLocal()),
-                          ),
+                    subtitle: Text(
+                      '+${person.jid.replaceAll(RegExp(r"\D"), "")}',
+                    ),
                     trailing: widget.canDraw && widget.onRemoveMember != null
                         ? IconButton(
                             tooltip: 'Remover participante',

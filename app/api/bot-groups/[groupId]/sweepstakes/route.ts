@@ -69,7 +69,7 @@ const ensureGroupContext = async (
   groupId: number,
 ): Promise<
   | { error: NextResponse }
-  | { userId: number; group: BotGroup; instance: Awaited<ReturnType<typeof getInstanceForUser>> }
+  | { userId: number; group: BotGroup; instance: NonNullable<Awaited<ReturnType<typeof getInstanceForUser>>> }
 > => {
   const user = await getCurrentUser();
   if (!user) {
@@ -251,7 +251,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
   let pollResponse: Awaited<ReturnType<typeof sendPollMessage>>;
   try {
     const rawMentionTargets = (group.participants ?? [])
-      .map((participant) => participant.jid || participant.id || participant.phone)
+      .map((participant) => participant.id || participant.phone)
       .filter((jid): jid is string => typeof jid === "string" && jid.trim().length > 0);
     const lidTargets = rawMentionTargets.filter((jid) => jid.toLowerCase().endsWith('@lid'));
     const lidPhones = lidTargets.length
@@ -309,7 +309,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ gr
     maxParticipants,
     createdByUserId: userId,
     winnerMessageTemplate: winnerMessageTemplate || null,
-    winnerMediaUrl: winnerMediaUrl || "/botadmin-landing/sweepstake-winner-v1.png",
+    winnerMediaUrl: payload.winnerMediaUrl === null ? null : winnerMediaUrl || "/botadmin-landing/sweepstake-winner-v1.png",
     winnerMediaType: "image",
   };
 

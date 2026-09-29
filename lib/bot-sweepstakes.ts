@@ -9,6 +9,7 @@ import type {
   BotSweepstakeWithInstance,
 } from "types/bot-sweepstakes";
 import { normalizeJid } from "./whatsapp";
+export type { BotSweepstakeOption, BotSweepstakeParticipant, BotSweepstakeWithInstance } from "types/bot-sweepstakes";
 
 type SweepstakeRow = RowDataPacket & {
   id: number;
@@ -624,11 +625,31 @@ export const formatSweepstakeWinnerLabel = (
   const normalized = /@(s\.whatsapp\.net|c\.us)$/i.test(winner.jid) ? normalizeJid(winner.jid) : null;
   const phoneLabel = normalized ? `@${normalized}` : "Participante";
   if (winner.displayName && winner.displayName.trim()) {
-    // O JID continua em ContextInfo.MentionedJID para tornar o nome verde e
-    // clicável; não o repetimos no corpo, onde virava @número/LID visível.
-    return `@${winner.displayName.trim().replace(/^@+/, "")}`;
+    return `${winner.displayName.trim().replace(/^@+/, "")} (${phoneLabel})`;
   }
   return phoneLabel;
+};
+
+export const DEFAULT_SWEEPSTAKE_WINNER_MESSAGE = "🎉 *Parabéns, {pushname}!*\nVocê venceu *{premio}*!\nGanhador: {mencao}\nParticipantes: {participantes}\n\nObrigado a todos que participaram!";
+
+export const renderSweepstakeWinnerMessage = (
+  template: string,
+  winner: BotSweepstakeParticipant,
+  sweepstake: Pick<BotSweepstake, "question" | "participants">,
+  winnersCount: number,
+): string => {
+  const phone = /@lid$/i.test(winner.jid) ? "" : normalizeJid(winner.jid);
+  const mention = phone ? `@${phone}` : "Participante";
+  const values: Record<string, string> = {
+    pushname: winner.displayName?.trim() || phone || "Participante",
+    numero: phone, jid: phone, mencao: mention,
+    premio: sweepstake.question, participantes: String(sweepstake.participants.length),
+    ganhadores: String(winnersCount),
+  };
+  const body = template.replace(/\{\{?\s*(pushname|numero|jid|mencao|premio|participantes|ganhadores)\s*\}\}?/gi,
+    (_, key: string) => values[key.toLowerCase()]).trim();
+  // Mention metadata alone does not make an arbitrary @pushname clickable.
+  return phone && !body.includes(mention) ? `${body}\n${mention}` : body;
 };
 
 export const buildSweepstakeAnnouncement = (
@@ -660,7 +681,7 @@ export const buildSweepstakeAnnouncement = (
 
   const mentions = winners
     .map((winner) => /@(s\.whatsapp\.net|c\.us)$/i.test(winner.jid) ? winner.jid : null)
-    .filter((jid) => typeof jid === "string" && jid.length > 0);
+    .filter((jid): jid is string => typeof jid === "string" && jid.length > 0);
 
   return {
     body: lines.join("\n"),
@@ -670,6 +691,7 @@ export const buildSweepstakeAnnouncement = (
 
 export const listDueSweepstakes = async (
   limit = 25,
+  cleanupOnly = false,
 ): Promise<BotSweepstakeWithInstance[]> => {
   await ensureTable();
   const db = getDb();
@@ -686,7 +708,9 @@ export const listDueSweepstakes = async (
       FROM bot_sweepstakes s
       INNER JOIN bot_instances bi ON s.instance_id = bi.id
       LEFT JOIN bot_groups bg ON bg.instance_id = s.instance_id AND bg.remote_id = s.group_jid
-      WHERE s.status = 'active'
+      WHERE ${cleanupOnly
+        ? "s.status <> 'active' AND CAST(s.metadata AS TEXT) LIKE '%\"cleanupPending\":true%'"
+        : "s.status = 'active'"}
         AND s.expires_at <= ?
       ORDER BY s.expires_at ASC
       LIMIT ?

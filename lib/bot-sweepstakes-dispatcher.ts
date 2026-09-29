@@ -4,14 +4,15 @@ import {
   listDueSweepstakes,
   pickSweepstakeWinners,
   refreshSweepstake,
+  renderSweepstakeWinnerMessage,
   type BotSweepstakeParticipant,
   type BotSweepstakeWithInstance,
 } from "lib/bot-sweepstakes";
-import { deleteMessageForEveryone, resolveWhatsappLidProfiles, resolveWhatsappLidsToPhones, sendMediaMessage, sendTextMessage } from "lib/wuzapi";
+import { resolveWhatsappLidProfiles, resolveWhatsappLidsToPhones, sendMediaMessage, sendTextMessage } from "lib/wuzapi";
 import { resolveBotAutomationGuard } from "lib/bot-automation-guard";
 import { getDb } from "lib/db";
 import { normalizeJid } from "lib/whatsapp";
-import { deleteWhatsappConversationMessageForUser } from "lib/whatsapp-conversations";
+import { cleanupSweepstakePoll } from "lib/sweepstake-poll-cleanup";
 
 const DISPATCH_INTERVAL_MS = Number.parseInt(
   process.env.SWEEPSTAKES_DISPATCH_INTERVAL_MS ?? "",
@@ -106,21 +107,14 @@ const announceSweepstakeResult = async (
     ? metadata.winnerMessageTemplate.trim()
     : "";
   const body = resolvedWinners.length > 0 && template
-    ? resolvedWinners.map((winner) => template
-        .replace(/\{\{\s*pushname\s*\}\}/gi, winner.displayName?.trim() || normalizeJid(winner.jid))
-        .replace(/\{\{\s*numero\s*\}\}/gi, normalizeJid(winner.jid))
-        .replace(/\{\{\s*jid\s*\}\}/gi, winner.jid)
-        .replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question)
-        .replace(/\{\{\s*participantes\s*\}\}/gi, String(sweepstake.participants.length))
-        .replace(/\{\{\s*ganhadores\s*\}\}/gi, String(resolvedWinners.length))
-        .trim()).join("\n\n")
+    ? resolvedWinners.map((winner) => renderSweepstakeWinnerMessage(template, winner, sweepstake, resolvedWinners.length)).join("\n\n")
     : announcement.body;
-  const mediaUrl = typeof metadata.winnerMediaUrl === "string" && metadata.winnerMediaUrl.trim()
+  const mediaUrl = metadata.winnerMediaUrl === null ? null : typeof metadata.winnerMediaUrl === "string" && metadata.winnerMediaUrl.trim()
     ? (/^https?:\/\//i.test(metadata.winnerMediaUrl.trim())
       ? metadata.winnerMediaUrl.trim()
       : `https://botadmin.shop/${metadata.winnerMediaUrl.trim().replace(/^\/+/, "")}`)
     : "https://botadmin.shop/botadmin-landing/sweepstake-winner-v1.png";
-  if (resolvedWinners.length === 0) {
+  if (resolvedWinners.length === 0 || !mediaUrl) {
     await sendTextMessage(client, { to: sweepstake.groupJid, body, mentions: announcement.mentions });
     return;
   }
@@ -185,21 +179,11 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
       error,
     });
   } finally {
-    const client = { baseUrl: sweepstake.instance.baseUrl, token: sweepstake.instance.token };
-    if (sweepstake.instance.baseUrl && sweepstake.instance.token && sweepstake.pollMessageId) {
-      await deleteMessageForEveryone(client, {
-        chatId: sweepstake.groupJid,
-        messageId: sweepstake.pollMessageId,
-        participant: sweepstake.instance.phone ? `${normalizeJid(sweepstake.instance.phone)}@s.whatsapp.net` : undefined,
-        fromMe: true,
-      }).catch((error) => console.warn("[sweepstakes] failed to delete finished poll", { sweepstakeId: sweepstake.id, error }));
-    }
-    await deleteWhatsappConversationMessageForUser(
-      sweepstake.userId,
-      sweepstake.instance.id,
-      sweepstake.groupJid,
-      sweepstake.pollMessageId,
-    ).catch((error) => console.warn("[sweepstakes] failed to delete poll from panel", { sweepstakeId: sweepstake.id, error }));
+    let cleanupPending = false;
+    await cleanupSweepstakePoll({ baseUrl: sweepstake.instance.baseUrl, token: sweepstake.instance.token }, {
+      userId: sweepstake.userId, instanceId: sweepstake.instance.id,
+      groupJid: sweepstake.groupJid, pollMessageId: sweepstake.pollMessageId, phone: sweepstake.instance.phone,
+    }).catch((error) => { cleanupPending = true; console.warn("[sweepstakes] poll cleanup pending", { sweepstakeId: sweepstake.id, error }); });
     await finalizeSweepstake(sweepstake.id, {
       status: "completed",
       winners,
@@ -209,6 +193,7 @@ const processDueSweepstake = async (sweepstake: BotSweepstakeWithInstance) => {
         participantsCount: participants.length,
         winnersCount: winners.length,
         announcedAt: concludedAt.toISOString(),
+        cleanupPending,
       },
     });
   }
@@ -224,6 +209,19 @@ const runSweepstakesCycle = async () => {
     const due = await listDueSweepstakes(DISPATCH_MAX_BATCH);
     for (const entry of due) {
       await processDueSweepstake(entry);
+    }
+    for (const entry of await listDueSweepstakes(DISPATCH_MAX_BATCH, true)) {
+      try {
+        await cleanupSweepstakePoll({ baseUrl: entry.instance.baseUrl, token: entry.instance.token }, {
+          userId: entry.userId, instanceId: entry.instance.id, groupJid: entry.groupJid,
+          pollMessageId: entry.pollMessageId, phone: entry.instance.phone,
+        });
+        await getDb().query("UPDATE bot_sweepstakes SET metadata = ? WHERE id = ?", [
+          JSON.stringify({ ...entry.metadata, cleanupPending: false, pollRemovedAt: new Date().toISOString() }), entry.id,
+        ]);
+      } catch (error) {
+        console.warn("[sweepstakes] retry poll cleanup failed", { sweepstakeId: entry.id, error });
+      }
     }
   } catch (error) {
     console.error("[sweepstakes] cycle error", error);

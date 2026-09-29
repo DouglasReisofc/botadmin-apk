@@ -18,12 +18,18 @@ class SweepstakeParticipant {
 }
 
 String _cleanJid(String value) => value
-    .replaceFirst(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false), '')
+    .replaceFirst(
+      RegExp(r'@(s\.whatsapp\.net|c\.us|lid)$', caseSensitive: false),
+      '',
+    )
     .trim();
 
 String? _cleanName(String? value) {
   final clean = (value ?? '')
-      .replaceAll(RegExp(r'@(s\.whatsapp\.net|c\.us|lid)\b', caseSensitive: false), '')
+      .replaceAll(
+        RegExp(r'@(s\.whatsapp\.net|c\.us|lid)\b', caseSensitive: false),
+        '',
+      )
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim();
   return clean.isEmpty ? null : clean;
@@ -40,6 +46,8 @@ class SweepstakeSummary {
     this.expiresAt,
     this.winners = const [],
     this.pollMessageId,
+    this.winnerMessageTemplate,
+    this.winnerMediaUrl,
   });
 
   final int id;
@@ -51,6 +59,8 @@ class SweepstakeSummary {
   final List<SweepstakeParticipant> participants;
   final List<SweepstakeParticipant> winners;
   final String? pollMessageId;
+  final String? winnerMessageTemplate;
+  final String? winnerMediaUrl;
 
   bool get isActive => status == 'active';
 
@@ -83,6 +93,14 @@ class SweepstakeSummary {
       participants: people(json['participants']),
       winners: people(json['winners']),
       pollMessageId: json['pollMessageId']?.toString(),
+      winnerMessageTemplate:
+          (json['metadata'] is Map
+                  ? json['metadata']['winnerMessageTemplate']
+                  : null)
+              ?.toString(),
+      winnerMediaUrl:
+          (json['metadata'] is Map ? json['metadata']['winnerMediaUrl'] : null)
+              ?.toString(),
     );
   }
 }

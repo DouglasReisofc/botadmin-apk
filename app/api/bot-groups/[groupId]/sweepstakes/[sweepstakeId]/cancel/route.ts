@@ -8,8 +8,8 @@ import {
   getSweepstakeForGroup,
   listSweepstakesForGroup,
 } from "lib/bot-sweepstakes";
-import { deleteMessageForEveryone, sendTextMessage } from "lib/wuzapi";
-import { deleteWhatsappConversationMessageForUser } from "lib/whatsapp-conversations";
+import { sendTextMessage } from "lib/wuzapi";
+import { cleanupSweepstakePoll } from "lib/sweepstake-poll-cleanup";
 
 const shouldNotify = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -98,22 +98,6 @@ export async function POST(
   }
 
   if (instance.serverBaseUrl && instance.token) {
-    if (sweepstake.pollMessageId) {
-      try {
-        await deleteMessageForEveryone(
-          { baseUrl: instance.serverBaseUrl, token: instance.token },
-          {
-            chatId: sweepstake.groupJid,
-            messageId: sweepstake.pollMessageId,
-            participant: instance.phone ? `${instance.phone}@s.whatsapp.net` : undefined,
-            fromMe: true,
-          },
-        );
-      } catch (error) {
-        console.warn("Failed to delete sweepstake poll on cancel", { sweepstakeId, error });
-      }
-    }
-
     if (notify) {
       const lines: string[] = [];
       lines.push("⚠️ *SORTEIO CANCELADO*");
@@ -143,20 +127,18 @@ export async function POST(
     }
   }
 
-  await deleteWhatsappConversationMessageForUser(
-    user.id,
-    instance.id,
-    sweepstake.groupJid,
-    sweepstake.pollMessageId,
-  ).catch((error) => {
-    console.warn("Failed to delete cancelled sweepstake poll from BotAdmin chat", { sweepstakeId, error });
-  });
+  let cleanupPending = false;
+  await cleanupSweepstakePoll({ baseUrl: instance.serverBaseUrl, token: instance.token }, {
+    userId: user.id, instanceId: instance.id, groupJid: sweepstake.groupJid,
+    pollMessageId: sweepstake.pollMessageId, phone: instance.phone || "",
+  }).catch((error) => { cleanupPending = true; console.warn("Cancelled poll cleanup pending", { sweepstakeId, error }); });
 
   const metadata = {
     ...(typeof sweepstake.metadata === "object" && sweepstake.metadata ? sweepstake.metadata : {}),
     cancelledBy: `user:${user.id}`,
     cancelledAt: new Date().toISOString(),
     cancelledReason: reason,
+    cleanupPending,
     participantsCount: sweepstake.participants.length,
   };
 

@@ -9,10 +9,11 @@ import {
   getSweepstakeForGroup,
   listSweepstakesForGroup,
   pickSweepstakeWinners,
+  renderSweepstakeWinnerMessage,
 } from "lib/bot-sweepstakes";
-import { deleteMessageForEveryone, sendMediaMessage, sendTextMessage } from "lib/wuzapi";
+import { resolveWhatsappLidProfiles, resolveWhatsappLidsToPhones, sendMediaMessage, sendTextMessage } from "lib/wuzapi";
 import { normalizeJid } from "lib/whatsapp";
-import { deleteWhatsappConversationMessageForUser } from "lib/whatsapp-conversations";
+import { cleanupSweepstakePoll } from "lib/sweepstake-poll-cleanup";
 
 const shouldNotify = (value: unknown): boolean => {
   if (value === undefined) return true;
@@ -29,24 +30,6 @@ const shouldNotify = (value: unknown): boolean => {
     }
   }
   return true;
-};
-
-const renderWinnerMessage = (
-  template: string,
-  winner: { jid: string; displayName: string | null },
-  sweepstake: { question: string; participants: unknown[] },
-  winnersCount: number,
-): string => {
-  const phone = normalizeJid(winner.jid);
-  const pushname = winner.displayName?.trim() || phone || "participante";
-  return template
-    .replace(/\{\{\s*pushname\s*\}\}/gi, pushname)
-    .replace(/\{\{\s*numero\s*\}\}/gi, phone)
-    .replace(/\{\{\s*jid\s*\}\}/gi, winner.jid)
-    .replace(/\{\{\s*premio\s*\}\}/gi, sweepstake.question)
-    .replace(/\{\{\s*participantes\s*\}\}/gi, String(sweepstake.participants.length))
-    .replace(/\{\{\s*ganhadores\s*\}\}/gi, String(winnersCount))
-    .trim();
 };
 
 const resolveWinnerMediaUrl = (value: unknown): string | null => {
@@ -120,6 +103,36 @@ export async function POST(
     ? sweepstake.metadata as Record<string, unknown>
     : {};
 
+  // WhatsApp may report poll voters with a LID. Resolve it before building the
+  // announcement so both the visible @mention and the persisted winner use a
+  // readable phone JID.
+  const client = { baseUrl: instance.serverBaseUrl, token: instance.token };
+  const lidWinners = winners.filter((winner) =>
+    winner.jid.toLowerCase().endsWith("@lid") || /^\d{14,}$/.test(winner.jid),
+  );
+  const lidPhones = lidWinners.length && client.baseUrl && client.token
+    ? await resolveWhatsappLidsToPhones(client, lidWinners.map((winner) => winner.jid)).catch(() => new Map<string, string>())
+    : new Map<string, string>();
+  const lidProfiles = lidWinners.length && client.baseUrl && client.token
+    ? await resolveWhatsappLidProfiles(client, lidWinners.map((winner) => winner.jid)).catch(() => new Map())
+    : new Map();
+  const resolvedWinners = winners.map((winner) => {
+    const isLid = winner.jid.toLowerCase().endsWith("@lid") || /^\d{14,}$/.test(winner.jid);
+    const key = normalizeJid(winner.jid);
+    const phone = isLid ? lidPhones.get(key) ?? lidProfiles.get(key)?.phone ?? null : normalizeJid(winner.jid);
+    const groupMember = (group.participants ?? []).find((member) =>
+      [member.id, member.phone].some((value) =>
+        typeof value === "string" && (value === winner.jid || (phone && normalizeJid(value) === phone)),
+      ),
+    );
+    const memberPhone = groupMember?.phone && !/@lid$/i.test(groupMember.phone)
+      ? normalizeJid(groupMember.phone)
+      : phone;
+    const displayName = [groupMember?.name, groupMember?.displayName, groupMember?.pushName, lidProfiles.get(key)?.name, winner.displayName]
+      .find((value) => typeof value === "string" && value.trim() && !/@lid\b/i.test(value));
+    return { ...winner, jid: memberPhone ? `${memberPhone}@s.whatsapp.net` : winner.jid, displayName: displayName?.trim() || null };
+  });
+
   if (notify && instance.serverBaseUrl && instance.token) {
     const configuredTemplate = typeof metadataRecord.winnerMessageTemplate === "string"
       ? metadataRecord.winnerMessageTemplate.trim()
@@ -127,15 +140,14 @@ export async function POST(
     // A winner template/media is only meaningful when there is a winner. The
     // zero-participant result is always a plain text status, never a winner
     // card/image with an empty announcement.
-    const announcement = winners.length > 0
+    const announcement = resolvedWinners.length > 0
       ? configuredTemplate
         ? {
-            body: winners.map((winner) => renderWinnerMessage(configuredTemplate, winner, sweepstake, winners.length)).join("\n\n"),
-            mentions: winners.map((winner) => winner.jid).filter((jid) => /@(s\.whatsapp\.net|c\.us)$/i.test(jid)),
+            body: resolvedWinners.map((winner) => renderSweepstakeWinnerMessage(configuredTemplate, winner, sweepstake, resolvedWinners.length)).join("\n\n"),
+            mentions: resolvedWinners.map((winner) => winner.jid).filter((jid) => /@(s\.whatsapp\.net|c\.us)$/i.test(jid)),
           }
-        : buildSweepstakeAnnouncement(sweepstake, winners)
+        : buildSweepstakeAnnouncement(sweepstake, resolvedWinners)
       : buildSweepstakeAnnouncement(sweepstake, []);
-    const client = { baseUrl: instance.serverBaseUrl, token: instance.token };
     const winnerMediaUrl = resolveWinnerMediaUrl(metadataRecord.winnerMediaUrl);
     try {
       if (winnerMediaUrl && winners.length > 0) {
@@ -164,29 +176,11 @@ export async function POST(
   // The poll is only an interaction surface. Once the draw is closed, remove
   // it from WhatsApp and from the BotAdmin conversation so only the result
   // announcement remains visible.
-  if (instance.serverBaseUrl && instance.token && sweepstake.pollMessageId) {
-    try {
-      await deleteMessageForEveryone(
-        { baseUrl: instance.serverBaseUrl, token: instance.token },
-        {
-          chatId: sweepstake.groupJid,
-          messageId: sweepstake.pollMessageId,
-          participant: instance.phone ? `${normalizeJid(instance.phone)}@s.whatsapp.net` : undefined,
-          fromMe: true,
-        },
-      );
-    } catch (error) {
-      console.warn("Failed to delete finished sweepstake poll from WhatsApp", { sweepstakeId, error });
-    }
-  }
-  await deleteWhatsappConversationMessageForUser(
-    user.id,
-    instance.id,
-    sweepstake.groupJid,
-    sweepstake.pollMessageId,
-  ).catch((error) => {
-    console.warn("Failed to delete finished sweepstake poll from BotAdmin chat", { sweepstakeId, error });
-  });
+  let cleanupPending = false;
+  await cleanupSweepstakePoll({ baseUrl: instance.serverBaseUrl, token: instance.token }, {
+    userId: user.id, instanceId: instance.id, groupJid: sweepstake.groupJid,
+    pollMessageId: sweepstake.pollMessageId, phone: instance.phone || "",
+  }).catch((error) => { cleanupPending = true; console.warn("Sweepstake poll cleanup pending", { sweepstakeId, error }); });
 
   const existingMetadata = { ...metadataRecord };
 
@@ -197,11 +191,12 @@ export async function POST(
     finalizedBy: `user:${user.id}`,
     finalizedAt: concludedAt.toISOString(),
     announcedViaPanel: notify,
+    cleanupPending,
   };
 
   await finalizeSweepstake(sweepstake.id, {
     status: "completed",
-    winners,
+    winners: resolvedWinners,
     concludedAt,
     metadata,
   });

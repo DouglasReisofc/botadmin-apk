@@ -14,6 +14,45 @@ const leave = createHash('sha256').update('Não participar ❌').digest('hex');
 const phoneA = '5511999900001';
 const phoneB = '5511999900002';
 const botPhone = '5511999900003';
+
+test('winner announcement has a real phone mention with both template syntaxes', () => {
+  const { api } = persistenceHarness();
+  const winner = { jid: `${phoneA}@s.whatsapp.net`, displayName: 'Pessoa Teste' };
+  const draw = { question: 'Teste sem prêmio', participants: [winner], winnersCount: 1, maxParticipants: 10 };
+  const announcement = api.buildSweepstakeAnnouncement(draw, [winner]);
+  assert.ok(announcement.body.includes(`@${phoneA}`));
+  assert.equal(announcement.mentions[0], winner.jid);
+  for (const template of ['Parabéns {pushname}: {premio}', 'Parabéns {{pushname}}: {{premio}}', '{mencao} venceu']) {
+    const rendered = api.renderSweepstakeWinnerMessage(template, winner, draw, 1);
+    assert.ok(rendered.includes(`@${phoneA}`));
+    assert.ok(!rendered.includes('{'));
+    assert.ok(!rendered.includes('@s.whatsapp.net'));
+  }
+});
+
+test('cleanup unpins and revokes, retries failures, and emits removal only after success', async () => {
+  const calls: string[] = [];
+  let deletes = 0;
+  const exports: Record<string, any> = {};
+  const code = ts.transpileModule(readFileSync(new URL('../lib/sweepstake-poll-cleanup.ts', import.meta.url), 'utf8'), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText;
+  vm.runInNewContext(code, { exports, require: (name: string) => {
+    if (name === './whatsapp') return { normalizeJid };
+    if (name === './wuzapi') return {
+      pinMessageInChat: async (_: unknown, key: any) => { assert.equal(key.pinned, false); calls.push('unpin'); },
+      deleteMessageForEveryone: async (_: unknown, key: any) => { assert.equal(key.messageId, 'TEST'); assert.equal(key.participant, `${botPhone}@s.whatsapp.net`); calls.push('revoke'); if (++deletes === 1) throw new Error('temporary'); },
+    };
+    if (name === './whatsapp-conversations') return {
+      deleteWhatsappConversationMessageForUser: async () => { calls.push('panel'); },
+      recordWhatsappRealtimeEvent: async (event: any) => { assert.equal(event.payload.action, 'sweepstake.poll.removed'); return event; },
+    };
+    if (name === './whatsapp-realtime-bus') return { publishWhatsappRealtimeEvent: () => calls.push('event') };
+    throw new Error(name);
+  }});
+  await exports.cleanupSweepstakePoll({}, { userId: 1, instanceId: 1, groupJid: 'test@g.us', pollMessageId: 'me:TEST', phone: botPhone });
+  assert.deepEqual(calls, ['unpin', 'revoke', 'revoke', 'panel', 'event']);
+});
 const creatorLid = '243585429561559@lid';
 const started = Date.parse('2026-09-28T23:00:00Z');
 
@@ -24,13 +63,13 @@ function fixture(phone = phoneA, selected: string[] | undefined = [join], timest
     sender: { jid: `${phone}@s.whatsapp.net`, phone, name: 'Participante teste', lid: '269505188126937@lid' },
     pollUpdate: {
       pollCreationMessageKey: { id: 'TEST-POLL', participant: creatorLid },
-      selectedOptions: selected, senderTimestampMS: timestamp,
+      selectedOptions: selected as string[] | undefined, senderTimestampMS: timestamp,
     },
   };
   const message = {
     raw, senderJid: creatorLid, participant: creatorLid, timestamp: started / 1000,
   } as unknown as NormalizedMessage;
-  const payload = { raw, data: raw, event: 'message.upsert', type: 'message.received' } as NormalizedWebhookPayload;
+  const payload = { raw, data: raw, event: 'message.upsert', type: 'message.received' } as unknown as NormalizedWebhookPayload;
   return { raw, payload, message };
 }
 
@@ -67,7 +106,7 @@ test('legacy uppercase envelopes still preserve a genuine voter LID for resoluti
     Info: { Sender: '269505188126937@lid', PushName: 'Teste' },
     Message: { PollUpdateMessage: { PollCreationMessageKey: { ID: 'TEST-POLL', Participant: creatorLid },
       SelectedOptions: [join], SenderTimestampMS: started + 30000 } },
-  }, raw: {} } as NormalizedWebhookPayload;
+  }, raw: {} } as unknown as NormalizedWebhookPayload;
   const message = { raw: {}, senderJid: null, participant: null } as NormalizedMessage;
   const vote = extractSweepstakePollVote(payload, message)!;
   assert.equal(vote.participantJid, '269505188126937');
