@@ -7643,6 +7643,33 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
     )).toList();
   }
 
+  Future<void> _editCardButton(int cardIndex, int buttonIndex) async {
+    final buttons = _cardButtons(_messageCards[cardIndex]);
+    if (buttonIndex < 0 || buttonIndex >= buttons.length) return;
+    final edited = await showDialog<GroupReplyButton>(context: context, builder: (_) => _ButtonEditDialog(button: buttons[buttonIndex]));
+    if (edited == null || !mounted) return;
+    setState(() {
+      final card = _messageCards[cardIndex];
+      final config = Map<String, dynamic>.from(card['buttons'] as Map? ?? {'type': 'button_reply', 'body': ''});
+      final raw = List<Map<String, dynamic>>.from((config['buttons'] as List? ?? []).map((entry) => Map<String, dynamic>.from(entry as Map)));
+      if (buttonIndex >= raw.length) return;
+      raw[buttonIndex] = {'id': edited.id, 'text': edited.label, 'type': edited.type, if (edited.url != null) 'url': edited.url, if (edited.phoneNumber != null) 'phoneNumber': edited.phoneNumber, if (edited.copyCode != null) 'copyCode': edited.copyCode};
+      config['buttons'] = raw;
+      card['buttons'] = config;
+    });
+  }
+
+  void _removeCardButton(int cardIndex, int buttonIndex) {
+    setState(() {
+      final card = _messageCards[cardIndex];
+      final config = Map<String, dynamic>.from(card['buttons'] as Map? ?? {});
+      final raw = List<Map<String, dynamic>>.from((config['buttons'] as List? ?? []).map((entry) => Map<String, dynamic>.from(entry as Map)));
+      if (buttonIndex >= raw.length) return;
+      raw.removeAt(buttonIndex);
+      if (raw.isEmpty) card.remove('buttons'); else { config['buttons'] = raw; card['buttons'] = config; }
+    });
+  }
+
   Map<String, dynamic> _saveSteps() {
     final result = <Map<String, dynamic>>[];
     for (final step in _responseSteps.where((entry) => entry['type'] == 'http')) result.add(step);
@@ -7714,7 +7741,7 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
               const SizedBox(height: 10),
               Expanded(child: Card(clipBehavior: Clip.antiAlias, child: Column(children: [
                 Padding(padding: const EdgeInsets.fromLTRB(16, 10, 12, 8), child: Row(children: [Text('Mensagem ${cardIndex + 1}', style: const TextStyle(fontWeight: FontWeight.w700)), const Spacer(), if (_messageCards.length > 1) IconButton(onPressed: () => setState(() { _messageCards.removeAt(cardIndex); _activeCard = (_activeCard - 1).clamp(0, _messageCards.length - 2); }), icon: const Icon(Icons.delete_outline_rounded), tooltip: 'Excluir mensagem')])),
-                Expanded(child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: _ScheduledAdBubblePreview(caption: card['text']?.toString() ?? '', media: media == null ? null : GroupScheduledAdMedia.fromJson(media), localMediaBytes: null, uploading: false, buttons: buttons, onEditText: () => _editCardText(cardIndex), onPickMedia: () => _editCardMedia(cardIndex), onClearMedia: media == null ? null : () => setState(() => card.remove('media')), onAddButton: buttons.length < 3 ? () async { final edited = await showDialog<GroupReplyButton>(context: context, builder: (_) => _ButtonEditDialog(button: GroupReplyButton.newDraft(buttons.length).copyWith(label: '', command: ''))); if (edited != null && mounted) setState(() { final map = Map<String, dynamic>.from(card['buttons'] as Map? ?? {'type': 'button_reply', 'body': ''}); final list = List<Map<String, dynamic>>.from((map['buttons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map))); list.add({'id': edited.id, 'text': edited.label, 'type': edited.type, if (edited.url != null) 'url': edited.url, if (edited.phoneNumber != null) 'phoneNumber': edited.phoneNumber, if (edited.copyCode != null) 'copyCode': edited.copyCode}); map['buttons'] = list; card['buttons'] = map; }); } : null, onEditButton: (_) {}, onRemoveButton: (_) {})),
+                Expanded(child: SingleChildScrollView(padding: const EdgeInsets.all(16), child: _ScheduledAdBubblePreview(caption: card['text']?.toString() ?? '', media: media == null ? null : GroupScheduledAdMedia.fromJson(media), localMediaBytes: null, uploading: false, buttons: buttons, onEditText: () => _editCardText(cardIndex), onPickMedia: () => _editCardMedia(cardIndex), onClearMedia: media == null ? null : () => setState(() => card.remove('media')), onAddButton: buttons.length < 3 ? () async { final edited = await showDialog<GroupReplyButton>(context: context, builder: (_) => _ButtonEditDialog(button: GroupReplyButton.newDraft(buttons.length).copyWith(label: '', command: ''))); if (edited != null && mounted) setState(() { final map = Map<String, dynamic>.from(card['buttons'] as Map? ?? {'type': 'button_reply', 'body': ''}); final list = List<Map<String, dynamic>>.from((map['buttons'] as List? ?? []).map((e) => Map<String, dynamic>.from(e as Map))); list.add({'id': edited.id, 'text': edited.label, 'type': edited.type, if (edited.url != null) 'url': edited.url, if (edited.phoneNumber != null) 'phoneNumber': edited.phoneNumber, if (edited.copyCode != null) 'copyCode': edited.copyCode}); map['buttons'] = list; card['buttons'] = map; }); } : null, onEditButton: (index) => _editCardButton(cardIndex, index), onRemoveButton: (index) => _removeCardButton(cardIndex, index))),
                 ),
                 Padding(padding: const EdgeInsets.fromLTRB(16, 6, 16, 14), child: Row(children: [const Text('Atraso (ms)'), const SizedBox(width: 8), SizedBox(width: 100, child: TextFormField(initialValue: '${card['delayMs'] ?? 0}', keyboardType: TextInputType.number, onChanged: (value) => card['delayMs'] = int.tryParse(value) ?? 0, decoration: const InputDecoration(isDense: true))), const Spacer(), IconButton(onPressed: cardIndex > 0 ? () => setState(() => _activeCard--) : null, icon: const Icon(Icons.chevron_left_rounded)), Text('${cardIndex + 1} / ${_messageCards.length}'), IconButton(onPressed: cardIndex < _messageCards.length - 1 ? () => setState(() => _activeCard++) : null, icon: const Icon(Icons.chevron_right_rounded))])),
               ]))),
