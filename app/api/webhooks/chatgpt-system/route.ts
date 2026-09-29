@@ -663,7 +663,8 @@ export async function POST(request: Request) {
         "Você é o roteador de ações do BotAdmin. Analise a solicitação transcrita e escolha a ação correta.",
         `Agora: ${new Date().toISOString()}. Fuso do grupo: America/Sao_Paulo. Calcule os prazos relativos a partir de agora. Não invente datas.`,
         "Responda SOMENTE com JSON válido, sem markdown, no formato:",
-        '{"action":"create_group_sweepstake|none","prize":"","endsAt":"","winnersCount":1,"mentionAll":false,"missing":[]}',
+        '{"action":"create_group_sweepstake|none","prize":"","title":"","endsAt":"","winnersCount":1,"mentionAll":false,"missing":[]}',
+        "title é opcional: preserve o título solicitado ou crie um título chamativo quando pedido, sem inventar prêmio ou regras. Ajustes de título antes da publicação podem completar o contexto pendente. Não recrie nem prometa editar uma enquete já publicada.",
         "Use create_group_sweepstake somente quando a pessoa estiver pedindo para criar ou publicar um sorteio real no grupo. Não transforme divulgação, exemplo de texto ou pedido para escrever mensagem em sorteio.",
         "Se faltar prêmio, encerramento ou quantidade de ganhadores, mantenha a ação e liste os nomes dos campos ausentes em missing. endsAt deve ser ISO 8601 com fuso quando informado.",
         "O contexto pendente abaixo só pode completar a solicitação se a mensagem atual for uma continuação explícita. Se mudar de assunto ou cancelar, retorne none. Não execute um pedido antigo por conta própria.",
@@ -702,16 +703,18 @@ export async function POST(request: Request) {
         ? decision.missing.filter((value): value is string => typeof value === "string" && value.trim())
         : [];
       const prize = typeof decision.prize === "string" ? decision.prize.trim() : "";
+      const title = typeof decision.title === "string" ? decision.title.trim().slice(0, 200) : "";
       const endsAt = typeof decision.endsAt === "string" ? decision.endsAt.trim() : "";
       const winnersCount = Number(decision.winnersCount);
       if (missing.length > 0 || !prize || !endsAt || !Number.isFinite(Date.parse(endsAt)) || Date.parse(endsAt) <= Date.now() || !Number.isInteger(winnersCount) || winnersCount < 1 || winnersCount > 50) {
-        await redisSetJson(pendingKey, { prize, endsAt, winnersCount, mentionAll: decision.mentionAll === true, missing }, 10 * 60_000);
+        await redisSetJson(pendingKey, { prize, title, endsAt, winnersCount, mentionAll: decision.mentionAll === true, missing }, 10 * 60_000);
         const messageId = await sendJobText("Para criar a enquete, informe o prêmio, quantos ganhadores e em quanto tempo termina o sorteio.");
         await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });
         return true;
       }
       const result = await executeBotAdminMcpTool("botadmin_create_group_sweepstake", {
         prize,
+        ...(title ? { title } : {}),
         endsAt,
         winnersCount,
         mentionAll: decision.mentionAll === true,
@@ -730,13 +733,17 @@ export async function POST(request: Request) {
       // The voice note is an operational command, not group content. Once
       // the MCP confirms publication, revoke the original audio for everyone
       // so neither the audio nor a later transcription remains visible.
-      if (outcome?.ok === true && client && job.whatsappMessageId) {
-        await deleteMessageForEveryone(client, {
-          chatId: job.chatId,
-          messageId: job.whatsappMessageId,
-          participant: job.senderJid,
-          fromMe: false,
-        }).catch((error) => console.warn("[bot-interage] não foi possível apagar áudio do comando", { jobId, error }));
+      if (isAudioJob && outcome?.ok === true && client && job.whatsappMessageId) {
+        const audioKey = redisKey("botinterage", "command-audio", job.instanceId, job.chatId, job.whatsappMessageId);
+        const target = await redisGetJson<{ messageId?: string; participant?: string }>(audioKey);
+        if (target?.messageId && target.participant) {
+          await deleteMessageForEveryone(client, {
+            chatId: job.chatId,
+            messageId: target.messageId,
+            participant: target.participant,
+            fromMe: false,
+          }).then(() => redisDel(audioKey)).catch((error) => console.warn("[bot-interage] não foi possível apagar áudio do comando", { jobId, error }));
+        }
       }
       const messageId = await sendJobText(answer);
       await completeBotInterageSystemJob({ jobId, status: "delivered", messageId });

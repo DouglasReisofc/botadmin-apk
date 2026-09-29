@@ -1159,13 +1159,14 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
         senderJid: z.string().min(1),
         requestMessageId: z.string().min(1),
         prize: z.string().min(1).max(200),
+        title: z.string().trim().min(1).max(200).optional(),
         endsAt: z.string().datetime({ offset: true }),
         winnersCount: z.number().int().min(1).max(50),
         maxParticipants: z.number().int().min(1).max(10000).optional(),
         mentionAll: z.boolean().optional(),
       },
     },
-    async ({ groupId, groupRemoteId, senderJid, requestMessageId, prize, endsAt, winnersCount, maxParticipants, mentionAll }) => {
+    async ({ groupId, groupRemoteId, senderJid, requestMessageId, prize, title, endsAt, winnersCount, maxParticipants, mentionAll }) => {
       const db = getDb();
       const [rows] = await db.query<Array<Record<string, unknown>>>(
         `SELECT g.id, g.user_id, g.instance_id, g.remote_id, g.participants,
@@ -1221,7 +1222,7 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
       const question = prize.trim();
       const poll = await sendPollMessage(client, {
         to: groupRemoteId,
-        question: `🎟️ *SORTEIO*: ${question}`,
+        question: title ? `${title}\n🎁 Prêmio: ${question}` : `🎟️ *SORTEIO*: ${question}`,
         options: ["Participar ✅", "Não participar ❌"],
         selectableOptionsCount: 1,
         mentions,
@@ -1237,7 +1238,7 @@ export const createBotAdminMcpServer = (options: { publicMode?: boolean } = {}):
         question, joinOptionHash: options[0].hash, options,
         maxParticipants: limit, winnersCount, expiresAt: expiration,
         createdBy: senderJid,
-        metadata: { source: "botinterage_mcp", mentionAll: mentionAll === true, createdAt: new Date().toISOString() },
+        metadata: { source: "botinterage_mcp", title: title ?? null, mentionAll: mentionAll === true, createdAt: new Date().toISOString() },
         messageKey: requestMessageId,
       });
       return toolResult({ ok: true, sweepstakeId: sweepstake.id, pollMessageId: sweepstake.pollMessageId,

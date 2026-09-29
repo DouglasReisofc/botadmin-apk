@@ -19362,6 +19362,7 @@ const convertStickerSourceToWebp = async (
             type: "object",
             properties: {
               prize: { type: "string", description: "Prêmio exato anunciado ao grupo." },
+              title: { type: "string", description: "Título opcional da enquete. Preserve o título pedido ou crie um chamativo se solicitado; não altere o prêmio nem regras." },
               endsAt: { type: "string", description: "Data/hora futura ISO 8601 com offset de fuso, ex.: 2026-09-27T18:00:00-03:00." },
               winnersCount: { type: "integer", minimum: 1, maximum: 50 },
               maxParticipants: { type: "integer", minimum: 1, maximum: 10000 },
@@ -20174,7 +20175,7 @@ const convertStickerSourceToWebp = async (
         "Mesmo que o áudio citado tenha sido gravado antes, trate-o como a entrada atual desta solicitação e não como uma resposta antiga.",
         "Não reutilize imagens, arquivos, intenções ou respostas de outros grupos ou de turnos anteriores.",
         "Escute/transcreva o áudio antes de responder e execute a tarefa pedida sobre o conteúdo dele.",
-        "Se o pedido falado for para criar um sorteio real no grupo, retorne somente JSON no formato {\"action\":\"create_group_sweepstake\",\"prize\":\"\",\"endsAt\":\"\",\"winnersCount\":1,\"mentionAll\":false,\"missing\":[]}; para qualquer outro pedido responda normalmente.",
+        "Se o pedido falado for para criar um sorteio real no grupo, retorne somente JSON no formato {\"action\":\"create_group_sweepstake\",\"prize\":\"\",\"title\":\"\",\"endsAt\":\"\",\"winnersCount\":1,\"mentionAll\":false,\"missing\":[]}; title é opcional: preserve o título solicitado ou crie um chamativo se pedido, sem mudar prêmio ou regras. Para qualquer outro pedido responda normalmente.",
         "Se a solicitação pedir resumo, resumo deve ser baseado exclusivamente no áudio; se pedir criação, use o áudio como contexto e entregue o arquivo/texto solicitado.",
         trimmedInput || "Transcreva o áudio e responda ao que foi pedido.",
       ].join("\n");
@@ -20186,6 +20187,12 @@ const convertStickerSourceToWebp = async (
       void (async () => {
         try {
           const references = attachments.filter((entry) => entry !== audio);
+          if (message.id) {
+            await redisSetJson(redisKey("botinterage", "command-audio", context.instance.id, message.chatId, message.id), {
+              messageId: quotedAudioMedia ? message.quotedMessageId : message.id,
+              participant: quotedAudioMedia ? message.quotedParticipant : message.senderJid,
+            }, 24 * 60 * 60_000);
+          }
           const job = await submitBotInterageSystemAudioJob({
             groupId: group.id,
             userId: group.userId,
