@@ -101,6 +101,13 @@ const textValue = (...values: unknown[]): string | null => {
 const digits = (value: unknown): string =>
   String(value ?? "").replace(/\D/g, "");
 
+const samePhone = (left: unknown, right: unknown): boolean => {
+  const a = digits(left);
+  const b = digits(right);
+  return a.length >= 10 && b.length >= 10 &&
+    (a === b || a.endsWith(b) || b.endsWith(a));
+};
+
 const participantIsAdmin = (value: unknown, instanceDigits: string): boolean => {
   const item = record(value);
   const jid = textValue(
@@ -110,9 +117,9 @@ const participantIsAdmin = (value: unknown, instanceDigits: string): boolean => 
   const role = textValue(item.admin, item.Admin, item.role, item.Role, item.rank, item.Rank)
     ?.toLowerCase();
   const explicit = boolValue(item.isAdmin, item.IsAdmin, item.is_admin, item.IsOwner, item.isOwner);
-  if (explicit === true) return digits(jid) === instanceDigits || !jid;
+  if (explicit === true) return samePhone(jid, instanceDigits);
   if (role && ["admin", "superadmin", "super-admin", "owner"].includes(role)) {
-    return digits(jid) === instanceDigits || !jid;
+    return samePhone(jid, instanceDigits);
   }
   return false;
 };
@@ -129,7 +136,7 @@ const refreshGroupThread = async (userId: number, instance: Awaited<ReturnType<t
   );
   const data = nestedGroupRecord(info);
   const announceOnly = boolValue(
-    data.IsAnnounce, data.isAnnounce, data.announce, data.Announce,
+    data.IsAnnounce, data.isAnnounce, data.isannounce, data.announce, data.Announce,
     data.adminsOnly, data.AdminOnly, data.onlyAdmins,
   );
   if (announceOnly === null) return current;
@@ -138,8 +145,9 @@ const refreshGroupThread = async (userId: number, instance: Awaited<ReturnType<t
   const rawParticipants = data.Participants ?? data.participants ?? data.Members ?? data.members;
   const participants = Array.isArray(rawParticipants) ? rawParticipants : [];
   const hasParticipantContext = Boolean(owner || participants.length);
+  if (announceOnly && (!instanceDigits || !hasParticipantContext)) return current;
   const instanceIsAdmin = announceOnly
-    ? (owner ? digits(owner) === instanceDigits : false) ||
+    ? (owner ? samePhone(owner, instanceDigits) : false) ||
       participants.some((item) => participantIsAdmin(item, instanceDigits))
     : true;
   const canSendMessages = !announceOnly || instanceIsAdmin;
