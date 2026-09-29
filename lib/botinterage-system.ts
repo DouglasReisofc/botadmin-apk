@@ -355,7 +355,7 @@ export const requestBotInterageSystemDecision = async (prompt: string): Promise<
       "Content-Type": "application/json",
       Accept: "application/json",
     },
-    body: JSON.stringify({ prompt: prompt.trim(), model: "auto", provider: "chatgpt", temperature: 0 }),
+    body: JSON.stringify({ prompt: prompt.trim(), model: "auto", provider: "chatgpt", temperature: 0, _botadmin_decision: true }),
   }, 60_000);
   const payload = await response.json().catch(() => null) as Record<string, unknown> | null;
   if (!response.ok) throw new Error(typeof payload?.error === "string" ? payload.error : `HTTP ${response.status}`);
