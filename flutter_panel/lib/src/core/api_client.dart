@@ -4674,6 +4674,25 @@ class BotAdminApiClient {
     }
   }
 
+  Future<Map<String, dynamic>> testHttpFlow({
+    required String method,
+    required String url,
+    String body = '',
+    List<Map<String, String>> headers = const [],
+    Map<String, String> variables = const {},
+  }) {
+    return postJson(
+      '/api/bot-flows/test-http',
+      data: {
+        'method': method,
+        'url': url,
+        'body': body,
+        'headers': headers,
+        'variables': variables,
+      },
+    );
+  }
+
   Future<YoutubePreview?> resolveYoutubePreview(String rawQuery) {
     final query = rawQuery.trim();
     if (query.isEmpty) return Future<YoutubePreview?>.value();

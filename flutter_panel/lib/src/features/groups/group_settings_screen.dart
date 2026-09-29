@@ -858,7 +858,10 @@ class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
       context: context,
       barrierDismissible: false,
       builder: (context) =>
-          _AutoResponsesConfigDialog(items: settings.autoResponses),
+          _AutoResponsesConfigDialog(
+            items: settings.autoResponses,
+            api: ref.read(apiClientProvider),
+          ),
     );
     if (draft == null) return;
     await _saveAutoResponsesConfig(groupId, draft);
@@ -7187,9 +7190,10 @@ class _HorapgConfigDialogState extends State<_HorapgConfigDialog> {
 }
 
 class _AutoResponsesConfigDialog extends StatefulWidget {
-  const _AutoResponsesConfigDialog({required this.items});
+  const _AutoResponsesConfigDialog({required this.items, required this.api});
 
   final List<GroupAutoResponseConfig> items;
+  final BotAdminApiClient api;
 
   @override
   State<_AutoResponsesConfigDialog> createState() =>
@@ -7212,6 +7216,7 @@ class _AutoResponsesConfigDialogState
       barrierDismissible: false,
       builder: (context) => _AutoResponseEditDialog(
         item: item ?? GroupAutoResponseConfig.newDraft(),
+        api: widget.api,
       ),
     );
     if (draft == null) return;
@@ -7365,9 +7370,10 @@ class _AutoResponseTile extends StatelessWidget {
 }
 
 class _AutoResponseEditDialog extends StatefulWidget {
-  const _AutoResponseEditDialog({required this.item});
+  const _AutoResponseEditDialog({required this.item, required this.api});
 
   final GroupAutoResponseConfig item;
+  final BotAdminApiClient api;
 
   @override
   State<_AutoResponseEditDialog> createState() =>
@@ -7392,6 +7398,10 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
   late String _stepMediaType;
   late String _stepMethod;
   late List<Map<String, dynamic>> _responseSteps;
+  bool _httpTesting = false;
+  Map<String, dynamic>? _httpTestResult;
+  List<String> _httpSuggestions = const [];
+  final Map<String, String> _flowVariables = {};
 
   @override
   void initState() {
@@ -7526,6 +7536,61 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
       if (index == null) _stepButtons.add(edited);
       else _stepButtons[index] = edited;
     });
+  }
+
+  Future<void> _testHttpStep() async {
+    final url = _stepUrl.text.trim();
+    if (url.isEmpty) return;
+    setState(() => _httpTesting = true);
+    try {
+      final headers = <Map<String, String>>[];
+      try {
+        final decoded = jsonDecode(_stepHeadersJson.text);
+        if (decoded is Map) {
+          for (final entry in decoded.entries) {
+            headers.add({'key': entry.key.toString(), 'value': entry.value.toString()});
+          }
+        }
+      } catch (_) {}
+      final result = await widget.api.testHttpFlow(
+        method: _stepMethod,
+        url: url,
+        body: _stepBody.text,
+        headers: headers,
+        variables: _flowVariables,
+      );
+      final raw = result['suggestions'];
+      final suggestions = raw is List
+          ? raw.map((value) => value.toString()).where((value) => value.trim().isNotEmpty).toList()
+          : <String>[];
+      if (!mounted) return;
+      setState(() {
+        _httpTestResult = result;
+        _httpSuggestions = suggestions;
+        final saveAs = _stepSaveAs.text.trim();
+        if (saveAs.isNotEmpty) _flowVariables[saveAs] = 'data';
+      });
+    } catch (error) {
+      if (mounted) showErrorToast(context, error);
+    } finally {
+      if (mounted) setState(() => _httpTesting = false);
+    }
+  }
+
+  void _insertFlowVariable(String path) {
+    final normalized = path.trim().replaceFirst(RegExp(r'^data\.'), '');
+    if (normalized.isEmpty) return;
+    final key = _stepSaveAs.text.trim().isEmpty ? 'api' : _stepSaveAs.text.trim();
+    final token = '{{${key}.${normalized}}}';
+    final selection = _response.selection;
+    final text = _response.text;
+    final start = selection.isValid && selection.start >= 0 ? selection.start : text.length;
+    final end = selection.isValid && selection.end >= start ? selection.end : start;
+    _response.value = TextEditingValue(
+      text: text.replaceRange(start, end, token),
+      selection: TextSelection.collapsed(offset: start + token.length),
+    );
+    setState(() => _flowVariables[token] = token);
   }
 
   @override
@@ -7669,6 +7734,48 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                   TextField(controller: _stepHeadersJson, minLines: 1, maxLines: 3, decoration: const InputDecoration(labelText: 'Headers JSON (opcional)', hintText: '{"Authorization":"Bearer ..."}', alignLabelWithHint: true)),
                   const SizedBox(height: 8),
                   TextField(controller: _stepPath, decoration: const InputDecoration(labelText: 'Caminho JSON da resposta (opcional)', hintText: 'data.items.0.title')),
+                  const SizedBox(height: 10),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: FilledButton.tonalIcon(
+                      onPressed: _httpTesting ? null : _testHttpStep,
+                      icon: _httpTesting
+                          ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.play_arrow_rounded),
+                      label: Text(_httpTesting ? 'Testando...' : 'Testar API'),
+                    ),
+                  ),
+                  if (_httpTestResult != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(10),
+                      decoration: BoxDecoration(
+                        color: (_httpTestResult!['ok'] == true)
+                            ? Colors.green.withValues(alpha: .10)
+                            : Colors.red.withValues(alpha: .10),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        'Retorno: HTTP ${_httpTestResult!['statusCode'] ?? '-'} · ${(_httpTestResult!['text'] ?? '').toString().trim().isEmpty ? 'sem corpo' : 'dados recebidos'}',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
+                    ),
+                    if (_httpSuggestions.isNotEmpty) ...[
+                      const SizedBox(height: 8),
+                      const Align(alignment: Alignment.centerLeft, child: Text('Clique em um dado para inserir na mensagem:', style: TextStyle(fontWeight: FontWeight.w700))),
+                      const SizedBox(height: 6),
+                      Wrap(
+                        spacing: 6,
+                        runSpacing: 6,
+                        children: _httpSuggestions.map((path) => ActionChip(
+                          avatar: const Icon(Icons.data_object_rounded, size: 16),
+                          label: Text(path.replaceFirst(RegExp(r'^data\.'), '')),
+                          onPressed: () => _insertFlowVariable(path),
+                        )).toList(),
+                      ),
+                    ],
+                  ],
                 ],
               ],
               const SizedBox(height: 8),
