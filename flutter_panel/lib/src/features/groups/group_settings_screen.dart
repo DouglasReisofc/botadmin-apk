@@ -7383,7 +7383,8 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
   late final TextEditingController _stepPath;
   late final TextEditingController _stepSaveAs;
   late final TextEditingController _stepDelay;
-  late final TextEditingController _stepButtonsJson;
+  late final TextEditingController _stepButtonsBody;
+  late List<GroupReplyButton> _stepButtons;
   late final TextEditingController _stepHeadersJson;
   late bool _matchAny;
   late String _matchMode;
@@ -7403,7 +7404,8 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
     _stepPath = TextEditingController();
     _stepSaveAs = TextEditingController();
     _stepDelay = TextEditingController(text: '0');
-    _stepButtonsJson = TextEditingController(text: '{"type":"button_reply","body":"Escolha uma opção","buttons":[{"id":"opcao_1","text":"Opção 1"}]}');
+    _stepButtonsBody = TextEditingController(text: 'Escolha uma opção');
+    _stepButtons = [];
     _stepHeadersJson = TextEditingController(text: '{"content-type":"application/json"}');
     _matchAny = widget.item.matchAnyMessage;
     _matchMode = widget.item.matchMode;
@@ -7425,7 +7427,7 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
     _stepPath.dispose();
     _stepSaveAs.dispose();
     _stepDelay.dispose();
-    _stepButtonsJson.dispose();
+    _stepButtonsBody.dispose();
     _stepHeadersJson.dispose();
     super.dispose();
   }
@@ -7471,15 +7473,25 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
           'saveAs': _stepSaveAs.text.trim().isEmpty ? null : _stepSaveAs.text.trim(),
         },
       };
-    } else if (_stepType == 'buttons' && _stepButtonsJson.text.trim().isNotEmpty) {
-      try {
-        final decoded = jsonDecode(_stepButtonsJson.text);
-        if (decoded is Map<String, dynamic>) {
-          step = {'id': id, 'type': 'buttons', 'delayMs': delay.clamp(0, 120000), 'buttons': decoded};
-        }
-      } catch (_) {
-        return;
-      }
+    } else if (_stepType == 'buttons' && _stepButtons.isNotEmpty) {
+      final cta = _scheduledAdButtonFamily(_stepButtons.first.type) == 'cta';
+      step = {
+        'id': id,
+        'type': 'buttons',
+        'delayMs': delay.clamp(0, 120000),
+        'buttons': {
+          'type': cta ? 'button_cta' : 'button_reply',
+          'body': _stepButtonsBody.text.trim(),
+          'buttons': _stepButtons.map((button) => {
+            'id': button.id,
+            'text': button.label,
+            if (cta) 'type': button.type,
+            if (button.url != null) 'url': button.url,
+            if (button.phoneNumber != null) 'phoneNumber': button.phoneNumber,
+            if (button.copyCode != null) 'copyCode': button.copyCode,
+          }).toList(),
+        },
+      };
     }
     if (step == null) return;
     setState(() {
@@ -7490,6 +7502,29 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
       _stepPath.clear();
       _stepSaveAs.clear();
       _stepDelay.text = '0';
+      _stepButtons = [];
+    });
+  }
+
+  Future<void> _editStepButton([int? index]) async {
+    if (index == null && _stepButtons.length >= 3) return;
+    final current = index == null
+        ? GroupReplyButton.newDraft(_stepButtons.length).copyWith(label: '', command: '')
+        : _stepButtons[index];
+    final edited = await showDialog<GroupReplyButton>(
+      context: context,
+      builder: (_) => _ButtonEditDialog(button: current),
+    );
+    if (edited == null || !mounted) return;
+    if (_stepButtons.isNotEmpty &&
+        _scheduledAdButtonFamily(edited.type) !=
+            _scheduledAdButtonFamily(_stepButtons.first.type)) {
+      showErrorToast(context, 'Use respostas rápidas ou botões de ação no mesmo balão.');
+      return;
+    }
+    setState(() {
+      if (index == null) _stepButtons.add(edited);
+      else _stepButtons[index] = edited;
     });
   }
 
@@ -7605,8 +7640,27 @@ class _AutoResponseEditDialogState extends State<_AutoResponseEditDialog> {
                     const SizedBox(width: 8),
                     Expanded(child: TextField(controller: _stepText, decoration: const InputDecoration(labelText: 'Legenda (opcional)'))),
                   ])
-                else if (_stepType == 'buttons')
-                  TextField(controller: _stepButtonsJson, minLines: 4, maxLines: 8, decoration: const InputDecoration(labelText: 'Configuração dos botões (JSON)', hintText: '{"type":"button_reply","buttons":[...]}', alignLabelWithHint: true))
+                else if (_stepType == 'buttons') ...[
+                  TextField(
+                    controller: _stepButtonsBody,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(labelText: 'Mensagem acima dos botões'),
+                  ),
+                  const SizedBox(height: 10),
+                  _ScheduledAdBubblePreview(
+                    caption: _stepButtonsBody.text,
+                    media: null,
+                    localMediaBytes: null,
+                    uploading: false,
+                    buttons: _stepButtons,
+                    onEditText: () {},
+                    onPickMedia: null,
+                    onClearMedia: null,
+                    onAddButton: _stepButtons.length < 3 ? () => _editStepButton() : null,
+                    onEditButton: (index) => _editStepButton(index),
+                    onRemoveButton: (index) => setState(() => _stepButtons.removeAt(index)),
+                  ),
+                ]
                 else ...[
                   Row(children: [Expanded(child: DropdownButtonFormField<String>(value: _stepMethod, decoration: const InputDecoration(labelText: 'Método'), items: const [DropdownMenuItem(value: 'GET', child: Text('GET')), DropdownMenuItem(value: 'POST', child: Text('POST')), DropdownMenuItem(value: 'PUT', child: Text('PUT')), DropdownMenuItem(value: 'PATCH', child: Text('PATCH'))], onChanged: (value) => setState(() => _stepMethod = value ?? 'GET'))), const SizedBox(width: 8), Expanded(child: TextField(controller: _stepSaveAs, decoration: const InputDecoration(labelText: 'Salvar como (opcional)')))],),
                   const SizedBox(height: 8),
