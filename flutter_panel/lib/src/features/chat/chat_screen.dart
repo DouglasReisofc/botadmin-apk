@@ -1257,8 +1257,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 ? () =>
                       unawaited(_toggleGroupBotForThread(thread, widget.group))
                 : null,
-            onOpenTools: widget.onOpenTools,
-            onOpenCalls: widget.onOpenCalls,
             onOpenSupport: widget.onOpenSupport,
             onCopyInternalGroupLink: thread.isInternalGroup
                 ? () => _copyInternalGroupLink(thread)
@@ -1270,7 +1268,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
                 thread.isInternalGroup && thread.instanceIsAdmin == true
                 ? () => _changeInternalGroupWallpaper(thread)
                 : null,
-            onStartCall: (video) => _startCall(thread, video: video),
             onRunConversationAction: (action) =>
                 _runConversationAction(thread, action),
             onTransferAndLeave:
@@ -3767,39 +3764,6 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
     }
   }
 
-  Future<void> _startCall(
-    ConversationThread thread, {
-    required bool video,
-  }) async {
-    if (!await _ensureLiveConnection(thread)) return;
-    try {
-      final callId = await ref
-          .read(apiClientProvider)
-          .startCallForThread(thread, video: video);
-      if (!mounted) return;
-      widget.onOpenCalls?.call();
-      showSuccessToast(
-        context,
-        video ? 'Chamada de video iniciada.' : 'Chamada iniciada.',
-      );
-      // The media bridge is intentionally started after the signaling request
-      // returns. This asks for the microphone from the same user gesture and
-      // avoids making the user open the calls panel before hearing audio.
-      if (!video && callId != null && callId.isNotEmpty) {
-        unawaited(
-          callAudioBridge
-              .start(instanceId: thread.instanceId, callId: callId)
-              .catchError(
-                (_) => const CallAudioBridgeSnapshot(status: 'error'),
-              ),
-        );
-      }
-    } catch (error) {
-      if (!mounted) return;
-      showErrorToast(context, error.toString());
-    }
-  }
-
   Future<void> _setDeletedMessageReveal(
     ConversationThread thread,
     ChatMessage message,
@@ -3854,13 +3818,10 @@ class _ChatHeader extends StatelessWidget {
     required this.onShowInfo,
     this.onOpenGroupSettings,
     this.onToggleBot,
-    this.onOpenTools,
-    this.onOpenCalls,
     this.onOpenSupport,
     this.onCopyInternalGroupLink,
     this.onRotateInternalGroupLink,
     this.onChangeInternalGroupWallpaper,
-    required this.onStartCall,
     required this.onRunConversationAction,
     this.onTransferAndLeave,
   });
@@ -3873,20 +3834,16 @@ class _ChatHeader extends StatelessWidget {
   final VoidCallback onShowInfo;
   final VoidCallback? onOpenGroupSettings;
   final VoidCallback? onToggleBot;
-  final VoidCallback? onOpenTools;
-  final VoidCallback? onOpenCalls;
   final VoidCallback? onOpenSupport;
   final VoidCallback? onCopyInternalGroupLink;
   final VoidCallback? onRotateInternalGroupLink;
   final VoidCallback? onChangeInternalGroupWallpaper;
-  final Future<void> Function(bool video) onStartCall;
   final Future<void> Function(String action) onRunConversationAction;
   final Future<void> Function()? onTransferAndLeave;
 
   @override
   Widget build(BuildContext context) {
     final width = MediaQuery.sizeOf(context).width;
-    final wide = width >= 980;
     final compact = width < 720;
     final subtitle = thread.isInternalGroup
         ? 'toque para dados do grupo BotAdmin'
@@ -3974,23 +3931,6 @@ class _ChatHeader extends StatelessWidget {
                 ),
               ),
             ),
-            if (wide) ...[
-              _AddToListButton(onPressed: onOpenTools),
-              SizedBox(width: 8),
-            ],
-            if (!compact)
-              _CallHeaderMenu(
-                enabled: !thread.isGroup && !thread.isChannel,
-                onOpenCalls: onOpenCalls,
-                onStartCall: onStartCall,
-              )
-            else if (!thread.isGroup && !thread.isChannel)
-              IconButton(
-                onPressed: () => unawaited(onStartCall(false)),
-                icon: Icon(Icons.call_rounded, color: WaTheme.of(context).icon),
-                tooltip: 'Ligar',
-                visualDensity: VisualDensity.compact,
-              ),
             IconButton(
               onPressed: onSearch,
               icon: Icon(Icons.search_rounded, color: WaTheme.of(context).icon),
@@ -6488,104 +6428,6 @@ class _ThreadInfoChip extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _AddToListButton extends StatelessWidget {
-  const _AddToListButton({this.onPressed});
-
-  final VoidCallback? onPressed;
-
-  @override
-  Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed:
-          onPressed ??
-          () => showSuccessToast(context, 'Abra Ferramentas para ver fluxos.'),
-      icon: Icon(Icons.contacts_outlined, size: 20),
-      label: Text('Adicionar à lista'),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: WaTheme.of(context).textPrimary,
-        side: const BorderSide(color: Color(0xFFD1D7DB)),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        padding: const EdgeInsets.fromLTRB(18, 12, 14, 12),
-        textStyle: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-      ),
-    );
-  }
-}
-
-class _CallHeaderMenu extends StatelessWidget {
-  const _CallHeaderMenu({
-    required this.enabled,
-    required this.onStartCall,
-    this.onOpenCalls,
-  });
-
-  final bool enabled;
-  final Future<void> Function(bool video) onStartCall;
-  final VoidCallback? onOpenCalls;
-
-  @override
-  Widget build(BuildContext context) {
-    return PopupMenuButton<String>(
-      tooltip: 'Chamadas',
-      enabled: enabled || onOpenCalls != null,
-      icon: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.videocam_outlined, color: WaTheme.of(context).textPrimary),
-          Icon(
-            Icons.arrow_drop_down_rounded,
-            size: 18,
-            color: WaTheme.of(context).textPrimary,
-          ),
-        ],
-      ),
-      onSelected: (value) {
-        switch (value) {
-          case 'voice':
-            onStartCall(false);
-            break;
-          case 'video':
-            onStartCall(true);
-            break;
-          case 'panel':
-            onOpenCalls?.call();
-            break;
-        }
-      },
-      itemBuilder: (context) => [
-        PopupMenuItem<String>(
-          value: 'voice',
-          enabled: enabled,
-          child: ListTile(
-            leading: Icon(Icons.call_rounded),
-            title: Text('Iniciar chamada'),
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-        PopupMenuItem<String>(
-          value: 'video',
-          enabled: enabled,
-          child: ListTile(
-            leading: Icon(Icons.videocam_rounded),
-            title: Text('Iniciar video'),
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-        const PopupMenuDivider(),
-        PopupMenuItem<String>(
-          value: 'panel',
-          enabled: onOpenCalls != null,
-          child: ListTile(
-            leading: Icon(Icons.call_made_rounded),
-            title: Text('Abrir chamadas'),
-            contentPadding: EdgeInsets.zero,
-          ),
-        ),
-      ],
     );
   }
 }
