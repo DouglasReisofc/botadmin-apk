@@ -20153,7 +20153,10 @@ const convertStickerSourceToWebp = async (
       }
 
       const audioPrompt = [
-        "A entrada principal desta solicitação é o áudio anexado (direto ou citado).",
+        `Esta é uma solicitação nova recebida agora em ${new Date().toISOString()}.`,
+        "A entrada principal desta solicitação é EXCLUSIVAMENTE o áudio anexado (direto ou citado na mensagem atual).",
+        "Mesmo que o áudio citado tenha sido gravado antes, trate-o como a entrada atual desta solicitação e não como uma resposta antiga.",
+        "Não reutilize imagens, arquivos, intenções ou respostas de outros grupos ou de turnos anteriores.",
         "Escute/transcreva o áudio antes de responder e execute a tarefa pedida sobre o conteúdo dele.",
         "Se a solicitação pedir resumo, resumo deve ser baseado exclusivamente no áudio; se pedir criação, use o áudio como contexto e entregue o arquivo/texto solicitado.",
         trimmedInput || "Transcreva o áudio e responda ao que foi pedido.",
@@ -20177,6 +20180,7 @@ const convertStickerSourceToWebp = async (
             // frase decorativa ao áudio: a transcrição literal seguirá como
             // uma mensagem comum para a IA no webhook.
             prompt: audioPrompt,
+            requestCreatedAt: new Date().toISOString(),
             audio: {
               name: nativeAudio.name,
               mimeType: nativeAudio.mimeType || "audio/ogg",

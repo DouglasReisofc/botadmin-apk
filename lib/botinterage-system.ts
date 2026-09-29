@@ -555,6 +555,7 @@ export const submitBotInterageSystemAudioJob = async (params: {
   audio: { name: string; mimeType: string; base64: string };
   references?: Array<{ name: string; mimeType: string; base64: string }>;
   language?: string | null;
+  requestCreatedAt?: string;
 }): Promise<{ jobId: string; status: string }> => {
   const config = await getBotInterageRuntimeConfig();
   if (!config.enabled || !config.baseUrl || !config.token) {
@@ -589,6 +590,8 @@ export const submitBotInterageSystemAudioJob = async (params: {
         base64: attachment.base64,
       })),
       prompt: params.prompt.trim(),
+      request_created_at: params.requestCreatedAt || new Date().toISOString(),
+      request_scope: "current_whatsapp_message",
       ...(params.language?.trim() ? { language: params.language.trim() } : {}),
       ...(conversation?.conversationId
         ? {
