@@ -44,18 +44,21 @@ Future<void> showGroupAutoResponsesFromChat(
 ) async {
   ref.invalidate(groupSettingsProvider(group.id));
   final bundle = await ref.read(groupSettingsProvider(group.id).future);
-  final draft = await showDialog<List<GroupAutoResponseConfig>>(
+  // The composer shortcut opens the actual editor (the same full workspace
+  // used by "Adicionar gatilho"), instead of the old list-only shell.
+  final draft = await showDialog<GroupAutoResponseConfig>(
     context: context,
     barrierDismissible: false,
-    builder: (dialogContext) => _AutoResponsesConfigDialog(
-      items: bundle.settings.autoResponses,
+    builder: (dialogContext) => _AutoResponseEditDialog(
+      item: GroupAutoResponseConfig.newDraft(),
       api: ref.read(apiClientProvider),
     ),
   );
   if (draft == null) return;
+  final items = [...bundle.settings.autoResponses, draft];
   await ref.read(apiClientProvider).updateGroupSettings(group.id, {
-    'autoResponses': draft.map((entry) => entry.toJson()).toList(),
-    'commandToggles': {'autoresposta': draft.isNotEmpty},
+    'autoResponses': items.map((entry) => entry.toJson()).toList(),
+    'commandToggles': {'autoresposta': items.isNotEmpty},
   });
   ref.invalidate(groupSettingsProvider(group.id));
   if (context.mounted) showSuccessToast(context, 'Auto respostas atualizadas.');
@@ -1658,12 +1661,6 @@ _ActivationStateColors _activationStateColors(
 }
 
 const List<_ActivationDefinition> _attentionActivationItems = [
-  _ActivationDefinition(
-    keyName: 'autoresposta',
-    label: 'Auto resposta',
-    description: 'Responde gatilhos cadastrados.',
-    icon: Icons.quickreply_rounded,
-  ),
   _ActivationDefinition(
     keyName: 'botinterage',
     label: 'BotInterage',
