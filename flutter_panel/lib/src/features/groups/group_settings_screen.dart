@@ -34,6 +34,54 @@ class GroupSettingsScreen extends ConsumerStatefulWidget {
       _GroupSettingsScreenState();
 }
 
+/// Opens automation editors directly from the conversation composer.  The
+/// settings are refreshed before opening so this shortcut never reuses the
+/// activation modal's stale snapshot.
+Future<void> showGroupAutoResponsesFromChat(
+  BuildContext context,
+  WidgetRef ref,
+  BotGroup group,
+) async {
+  ref.invalidate(groupSettingsProvider(group.id));
+  final bundle = await ref.read(groupSettingsProvider(group.id).future);
+  final draft = await showDialog<List<GroupAutoResponseConfig>>(
+    context: context,
+    barrierDismissible: false,
+    builder: (dialogContext) => _AutoResponsesConfigDialog(
+      items: bundle.settings.autoResponses,
+      api: ref.read(apiClientProvider),
+    ),
+  );
+  if (draft == null) return;
+  await ref.read(apiClientProvider).updateGroupSettings(group.id, {
+    'autoResponses': draft.map((entry) => entry.toJson()).toList(),
+    'commandToggles': {'autoresposta': draft.isNotEmpty},
+  });
+  ref.invalidate(groupSettingsProvider(group.id));
+  if (context.mounted) showSuccessToast(context, 'Auto respostas atualizadas.');
+}
+
+/// Opens the complete scheduled-message canvas from the composer + menu.
+Future<void> showGroupScheduledMessagesFromChat(
+  BuildContext context,
+  WidgetRef ref,
+  BotGroup group,
+) async {
+  ref.invalidate(groupSettingsProvider(group.id));
+  final bundle = await ref.read(groupSettingsProvider(group.id).future);
+  await showBotAdminBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    useSafeArea: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) => _ScheduledAdsCanvas(
+      group: group,
+      initialAds: bundle.settings.ads,
+    ),
+  );
+  ref.invalidate(groupSettingsProvider(group.id));
+}
+
 class _GroupSettingsScreenState extends ConsumerState<GroupSettingsScreen> {
   final _allowedLinks = TextEditingController();
   final _bannedWords = TextEditingController();

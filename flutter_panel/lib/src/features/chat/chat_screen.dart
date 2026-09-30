@@ -31,6 +31,7 @@ import '../../models/internal_group.dart';
 import '../../models/migration_models.dart';
 import '../../models/sweepstake.dart';
 import '../dashboard/dashboard_controller.dart';
+import '../groups/group_settings_screen.dart';
 import 'authenticated_media_image.dart';
 import 'animated_sticker_image.dart';
 import 'contact_export.dart';
@@ -1451,6 +1452,21 @@ class _ChatScreenState extends ConsumerState<ChatScreen>
               showStoreButton:
                   thread.isContact && _storeSnapshot?.store.enabled == true,
               showSweepstakeButton: thread.isGroup,
+              showAutomationButtons: thread.isGroup && widget.group != null,
+              onAutoResponses: widget.group == null
+                  ? null
+                  : () => showGroupAutoResponsesFromChat(
+                        context,
+                        ref,
+                        widget.group!,
+                      ),
+              onScheduledMessages: widget.group == null
+                  ? null
+                  : () => showGroupScheduledMessagesFromChat(
+                        context,
+                        ref,
+                        widget.group!,
+                      ),
               onEmoji: () => _openComposerPicker(thread),
               onStore: () {
                 final store = _storeSnapshot;
@@ -14165,6 +14181,9 @@ class ConversationComposer extends StatelessWidget {
     required this.onStore,
     required this.showSweepstakeButton,
     required this.onSweepstake,
+    this.showAutomationButtons = false,
+    this.onAutoResponses,
+    this.onScheduledMessages,
     required this.onBot,
     required this.onVoiceStart,
     required this.onVoiceStop,
@@ -14197,6 +14216,9 @@ class ConversationComposer extends StatelessWidget {
   final VoidCallback onStore;
   final bool showSweepstakeButton;
   final VoidCallback onSweepstake;
+  final bool showAutomationButtons;
+  final VoidCallback? onAutoResponses;
+  final VoidCallback? onScheduledMessages;
   final VoidCallback onBot;
   final Future<void> Function() onVoiceStart;
   final Future<void> Function() onVoiceStop;
@@ -14492,6 +14514,20 @@ class ConversationComposer extends StatelessWidget {
               'Sorteio',
               const Color(0xFFFFB300),
             ),
+          if (showAutomationButtons && onAutoResponses != null)
+            _internalAttachmentItem(
+              'autorespostas',
+              Icons.quickreply_rounded,
+              'Autorespostas',
+              const Color(0xFF00A884),
+            ),
+          if (showAutomationButtons && onScheduledMessages != null)
+            _internalAttachmentItem(
+              'mensagens-automaticas',
+              Icons.schedule_send_rounded,
+              'Mensagens automáticas',
+              const Color(0xFF168AFF),
+            ),
         ],
       );
       if (action == null) return;
@@ -14499,6 +14535,8 @@ class ConversationComposer extends StatelessWidget {
         await onAttach();
       }
       if (action == 'sweepstake') onSweepstake();
+      if (action == 'autorespostas') onAutoResponses?.call();
+      if (action == 'mensagens-automaticas') onScheduledMessages?.call();
       return;
     }
     final action = await showModalBottomSheet<String>(
@@ -14554,6 +14592,28 @@ class ConversationComposer extends StatelessWidget {
                 subtitle: const Text('Crie uma enquete e escolha ganhadores'),
                 onTap: () => Navigator.of(sheetContext).pop('sweepstake'),
               ),
+            if (showAutomationButtons && onAutoResponses != null)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFF00A884),
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.quickreply_rounded),
+                ),
+                title: const Text('Autorespostas'),
+                subtitle: const Text('Gatilhos, mídias e botões'),
+                onTap: () => Navigator.of(sheetContext).pop('autorespostas'),
+              ),
+            if (showAutomationButtons && onScheduledMessages != null)
+              ListTile(
+                leading: const CircleAvatar(
+                  backgroundColor: Color(0xFF168AFF),
+                  foregroundColor: Colors.white,
+                  child: Icon(Icons.schedule_send_rounded),
+                ),
+                title: const Text('Mensagens automáticas'),
+                subtitle: const Text('Variações e horários'),
+                onTap: () => Navigator.of(sheetContext).pop('mensagens-automaticas'),
+              ),
             const SizedBox(height: 8),
           ],
         ),
@@ -14563,6 +14623,8 @@ class ConversationComposer extends StatelessWidget {
     if (action == 'store') onStore();
     if (action == 'sweepstake') onSweepstake();
     if (action == 'bot') onBot();
+    if (action == 'autorespostas') onAutoResponses?.call();
+    if (action == 'mensagens-automaticas') onScheduledMessages?.call();
   }
 }
 
