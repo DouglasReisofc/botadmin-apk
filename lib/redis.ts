@@ -108,6 +108,43 @@ export const redisDel = async (...keys: string[]) => {
   }
 };
 
+export const redisZAdd = async (key: string, score: number, member: string) => {
+  const redis = getRedis();
+  if (!redis) return false;
+  try {
+    await ensureConnected(redis);
+    await redis.zadd(key, String(score), member);
+    return true;
+  } catch (error) {
+    console.warn("[redis] zadd failed", { key, error });
+    return false;
+  }
+};
+
+export const redisZRangeByScore = async (key: string, max: number, limit = 50) => {
+  const redis = getRedis();
+  if (!redis) return [] as string[];
+  try {
+    await ensureConnected(redis);
+    return await redis.zrangebyscore(key, "-inf", String(max), "LIMIT", 0, limit);
+  } catch (error) {
+    console.warn("[redis] zrangebyscore failed", { key, error });
+    return [] as string[];
+  }
+};
+
+export const redisZRem = async (key: string, member: string) => {
+  const redis = getRedis();
+  if (!redis) return false;
+  try {
+    await ensureConnected(redis);
+    return (await redis.zrem(key, member)) > 0;
+  } catch (error) {
+    console.warn("[redis] zrem failed", { key, error });
+    return false;
+  }
+};
+
 export const redisPublish = async (channel: string, payload: unknown) => {
   const redis = getRedis();
   if (!redis) return;

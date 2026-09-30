@@ -58,6 +58,7 @@ import {
   redisSetIfAbsent,
   redisSetJson,
 } from "lib/redis";
+import { enqueueModerationDeleteRetry } from "lib/moderation-delete-queue";
 import { getOrCreateUserApiKey } from "lib/user-api-keys";
 import {
   createSweepstake,
@@ -18545,8 +18546,19 @@ const convertStickerSourceToWebp = async (
       participant: participantCandidates[0] ?? participantJid,
       accepted: deleted,
     });
-    if (!deleted && isGroupJid(message.chatId)) {
-      scheduleStrictModerationDeleteRetry(message.id, participantCandidates, reason);
+    // WuzAPI may acknowledge /chat/delete before WhatsApp has applied it.
+    // Queue one idempotent verification even after an accepted response; the
+    // worker retries with fresh participant representations after reconnects.
+    if (isGroupJid(message.chatId)) {
+      void enqueueModerationDeleteRetry({
+        userId: group.userId,
+        instanceId: context.instance.id,
+        chatId: message.chatId,
+        messageId: message.id,
+        participantCandidates,
+        reason,
+      });
+      if (!deleted) scheduleStrictModerationDeleteRetry(message.id, participantCandidates, reason);
     }
 
     return deleted;

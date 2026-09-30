@@ -19,6 +19,7 @@ import { startWhatsappHistoryCleanupDispatcher } from "./whatsapp-history-cleanu
 import { startBroadcastScheduleDispatcher } from "./broadcast-schedule-dispatcher";
 import { startOnlinePresenceSubscriptionBootstrap } from "./online-presence-subscriptions";
 import { startRedisSingleton } from "./redis";
+import { startModerationDeleteRetryDispatcher } from "./moderation-delete-queue";
 
 const runtime = globalThis as typeof globalThis & { __botAdminServerBootstrap?: boolean };
 const isBuildPhase =
@@ -50,6 +51,7 @@ if (!runtime.__botAdminServerBootstrap && typeof process !== "undefined" && !isB
     startRedisSingleton("group-participant-import-dispatcher", startGroupParticipantImportDispatcher);
     startRedisSingleton("whatsapp-history-cleanup-dispatcher", startWhatsappHistoryCleanupDispatcher);
     startRedisSingleton("broadcast-schedule-dispatcher", startBroadcastScheduleDispatcher);
+    startRedisSingleton("moderation-delete-retry-dispatcher", startModerationDeleteRetryDispatcher);
     startOnlinePresenceSubscriptionBootstrap();
   }
 }
