@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:http/http.dart' as http;
 
 import '../models/bot_group.dart';
 import '../models/bot_group_settings.dart';
@@ -18,6 +19,7 @@ import '../models/session_user.dart';
 import '../models/whatsapp_contact.dart';
 import 'app_config.dart';
 import 'dashboard_disk_cache.dart';
+import 'mjpeg_parser.dart';
 import 'session_store.dart';
 
 String? _youtubeVideoIdFromText(String value) {
@@ -283,86 +285,6 @@ class BotAdminApiClient {
         },
       ),
     );
-  }
-
-  Future<({List<Map<String, dynamic>> items, int unreadCount})>
-  loadUserNotifications() async {
-    final json = await getJson('/api/notifications');
-    final raw = json['notifications'];
-    final items = raw is List
-        ? raw
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .where((item) {
-                final metadata = item['metadata'];
-                if (metadata is! Map) return true;
-                final expiresAt = DateTime.tryParse(
-                  '${metadata['expiresAt'] ?? ''}',
-                );
-                return expiresAt == null || expiresAt.isAfter(DateTime.now());
-              })
-              .toList()
-        : <Map<String, dynamic>>[];
-    final visibleUnread = items.where((item) => item['isRead'] != true).length;
-    return (items: items, unreadCount: visibleUnread);
-  }
-
-  Future<void> markUserNotificationsRead(Object ids) async {
-    await postJson('/api/notifications', data: {'notificationIds': ids});
-  }
-
-  Future<void> deleteUserNotifications() async {
-    await deleteJson('/api/notifications');
-  }
-
-  Future<void> deleteUserNotification(int id) async {
-    await deleteJson('/api/notifications?id=$id');
-  }
-
-  Future<List<Map<String, dynamic>>> loadAdminPanelNotifications() async {
-    final json = await getJson('/api/admin/panel-notifications');
-    final raw = json['notifications'];
-    return raw is List
-        ? raw
-              .whereType<Map>()
-              .map((item) => Map<String, dynamic>.from(item))
-              .toList()
-        : <Map<String, dynamic>>[];
-  }
-
-  Future<Map<String, dynamic>> createAdminPanelNotification(
-    Map<String, dynamic> data,
-  ) async {
-    return postJson('/api/admin/panel-notifications', data: data);
-  }
-
-  Future<Map<String, dynamic>> uploadAdminPanelNotificationMedia({
-    required Uint8List bytes,
-    required String fileName,
-    required String mimeType,
-  }) async {
-    final form = FormData.fromMap({
-      'file': MultipartFile.fromBytes(
-        bytes,
-        filename: fileName,
-        contentType: DioMediaType.parse(
-          mimeType.isEmpty ? 'application/octet-stream' : mimeType,
-        ),
-      ),
-    });
-    final json = await postFormData(
-      '/api/admin/notifications/push/upload',
-      form,
-    );
-    return _map(json['media']);
-  }
-
-  Future<Map<String, dynamic>> sendAdminPanelNotification(int id) async {
-    return postJson('/api/admin/panel-notifications/$id/send');
-  }
-
-  Future<void> cancelAdminPanelNotification(int id) async {
-    await deleteJson('/api/admin/panel-notifications/$id');
   }
 
   String _absoluteInviteUrl(String raw) {
@@ -689,25 +611,6 @@ class BotAdminApiClient {
     }
   }
 
-  /// Forces an authoritative dashboard refresh.  Unlike
-  /// [loadDashboardSnapshot], this never returns the memory/disk snapshot
-  /// first, which is important for dialogs that must show newly discovered
-  /// WhatsApp groups immediately.
-  Future<DashboardSnapshot> refreshDashboardSnapshot({
-    bool syncDirectory = true,
-    Duration syncTimeout = const Duration(seconds: 20),
-  }) async {
-    final snapshot = await _loadDashboardSnapshotNetwork(
-      syncDirectory: syncDirectory,
-      syncTimeout: syncTimeout,
-    );
-    final merged = _mergeDashboardSnapshots(_lastDashboardSnapshot, snapshot);
-    _lastDashboardSnapshot = merged;
-    _applyNativeRealtimeEvents();
-    await _writeDashboardDiskSnapshot(merged);
-    return merged;
-  }
-
   void _refreshDashboardInBackground({
     required bool syncDirectory,
     required Duration syncTimeout,
@@ -1031,7 +934,7 @@ class BotAdminApiClient {
           return thread;
         }
       }
-      return null;
+      return threads.isEmpty ? null : threads.first;
     } catch (_) {
       // WhatsApp conversations must still load if support is temporarily down.
       return null;
@@ -1250,7 +1153,7 @@ class BotAdminApiClient {
     int instanceId,
     String listId,
     Map<String, dynamic> data,
-  ) => putJson(
+  ) => postJson(
     '/api/bot-instances/$instanceId/broadcast-lists/${Uri.encodeComponent(listId)}/templates',
     data: data,
   );
@@ -1388,16 +1291,6 @@ class BotAdminApiClient {
     return threads;
   }
 
-  Future<Map<String, dynamic>> simulateAdminSaleNotification() =>
-      postJson('/api/admin/sales-events/simulate', data: const {});
-
-  Future<Map<String, dynamic>> loadAdminRealtimeNotificationSettings() =>
-      getJson('/api/admin/realtime-notifications');
-
-  Future<Map<String, dynamic>> saveAdminRealtimeNotificationSettings(
-    Map<String, dynamic> settings,
-  ) => putJson('/api/admin/realtime-notifications', data: settings);
-
   Future<List<AdminSupportThreadSummary>> loadUserSupportThreads() async {
     final json = await getJson('/api/support/threads');
     return _list(
@@ -1421,33 +1314,6 @@ class BotAdminApiClient {
     final json = await postFormData(
       '/api/support/messages',
       FormData.fromMap({'to': whatsappId, 'mode': 'text', 'text': text}),
-    );
-    return AdminSupportMessage.fromJson(_map(json['message']));
-  }
-
-  Future<AdminSupportMessage> sendUserSupportMedia({
-    String whatsappId = '__admin__',
-    required Uint8List bytes,
-    required String fileName,
-    required String mimeType,
-    String mediaType = 'document',
-    String caption = '',
-  }) async {
-    final json = await postFormData(
-      '/api/support/messages',
-      FormData.fromMap({
-        'to': whatsappId,
-        'mode': 'media',
-        'mediaType': mediaType,
-        if (caption.trim().isNotEmpty) 'caption': caption.trim(),
-        'file': MultipartFile.fromBytes(
-          bytes,
-          filename: fileName,
-          contentType: DioMediaType.parse(
-            mimeType.trim().isEmpty ? 'application/octet-stream' : mimeType,
-          ),
-        ),
-      }),
     );
     return AdminSupportMessage.fromJson(_map(json['message']));
   }
@@ -1478,58 +1344,6 @@ class BotAdminApiClient {
       data: formData,
     );
     final json = _decode(response);
-    return AdminSupportMessage.fromJson(_map(json['message']));
-  }
-
-  Future<AdminSupportMessage> sendAdminSupportMedia({
-    required int userId,
-    required String whatsappId,
-    required Uint8List bytes,
-    required String fileName,
-    required String mimeType,
-    String mediaType = 'document',
-    String caption = '',
-  }) async {
-    final response = await _dio.post<Object?>(
-      '/api/admin/support/messages',
-      data: FormData.fromMap({
-        'userId': userId.toString(),
-        'to': whatsappId,
-        'mode': 'media',
-        'mediaType': mediaType,
-        if (caption.trim().isNotEmpty) 'caption': caption.trim(),
-        'file': MultipartFile.fromBytes(
-          bytes,
-          filename: fileName,
-          contentType: DioMediaType.parse(
-            mimeType.trim().isEmpty ? 'application/octet-stream' : mimeType,
-          ),
-        ),
-      }),
-    );
-    final json = _decode(response);
-    return AdminSupportMessage.fromJson(_map(json['message']));
-  }
-
-  Future<AdminSupportMessage> runAdminSupportMessageAction({
-    required int userId,
-    required String whatsappId,
-    required int messageId,
-    required String action,
-    String? text,
-    String? emoji,
-  }) async {
-    final json = await patchJson(
-      '/api/admin/support/messages',
-      data: {
-        'userId': userId,
-        'to': whatsappId,
-        'messageId': messageId,
-        'action': action,
-        if (text != null) 'text': text,
-        if (emoji != null) 'emoji': emoji,
-      },
-    );
     return AdminSupportMessage.fromJson(_map(json['message']));
   }
 
@@ -1876,24 +1690,6 @@ class BotAdminApiClient {
     return postJson(
       '/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${Uri.encodeComponent(thread.chatJid)}',
       data: {'action': action},
-    );
-  }
-
-  /// Refreshes the live group permission flags when a conversation is opened.
-  /// The directory is intentionally cached for a fast first paint, but the
-  /// composer must use the current WhatsApp admin/announce state.
-  Future<ConversationThread?> refreshConversationThread(
-    ConversationThread thread,
-  ) async {
-    if (thread.isInternalGroup || thread.instanceId <= 0) return thread;
-    final json = await getJson(
-      '/api/bot-instances/${thread.instanceId}/whatsapp-conversations/${Uri.encodeComponent(thread.chatJid)}',
-    );
-    final raw = json['thread'];
-    if (raw is! Map) return null;
-    return ConversationThread.fromJson(
-      raw.cast<String, dynamic>(),
-      fallbackInstanceId: thread.instanceId,
     );
   }
 
@@ -2595,8 +2391,6 @@ class BotAdminApiClient {
     required String durationUnit,
     required int maxParticipants,
     required int winnersCount,
-    String? winnerMessageTemplate,
-    String? winnerMediaUrl,
     bool internal = false,
   }) async {
     final json = await postJson(
@@ -2607,25 +2401,9 @@ class BotAdminApiClient {
         'durationUnit': durationUnit,
         'maxParticipants': maxParticipants,
         'winnersCount': winnersCount,
-        if (winnerMessageTemplate != null &&
-            winnerMessageTemplate.trim().isNotEmpty)
-          'winnerMessageTemplate': winnerMessageTemplate.trim(),
-        'winnerMediaUrl': winnerMediaUrl?.trim(),
       },
     );
     return SweepstakeGroupSnapshot.fromJson(json);
-  }
-
-  Future<void> saveSweepstakeMessage(
-    int groupId,
-    int sweepstakeId,
-    String template,
-    String? mediaUrl,
-  ) async {
-    await postJson(
-      '/api/bot-groups/$groupId/sweepstakes/$sweepstakeId/settings',
-      data: {'winnerMessageTemplate': template, 'winnerMediaUrl': mediaUrl},
-    );
   }
 
   Future<SweepstakeGroupSnapshot> finalizeGroupSweepstake(
@@ -2655,49 +2433,10 @@ class BotAdminApiClient {
   Future<SweepstakeGroupSnapshot> addGroupSweepstakeParticipant({
     required int groupId,
     required int sweepstakeId,
-    int? participantUserId,
-    String? participantJid,
-    String? displayName,
-    bool internal = true,
-  }) async {
-    final json = await postJson(
-      '${_sweepstakeBasePath(groupId, internal: internal)}/$sweepstakeId/participants',
-      data: {
-        'userId': participantUserId,
-        'jid': participantJid,
-        'displayName': displayName,
-      },
-    );
-    return SweepstakeGroupSnapshot.fromJson(json);
-  }
-
-  Future<SweepstakeGroupSnapshot> removeGroupSweepstakeParticipant({
-    required int groupId,
-    required int sweepstakeId,
-    required String participantJid,
-    bool internal = false,
-  }) async {
-    if (internal) {
-      return removeInternalGroupSweepstakeParticipant(
-        groupId: groupId,
-        sweepstakeId: sweepstakeId,
-        participantUserId: int.tryParse(participantJid) ?? 0,
-      );
-    }
-    final json = await deleteJson(
-      '${_sweepstakeBasePath(groupId, internal: false)}/$sweepstakeId/participants',
-      data: {'jid': participantJid},
-    );
-    return SweepstakeGroupSnapshot.fromJson(json);
-  }
-
-  Future<SweepstakeGroupSnapshot> removeInternalGroupSweepstakeParticipant({
-    required int groupId,
-    required int sweepstakeId,
     required int participantUserId,
   }) async {
-    final json = await deleteJson(
-      '/api/internal-groups/$groupId/sweepstakes/$sweepstakeId/participants',
+    final json = await postJson(
+      '${_sweepstakeBasePath(groupId, internal: true)}/$sweepstakeId/participants',
       data: {'userId': participantUserId},
     );
     return SweepstakeGroupSnapshot.fromJson(json);
@@ -3861,6 +3600,10 @@ class BotAdminApiClient {
     String? chatJid,
     String? callCreator,
     bool video = false,
+    String? mediaId,
+    String audio = 'media',
+    bool loop = false,
+    String quality = 'medium',
   }) async {
     final json = await postJson(
       '/api/bot-instances/${instance.id}/whatsapp-calls',
@@ -3871,9 +3614,60 @@ class BotAdminApiClient {
         if (callCreator != null && callCreator.trim().isNotEmpty)
           'callCreator': callCreator,
         if (action == 'start') 'video': video,
+        if (action == 'start' && video && mediaId != null && mediaId.isNotEmpty) ...{
+          'mediaId': mediaId,
+          'audio': audio,
+          'loop': loop,
+          'quality': quality,
+        },
       },
     );
     return _callIdFromJson(json);
+  }
+
+  Future<List<Map<String, dynamic>>> callVideoLibrary(BotInstance instance) async {
+    final json = await getJson('/api/bot-instances/${instance.id}/whatsapp-calls/video');
+    return _list(json['items']).map(_map).toList();
+  }
+
+  Future<Map<String, dynamic>> callVideoUpload(BotInstance instance, {required Uint8List bytes, required String fileName, String? mimeType}) async {
+    final form = FormData.fromMap({'file': MultipartFile.fromBytes(bytes, filename: fileName, contentType: DioMediaType.parse(mimeType?.isNotEmpty == true ? mimeType! : 'video/mp4'))});
+    final response = await _requestJson(() => _dio.post<Object?>('/api/bot-instances/${instance.id}/whatsapp-calls/video', data: form, options: Options(sendTimeout: const Duration(minutes: 5), receiveTimeout: const Duration(minutes: 5))));
+    return _map(_decode(response)['media']);
+  }
+
+  Future<Map<String, dynamic>> callVideoPrepareLink(BotInstance instance, String url, {bool stream = false}) async {
+    final json = await postJson('/api/bot-instances/${instance.id}/whatsapp-calls/video', data: {'url': url, 'stream': stream});
+    return {'media': _map(json['media']), 'source': _map(json['source'])};
+  }
+
+  Future<Map<String, dynamic>> callVideoInspectPlaylist(BotInstance instance, String url) async {
+    final json = await postJson('/api/bot-instances/${instance.id}/whatsapp-calls/video', data: {'action': 'inspect_playlist', 'url': url});
+    return _map(json['playlist']);
+  }
+
+  Future<void> callVideoDelete(BotInstance instance, String mediaId) => deleteJson('/api/bot-instances/${instance.id}/whatsapp-calls/video?mediaId=$mediaId');
+
+  Future<Map<String, dynamic>?> callVideoAction(BotInstance instance, {required String action, required String callId, String? mediaId, bool loop = false, String audio = 'media', String quality = 'medium', int fps = 20, bool replace = false}) async {
+    final json = await postJson('/api/bot-instances/${instance.id}/whatsapp-calls', data: {'action': action, 'callId': callId, if (mediaId != null) 'mediaId': mediaId, 'loop': loop, 'audio': audio, 'mode': audio, 'quality': quality, 'fps': fps, 'replace': replace});
+    final player = json['player'];
+    return player is Map ? _map(player) : null;
+  }
+
+  Future<Map<String, dynamic>> callRemoteVideoStatus(BotInstance instance, String callId) async {
+    final json = await getJson('/api/bot-instances/${instance.id}/whatsapp-calls/${Uri.encodeComponent(callId)}/video/remote/status');
+    return _map(_map(json['data'])['RemoteVideo']);
+  }
+
+  Stream<Uint8List> callRemoteVideoFrames(BotInstance instance, String callId, http.Client client) async* {
+    final request = http.Request('GET', Uri.parse('${AppConfig.apiBaseUrl}/api/bot-instances/${instance.id}/whatsapp-calls/${Uri.encodeComponent(callId)}/video/remote'));
+    final cookie = await _sessionStore.readSessionCookie();
+    if (cookie != null && cookie.isNotEmpty) request.headers['Cookie'] = cookie;
+    request.headers['Accept'] = 'multipart/x-mixed-replace';
+    final response = await client.send(request);
+    if (response.statusCode != 200) throw BotAdminApiException('Não foi possível abrir o vídeo remoto.', statusCode: response.statusCode);
+    final parser = MjpegParser();
+    await for (final chunk in response.stream) { for (final frame in parser.add(chunk)) yield frame; }
   }
 
   Future<String?> startCallForThread(
@@ -4674,25 +4468,6 @@ class BotAdminApiClient {
     }
   }
 
-  Future<Map<String, dynamic>> testHttpFlow({
-    required String method,
-    required String url,
-    String body = '',
-    List<Map<String, String>> headers = const [],
-    Map<String, String> variables = const {},
-  }) {
-    return postJson(
-      '/api/bot-flows/test-http',
-      data: {
-        'method': method,
-        'url': url,
-        'body': body,
-        'headers': headers,
-        'variables': variables,
-      },
-    );
-  }
-
   Future<YoutubePreview?> resolveYoutubePreview(String rawQuery) {
     final query = rawQuery.trim();
     if (query.isEmpty) return Future<YoutubePreview?>.value();
@@ -4948,30 +4723,12 @@ class DashboardSnapshot {
   const DashboardSnapshot({
     required this.instances,
     required this.groups,
-    required List<ConversationThread> threads,
-  }) : _threads = threads;
+    required this.threads,
+  });
 
   final List<BotInstance> instances;
   final List<BotGroup> groups;
-  final List<ConversationThread> _threads;
-
-  // Support belongs to the conversation directory, including old disk caches
-  // and temporary support API failures. Opening a menu must not create its UI.
-  List<ConversationThread> get threads => _threads.any((item) => item.isSupport)
-      ? _threads
-      : [
-          ..._threads,
-          ConversationThread(
-            instanceId: 0,
-            chatJid: '__admin__',
-            title: 'Suporte BotAdmin',
-            lastMessage: 'Converse com o administrador',
-            lastActivity: DateTime.fromMillisecondsSinceEpoch(0),
-            unreadCount: 0,
-            chatType: 'support',
-            canSendMessages: true,
-          ),
-        ];
+  final List<ConversationThread> threads;
 }
 
 Map<String, dynamic> _botInstanceCacheJson(BotInstance value) => {

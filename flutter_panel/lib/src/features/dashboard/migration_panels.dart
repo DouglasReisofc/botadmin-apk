@@ -29,6 +29,8 @@ import 'dashboard_controller.dart';
 import 'live_calls_controller.dart';
 import 'profiles_panel.dart';
 import 'status_visual_editor.dart';
+import 'call_remote_video_panel.dart';
+import 'call_video_panel.dart';
 
 final botStatusSnapshotProvider = FutureProvider.autoDispose
     .family<BotStatusSnapshot, int?>(
@@ -16689,8 +16691,9 @@ class _AffiliatesPanelState extends ConsumerState<AffiliatesPanel> {
   ) async {
     final draft = await showDialog<_PartnerMemberDraft>(
       context: context,
-      builder: (_) =>
-          _PartnerMemberDialog(allowMaster: snapshot.role == 'owner'),
+      builder: (_) => _PartnerMemberDialog(
+        allowMaster: snapshot.role == 'owner',
+      ),
     );
     if (draft == null) return;
     await _runAffiliateAction(
@@ -17869,12 +17872,10 @@ class _PartnerPaymentsViewState extends ConsumerState<_PartnerPaymentsView> {
     );
     if (result == null) return;
     try {
-      await ref
-          .read(apiClientProvider)
-          .savePartnerCustomerProxy(
-            instanceId: int.parse('${instance['id']}'),
-            proxy: result,
-          );
+      await ref.read(apiClientProvider).savePartnerCustomerProxy(
+        instanceId: int.parse('${instance['id']}'),
+        proxy: result,
+      );
       _reloadProxies();
       if (mounted) showSuccessToast(context, 'Proxy do cliente atualizado.');
     } catch (error) {
@@ -18021,8 +18022,7 @@ class _PartnerPaymentsViewState extends ConsumerState<_PartnerPaymentsView> {
         const SizedBox(height: 12),
         _PanelCard(
           title: 'Proxies dos clientes',
-          subtitle:
-              'Atribua uma rota testada ao perfil. IP, região e latência ficam visíveis ao cliente.',
+          subtitle: 'Atribua uma rota testada ao perfil. IP, região e latência ficam visíveis ao cliente.',
           child: FutureBuilder<List<Map<String, dynamic>>>(
             future: _proxies,
             builder: (context, snapshot) {
@@ -18030,49 +18030,24 @@ class _PartnerPaymentsViewState extends ConsumerState<_PartnerPaymentsView> {
                 return const _LoadingBlock(compact: true);
               }
               if (snapshot.hasError) {
-                return _ErrorBlock(
-                  message: snapshot.error.toString(),
-                  onRetry: _reloadProxies,
-                );
+                return _ErrorBlock(message: snapshot.error.toString(), onRetry: _reloadProxies);
               }
               final rows = snapshot.data ?? const <Map<String, dynamic>>[];
               if (rows.isEmpty) {
-                return const Text(
-                  'Nenhum perfil de cliente disponível para configurar proxy.',
-                );
+                return const Text('Nenhum perfil de cliente disponível para configurar proxy.');
               }
               return Column(
                 children: rows.map((row) {
-                  final proxy = row['proxy'] is Map
-                      ? Map<String, dynamic>.from(row['proxy'] as Map)
-                      : const <String, dynamic>{};
+                  final proxy = row['proxy'] is Map ? Map<String, dynamic>.from(row['proxy'] as Map) : const <String, dynamic>{};
                   final enabled = proxy['enabled'] == true;
-                  final location =
-                      [
-                            proxy['resolvedIp'],
-                            proxy['countryName'],
-                            proxy['regionName'],
-                          ]
-                          .where(
-                            (value) =>
-                                value != null &&
-                                value.toString().trim().isNotEmpty,
-                          )
-                          .join(' · ');
+                  final location = [proxy['resolvedIp'], proxy['countryName'], proxy['regionName']]
+                      .where((value) => value != null && value.toString().trim().isNotEmpty)
+                      .join(' · ');
                   return ListTile(
                     contentPadding: EdgeInsets.zero,
-                    leading: Icon(
-                      enabled ? Icons.shield_rounded : Icons.shield_outlined,
-                      color: enabled ? wa.accent : wa.icon,
-                    ),
-                    title: Text(
-                      '${row['customerName'] ?? 'Cliente'} · ${row['name'] ?? 'Perfil'}',
-                    ),
-                    subtitle: Text(
-                      enabled
-                          ? (location.isEmpty ? 'Proxy ativo' : location)
-                          : 'Sem proxy configurado',
-                    ),
+                    leading: Icon(enabled ? Icons.shield_rounded : Icons.shield_outlined, color: enabled ? wa.accent : wa.icon),
+                    title: Text('${row['customerName'] ?? 'Cliente'} · ${row['name'] ?? 'Perfil'}'),
+                    subtitle: Text(enabled ? (location.isEmpty ? 'Proxy ativo' : location) : 'Sem proxy configurado'),
                     trailing: OutlinedButton(
                       onPressed: () => _editManagedProxy(row),
                       child: Text(enabled ? 'Editar' : 'Configurar'),
@@ -18150,9 +18125,7 @@ class _ManagedProxyDialogState extends State<_ManagedProxyDialog> {
   @override
   void initState() {
     super.initState();
-    final proxy = widget.instance['proxy'] is Map
-        ? Map<String, dynamic>.from(widget.instance['proxy'] as Map)
-        : const <String, dynamic>{};
+    final proxy = widget.instance['proxy'] is Map ? Map<String, dynamic>.from(widget.instance['proxy'] as Map) : const <String, dynamic>{};
     _enabled = proxy['enabled'] == true;
     _protocol = proxy['protocol'] == 'http' ? 'http' : 'socks5';
     _host = TextEditingController(text: proxy['host']?.toString() ?? '');
@@ -18174,90 +18147,19 @@ class _ManagedProxyDialogState extends State<_ManagedProxyDialog> {
     content: SizedBox(
       width: 430,
       child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              title: const Text('Ativar proxy'),
-              value: _enabled,
-              onChanged: (v) => setState(() => _enabled = v),
-            ),
-            DropdownButtonFormField<String>(
-              value: _protocol,
-              decoration: const InputDecoration(labelText: 'Protocolo'),
-              items: const [
-                DropdownMenuItem(value: 'socks5', child: Text('SOCKS5')),
-                DropdownMenuItem(value: 'http', child: Text('HTTP / HTTPS')),
-              ],
-              onChanged: _enabled
-                  ? (v) => setState(() => _protocol = v ?? 'socks5')
-                  : null,
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _host,
-                    enabled: _enabled,
-                    decoration: const InputDecoration(labelText: 'Host ou IP'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  width: 100,
-                  child: TextField(
-                    controller: _port,
-                    enabled: _enabled,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(labelText: 'Porta'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _user,
-              enabled: _enabled,
-              decoration: const InputDecoration(
-                labelText: 'Usuário (opcional)',
-                hintText: 'Em branco mantém o atual',
-              ),
-            ),
-            const SizedBox(height: 8),
-            TextField(
-              controller: _password,
-              enabled: _enabled,
-              obscureText: true,
-              decoration: const InputDecoration(
-                labelText: 'Senha (opcional)',
-                hintText: 'Em branco mantém a atual',
-              ),
-            ),
-          ],
-        ),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          SwitchListTile.adaptive(contentPadding: EdgeInsets.zero, title: const Text('Ativar proxy'), value: _enabled, onChanged: (v) => setState(() => _enabled = v)),
+          DropdownButtonFormField<String>(value: _protocol, decoration: const InputDecoration(labelText: 'Protocolo'), items: const [DropdownMenuItem(value: 'socks5', child: Text('SOCKS5')), DropdownMenuItem(value: 'http', child: Text('HTTP / HTTPS'))], onChanged: _enabled ? (v) => setState(() => _protocol = v ?? 'socks5') : null),
+          const SizedBox(height: 8),
+          Row(children: [Expanded(child: TextField(controller: _host, enabled: _enabled, decoration: const InputDecoration(labelText: 'Host ou IP'))), const SizedBox(width: 8), SizedBox(width: 100, child: TextField(controller: _port, enabled: _enabled, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Porta')))]),
+          const SizedBox(height: 8),
+          TextField(controller: _user, enabled: _enabled, decoration: const InputDecoration(labelText: 'Usuário (opcional)', hintText: 'Em branco mantém o atual')),
+          const SizedBox(height: 8),
+          TextField(controller: _password, enabled: _enabled, obscureText: true, decoration: const InputDecoration(labelText: 'Senha (opcional)', hintText: 'Em branco mantém a atual')),
+        ]),
       ),
     ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: const Text('Cancelar'),
-      ),
-      FilledButton(
-        onPressed: () => Navigator.pop(context, <String, Object?>{
-          'enabled': _enabled,
-          'protocol': _protocol,
-          'host': _host.text.trim(),
-          'port': int.tryParse(_port.text.trim()) ?? 0,
-          'username': _user.text.trim(),
-          'password': _password.text,
-          'preserveUsername': _user.text.trim().isEmpty,
-          'preservePassword': _password.text.isEmpty,
-        }),
-        child: const Text('Testar e salvar'),
-      ),
-    ],
+    actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('Cancelar')), FilledButton(onPressed: () => Navigator.pop(context, <String, Object?>{'enabled': _enabled, 'protocol': _protocol, 'host': _host.text.trim(), 'port': int.tryParse(_port.text.trim()) ?? 0, 'username': _user.text.trim(), 'password': _password.text, 'preserveUsername': _user.text.trim().isEmpty, 'preservePassword': _password.text.isEmpty}), child: const Text('Testar e salvar'))],
   );
 }
 
@@ -18315,11 +18217,8 @@ class _PartnerFinanceDialogState extends State<_PartnerFinanceDialog> {
   late final _proxyInstructions = TextEditingController(
     text: widget.settings['proxySalesInstructions']?.toString() ?? '',
   );
-  late String _proxyMode = widget.settings['proxySalesMode'] == 'automatic'
-      ? 'automatic'
-      : 'manual';
-  late bool _allowCustomerProxy =
-      widget.settings['allowCustomerProxy'] != false;
+  late String _proxyMode = widget.settings['proxySalesMode'] == 'automatic' ? 'automatic' : 'manual';
+  late bool _allowCustomerProxy = widget.settings['allowCustomerProxy'] != false;
   late bool _manual = widget.settings['manualPaymentsEnabled'] == true;
   late bool _children = widget.settings['allowChildManualPayments'] == true;
   late final Map<int, TextEditingController> _costs = {
@@ -18394,56 +18293,35 @@ class _PartnerFinanceDialogState extends State<_PartnerFinanceDialog> {
               const SizedBox(height: 14),
               const Align(
                 alignment: Alignment.centerLeft,
-                child: Text(
-                  'Proxy para clientes',
-                  style: TextStyle(fontWeight: FontWeight.w700),
-                ),
+                child: Text('Proxy para clientes', style: TextStyle(fontWeight: FontWeight.w700)),
               ),
               const SizedBox(height: 4),
               DropdownButtonFormField<String>(
                 value: _proxyMode,
-                decoration: const InputDecoration(
-                  labelText: 'Como vender o proxy',
-                ),
+                decoration: const InputDecoration(labelText: 'Como vender o proxy'),
                 items: const [
-                  DropdownMenuItem(
-                    value: 'manual',
-                    child: Text('Venda manual (fora da assinatura)'),
-                  ),
-                  DropdownMenuItem(
-                    value: 'automatic',
-                    child: Text('Incluir no valor final automaticamente'),
-                  ),
+                  DropdownMenuItem(value: 'manual', child: Text('Venda manual (fora da assinatura)')),
+                  DropdownMenuItem(value: 'automatic', child: Text('Incluir no valor final automaticamente')),
                 ],
-                onChanged: (value) =>
-                    setState(() => _proxyMode = value ?? 'manual'),
+                onChanged: (value) => setState(() => _proxyMode = value ?? 'manual'),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: _proxyPrice,
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                decoration: const InputDecoration(
-                  labelText: 'Valor mensal do proxy (R\$)',
-                ),
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(labelText: 'Valor mensal do proxy (R\$)'),
               ),
               SwitchListTile.adaptive(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('Permitir proxy personalizado pelo cliente'),
-                subtitle: const Text(
-                  'O cliente poderá informar host, porta e protocolo ao conectar.',
-                ),
+                subtitle: const Text('O cliente poderá informar host, porta e protocolo ao conectar.'),
                 value: _allowCustomerProxy,
-                onChanged: (value) =>
-                    setState(() => _allowCustomerProxy = value),
+                onChanged: (value) => setState(() => _allowCustomerProxy = value),
               ),
               TextField(
                 controller: _proxyInstructions,
                 maxLines: 2,
-                decoration: const InputDecoration(
-                  labelText: 'Orientações da venda manual (opcional)',
-                ),
+                decoration: const InputDecoration(labelText: 'Orientações da venda manual (opcional)'),
               ),
               const SizedBox(height: 14),
               const Align(
@@ -18484,8 +18362,7 @@ class _PartnerFinanceDialogState extends State<_PartnerFinanceDialog> {
                 pixKey: _pix.text,
                 instructions: _instructions.text,
                 proxySalesMode: _proxyMode,
-                proxyMonthlyPrice:
-                    double.tryParse(_proxyPrice.text.replaceAll(',', '.')) ?? 0,
+                proxyMonthlyPrice: double.tryParse(_proxyPrice.text.replaceAll(',', '.')) ?? 0,
                 allowCustomerProxy: _allowCustomerProxy,
                 proxySalesInstructions: _proxyInstructions.text,
                 planCosts: [
@@ -18908,9 +18785,7 @@ class _PartnerMemberDialogState extends State<_PartnerMemberDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(
-      widget.allowMaster ? 'Cadastrar parceiro' : 'Cadastrar revendedor',
-    ),
+    title: Text(widget.allowMaster ? 'Cadastrar parceiro' : 'Cadastrar revendedor'),
     content: SizedBox(
       width: 430,
       child: SingleChildScrollView(
@@ -18946,13 +18821,9 @@ class _PartnerMemberDialogState extends State<_PartnerMemberDialog> {
                 decoration: const InputDecoration(labelText: 'Tipo de acesso'),
                 items: const [
                   DropdownMenuItem(value: 'master', child: Text('Master')),
-                  DropdownMenuItem(
-                    value: 'reseller',
-                    child: Text('Revendedor'),
-                  ),
+                  DropdownMenuItem(value: 'reseller', child: Text('Revendedor')),
                 ],
-                onChanged: (value) =>
-                    setState(() => _role = value ?? 'reseller'),
+                onChanged: (value) => setState(() => _role = value ?? 'reseller'),
               ),
             ],
             const SizedBox(height: 8),
@@ -19358,11 +19229,8 @@ class _CommerceHistoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final paidCharges = snapshot.charges
-        .where((charge) => charge.approved)
-        .toList(growable: false);
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -19370,8 +19238,7 @@ class _CommerceHistoryCard extends StatelessWidget {
             isScrollable: true,
             tabs: [
               Tab(text: 'Compras (${snapshot.purchases.length})'),
-              Tab(text: 'Histórico de cobranças (${snapshot.charges.length})'),
-              Tab(text: 'Cobranças pagas (${paidCharges.length})'),
+              Tab(text: 'Cobranças (${snapshot.charges.length})'),
             ],
           ),
           Expanded(
@@ -19386,12 +19253,6 @@ class _CommerceHistoryCard extends StatelessWidget {
                 _HistoryList(
                   emptyText: 'Nenhuma cobrança registrada ainda.',
                   children: snapshot.charges
-                      .map((item) => _PaymentChargeHistoryTile(charge: item))
-                      .toList(growable: false),
-                ),
-                _HistoryList(
-                  emptyText: 'Nenhuma cobrança paga ainda.',
-                  children: paidCharges
                       .map((item) => _PaymentChargeHistoryTile(charge: item))
                       .toList(growable: false),
                 ),
@@ -19992,7 +19853,9 @@ class MediaPanel extends ConsumerWidget {
 }
 
 class ProfileConnectionPanel extends ConsumerStatefulWidget {
-  const ProfileConnectionPanel({super.key});
+  const ProfileConnectionPanel({super.key, this.onActivate});
+
+  final ValueChanged<BotInstance>? onActivate;
 
   @override
   ConsumerState<ProfileConnectionPanel> createState() =>
@@ -20028,7 +19891,7 @@ class _ProfileConnectionPanelState
             title: 'Perfis WhatsApp',
             subtitle:
                 'Crie um perfil, conecte o número por QR/código e gerencie os grupos nele.',
-            child: const ProfilesInstancesPanel(),
+            child: ProfilesInstancesPanel(onActivate: widget.onActivate),
           ),
         ],
       ),
@@ -27982,4 +27845,26 @@ Future<void> _openUrl(String value) async {
 
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
+}
+
+Future<void> startCallFromChat(BuildContext context, WidgetRef ref, {required BotInstance instance, required String chatJid, required bool video, String? mediaId, String? mediaName, String audio = 'media', bool loop = false}) async {
+  final api = ref.read(apiClientProvider);
+  final notifier = ref.read(liveCallsControllerProvider.notifier);
+  notifier.addOptimisticOutgoing(instance: instance, chatJid: chatJid, video: video);
+  showSuccessToast(context, video ? 'Iniciando chamada de vídeo…' : 'Chamando…');
+  try {
+    final callId = await api.executeCallAction(instance, action: 'start', chatJid: chatJid, video: video, mediaId: mediaId, audio: audio, loop: loop);
+    if (!context.mounted || callId == null || callId.isEmpty) return;
+    LiveCallItem? item;
+    for (var attempt = 0; attempt < 8 && item == null; attempt++) {
+      await notifier.refresh(silent: attempt > 0);
+      for (final candidate in ref.read(liveCallsControllerProvider).items) {
+        if (candidate.instance.id == instance.id && candidate.call.id == callId) { item = candidate; break; }
+      }
+      if (item == null && attempt < 7) await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+    if (!context.mounted || item == null) return;
+    final live = item;
+    await showDialog<void>(context: context, barrierDismissible: false, builder: (dialogContext) => _IncomingCallDialog(entry: _CallEntry(instance: live.instance, call: live.call), acting: false, onAccept: () async { try { await api.executeCallAction(instance, action: 'accept', callId: live.call.id, chatJid: live.call.chatJid, callCreator: live.call.callCreatorJid); await notifier.refresh(); return true; } catch (_) { return false; } }, onReject: () async { await api.executeCallAction(instance, action: 'end', callId: live.call.id, chatJid: live.call.chatJid); await notifier.refresh(); if (dialogContext.mounted) Navigator.of(dialogContext).pop(); }, onEnd: () async { await api.executeCallAction(instance, action: 'end', callId: live.call.id, chatJid: live.call.chatJid); await notifier.refresh(); if (dialogContext.mounted) Navigator.of(dialogContext).pop(); }, onSpeakerphone: (enabled) => callAudioBridge.setSpeakerphone(enabled), onMicrophoneMuted: (muted) => callAudioBridge.setMicrophoneMuted(muted)));
+  } catch (error) { if (context.mounted) showErrorToast(context, error); await notifier.refresh(); }
 }
