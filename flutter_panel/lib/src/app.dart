@@ -200,12 +200,27 @@ class _MobileDeepLinkBridgeState extends ConsumerState<_MobileDeepLinkBridge> {
     final isMetaConnectionReturn =
         uri.scheme == 'botadmin' && uri.host == 'meta-connected';
     if (isMetaConnectionReturn) {
-      ref.invalidate(dashboardSnapshotProvider);
-      if (mounted) {
-        final state = uri.queryParameters['state'] == 'pending'
-            ? 'pendente'
-            : 'conectada';
-        showSuccessToast(context, 'Conexão Meta $state. Atualizando o painel.');
+      final instanceId = int.tryParse(uri.queryParameters['instanceId'] ?? '');
+      if (instanceId == null || instanceId < 1) return;
+      try {
+        final result = await ref
+            .read(apiClientProvider)
+            .getJson('/api/meta/connection');
+        if (!mounted) return;
+        final rows = result['connections'] as List? ?? [];
+        final connected = rows.any(
+          (row) =>
+              '${row['instanceId']}' == '$instanceId' &&
+              row['status'] == 'connected',
+        );
+        ref.invalidate(dashboardSnapshotProvider);
+        if (connected)
+          showSuccessToast(
+            context,
+            'WhatsApp conectado. Atualizando o painel.',
+          );
+      } catch (_) {
+        // The connection dialog retries against the authenticated API on resume.
       }
       return;
     }

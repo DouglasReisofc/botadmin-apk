@@ -1,6 +1,7 @@
 package br.com.botadmin.flutter_panel
 
 import android.content.Intent
+import android.app.ActivityManager
 import android.provider.Settings
 import android.provider.ContactsContract
 import io.flutter.embedding.engine.FlutterEngine
@@ -13,6 +14,21 @@ class MainActivity : FlutterActivity() {
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, "botadmin/native")
             .setMethodCallHandler { call, result ->
                 when (call.method) {
+                    "returnFromMeta" -> {
+                        runCatching {
+                            val manager = getSystemService(ACTIVITY_SERVICE) as ActivityManager
+                            val task = manager.appTasks.firstOrNull {
+                                it.taskInfo.baseActivity?.packageName == packageName
+                            }
+                            task?.moveToFront()
+                            startActivity(Intent(this, MainActivity::class.java).apply {
+                                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                            })
+                        }.fold(
+                            onSuccess = { result.success(true) },
+                            onFailure = { result.error("META_RETURN_FAILED", it.message, null) }
+                        )
+                    }
                     "deviceId" -> {
                         val androidId = Settings.Secure.getString(
                             applicationContext.contentResolver,
@@ -139,6 +155,17 @@ class MainActivity : FlutterActivity() {
                         ),
                     )
                     "current" -> result.success(BotAdminCallAudioManager.current())
+                    "openSettings" -> {
+                        runCatching {
+                            startActivity(
+                                android.content.Intent(
+                                    android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                    android.net.Uri.fromParts("package", packageName, null),
+                                ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        }
+                        result.success(true)
+                    }
                     else -> result.notImplemented()
                 }
             }

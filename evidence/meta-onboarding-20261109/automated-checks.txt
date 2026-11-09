@@ -1,0 +1,1 @@
+PASS: signed initiating account, tampered context, wrong profile, cross-origin rejection, successful completion, native return and responsive HTML.
