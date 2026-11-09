@@ -3,15 +3,15 @@
   "android": {
     "platform": "android",
     "type": "apk",
-    "fileName": "botadmin-0.1.363-369-android-release.apk",
-    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.363-botadmin369/botadmin-0.1.363-369-android-release.apk",
-    "sizeBytes": 99505365,
-    "updatedAt": "2026-11-09T01:29:54Z",
+    "fileName": "botadmin-0.1.364-370-android-release.apk",
+    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.364-botadmin370/botadmin-0.1.364-370-android-release.apk",
+    "sizeBytes": 100956881,
+    "updatedAt": "2026-11-09T03:43:26Z",
     "buildType": "release",
-    "versionName": "0.1.363",
-    "versionCode": 369,
+    "versionName": "0.1.364",
+    "versionCode": 370,
     "minVersionCode": 325,
-    "details": "Correções do fluxo Meta e atualização remota do APK."
+    "details": "Retorno automático da conexão Meta e novo layout responsivo."
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",

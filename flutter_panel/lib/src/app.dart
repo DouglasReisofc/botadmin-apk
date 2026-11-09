@@ -1,3 +1,4 @@
+import 'core/frame_probe.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -37,6 +38,12 @@ class BotAdminFlutterApp extends ConsumerWidget {
       darkTheme: buildAppTheme(Brightness.dark),
       themeMode: isDark ? ThemeMode.dark : ThemeMode.light,
       builder: (context, child) {
+        if (FrameProbe.enabled && child != null) {
+          child = Directionality(
+            textDirection: TextDirection.ltr,
+            child: FrameProbe(child: child),
+          );
+        }
         final bg = isDark ? const Color(0xFF0B141A) : const Color(0xFFF0F2F5);
         final systemBarColor = systemBarColorFor(isDark);
         return AnnotatedRegion<SystemUiOverlayStyle>(
@@ -187,6 +194,19 @@ class _MobileDeepLinkBridgeState extends ConsumerState<_MobileDeepLinkBridge> {
     }
     if (isSiteLink) {
       ref.invalidate(authControllerProvider);
+      return;
+    }
+
+    final isMetaConnectionReturn =
+        uri.scheme == 'botadmin' && uri.host == 'meta-connected';
+    if (isMetaConnectionReturn) {
+      ref.invalidate(dashboardSnapshotProvider);
+      if (mounted) {
+        final state = uri.queryParameters['state'] == 'pending'
+            ? 'pendente'
+            : 'conectada';
+        showSuccessToast(context, 'Conexão Meta $state. Atualizando o painel.');
+      }
       return;
     }
 
@@ -912,41 +932,64 @@ class _UserDashboardSessionShellState
   Widget build(BuildContext context) {
     if (!widget.showAdminReturn) return widget.child;
 
-    return Stack(
+    final media = MediaQuery.of(context);
+    final name =
+        ref.watch(authControllerProvider).value?.user.name ?? 'usuário';
+    // Faixa fixa no topo (não flutua sobre o conteúdo): empurra o painel para
+    // baixo, então nada fica sobreposto ao cabeçalho do usuário.
+    return Column(
       children: [
-        widget.child,
-        Positioned(
-          top: MediaQuery.paddingOf(context).top + 10,
-          left: 0,
-          right: 0,
-          child: Center(
-            child: Material(
-              color: Colors.transparent,
-              child: FilledButton.icon(
-                onPressed: _busy ? null : _returnToAdmin,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFF00A884),
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 12,
-                  ),
-                  elevation: 6,
-                  shadowColor: Colors.black.withValues(alpha: 0.28),
+        Material(
+          color: const Color(0xFF0B1F19),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(14, media.padding.top + 6, 8, 6),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.visibility_outlined,
+                  color: Color(0xFF4ADE80),
+                  size: 18,
                 ),
-                icon: _busy
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Icon(Icons.swap_horiz_rounded),
-                label: const Text('Voltar ao painel de origem'),
-              ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Visualizando como $name',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13.5,
+                    ),
+                  ),
+                ),
+                TextButton.icon(
+                  onPressed: _busy ? null : _returnToAdmin,
+                  style: TextButton.styleFrom(
+                    foregroundColor: const Color(0xFF4ADE80),
+                    visualDensity: VisualDensity.compact,
+                  ),
+                  icon: _busy
+                      ? const SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Color(0xFF4ADE80),
+                          ),
+                        )
+                      : const Icon(Icons.keyboard_return_rounded, size: 18),
+                  label: const Text('Voltar ao painel'),
+                ),
+              ],
             ),
+          ),
+        ),
+        Expanded(
+          child: MediaQuery.removePadding(
+            context: context,
+            removeTop: true,
+            child: widget.child,
           ),
         ),
       ],
@@ -961,6 +1004,12 @@ class _UserDashboardSessionShellState
       ref
           .read(partnerWorkspaceSectionProvider.notifier)
           .select(PartnerWorkspaceSection.overview);
+      if (context.mounted) {
+        Navigator.of(
+          context,
+          rootNavigator: true,
+        ).popUntil((route) => route.isFirst);
+      }
       ref.read(authControllerProvider.notifier).setSession(session);
       if (mounted) {
         showSuccessToast(context, 'Painel administrativo restaurado.');
