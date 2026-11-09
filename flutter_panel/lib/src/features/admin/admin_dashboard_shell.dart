@@ -28,9 +28,11 @@ import '../auth/auth_controller.dart';
 import '../support/user_support_chat_screen.dart';
 import '../chat/media_local_file.dart';
 import '../chat/chat_screen.dart';
+import 'admin_instance_conversations_workspace.dart';
 
 enum AdminPanelSection {
   support,
+  conversations,
   users,
   instances,
   plans,
@@ -783,6 +785,7 @@ class AdminDashboardShell extends ConsumerWidget {
 
     final content = switch (section) {
       AdminPanelSection.support => const _AdminSupportWorkspace(),
+      AdminPanelSection.conversations => const AdminInstanceConversationsWorkspace(),
       AdminPanelSection.users => _AdminRecordsWorkspace(
         title: 'Usuários',
         subtitle: 'Clientes, assinaturas e acesso.',
@@ -1323,6 +1326,11 @@ const _adminNavItems = [
     AdminPanelSection.support,
     Icons.support_agent_outlined,
     'Suporte',
+  ),
+  _RailButton(
+    AdminPanelSection.conversations,
+    Icons.forum_outlined,
+    'Conversas',
   ),
   _RailButton(AdminPanelSection.users, Icons.people_alt_outlined, 'Usuários'),
   _RailButton(

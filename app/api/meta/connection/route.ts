@@ -4,6 +4,7 @@ import { loadMetaPlatformConfig, publicMetaPlatform, loadMetaPurpose, saveMetaPu
 import { getWebhookRowForUser } from "lib/webhooks";
 import { ensureMetaChannelTables, metaCoexistenceSyncStatus } from "lib/meta-channel";
 import { getDb } from "lib/db";
+import { getInstanceForUser } from "lib/bot-instances";
 import { decryptWwPanelSecret } from "lib/wwpanel";
 import { getPublicAppBaseUrl } from "lib/meta";
 
@@ -29,12 +30,38 @@ export async function GET(request: NextRequest) {
       verification = { ok: false, message: error instanceof Error ? error.message : "Falha ao consultar a Meta.", checkedAt: new Date().toISOString() };
     }
   }
+  const serializedConnections = await Promise.all(connections.map(async (row) => {
+    // Coexistence can pair this official Meta profile to a regular BotAdmin
+    // instance. Surface the peer id so the superadmin can inspect both
+    // conversation indexes with the same shared chat UI.
+    const instance = await getInstanceForUser(user.id, row.instance_id).catch(() => null);
+    const connectionDigits = String(row.display_phone_number ?? "").replace(/\D/g, "");
+    const [coexistenceCandidates] = await getDb().query<Array<{id:number;phone:string|null;purpose:string|null}>>(
+      "SELECT id, phone, purpose FROM bot_instances WHERE user_id = ? AND id <> ?",
+      [user.id, row.instance_id],
+    );
+    // The administrative Bot instance can predate OAuth and therefore have
+    // no profile-mesh row despite sharing the exact same WhatsApp number.
+    const coexistencePeerId = instance?.meshPeerId ?? coexistenceCandidates.find((candidate) => {
+      const candidateDigits = String(candidate.phone ?? "").replace(/\D/g, "");
+      return Boolean(connectionDigits) && candidateDigits === connectionDigits && candidate.purpose === "admin_system";
+    })?.id ?? null;
+    return {
+      instanceId: row.instance_id,
+      phoneNumberId: row.phone_number_id,
+      displayPhoneNumber: row.display_phone_number,
+      businessAccountId: row.waba_id,
+      status: row.status,
+      meshPeerId: instance?.meshPeerId ?? null,
+      coexistencePeerId,
+    };
+  }));
   return NextResponse.json({
     onboarding: publicMetaPlatform(platform),
     onboardingPendingInstanceIds: pending.map(row=>Number(row.instance_id)),
     purpose: await loadMetaPurpose(user.id),
     verification,
-    connections: connections.map(row=>({instanceId:row.instance_id,phoneNumberId:row.phone_number_id,displayPhoneNumber:row.display_phone_number,businessAccountId:row.waba_id,status:row.status})),
+    connections: serializedConnections,
     connection: {
       configured: current ? current.status === 'connected' && Boolean(current.token_encrypted) : Boolean(webhook?.access_token && webhook?.phone_number_id),
       phoneNumberId: current?.phone_number_id ?? webhook?.phone_number_id ?? null,

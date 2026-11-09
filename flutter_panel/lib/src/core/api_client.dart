@@ -971,6 +971,36 @@ class BotAdminApiClient {
     }
   }
 
+  /// Loads one profile's native conversation index without converting an API
+  /// failure into an empty list. Administrative workspaces use this same
+  /// transport as the user dashboard so a permissions/configuration problem
+  /// is visible instead of looking like there are no chats.
+  Future<List<ConversationThread>> loadConversationThreadsForInstance(
+    int instanceId, {
+    bool syncDirectory = false,
+    Duration syncTimeout = const Duration(seconds: 18),
+  }) async {
+    if (instanceId <= 0) return const <ConversationThread>[];
+    final response = await _loadConversationThreadsForInstance(
+      instanceId,
+      syncDirectory: syncDirectory,
+      syncTimeout: syncTimeout,
+    ).timeout(syncDirectory ? syncTimeout : const Duration(seconds: 45));
+    final threads = <ConversationThread>[];
+    for (final json in _list(response['threads'])) {
+      try {
+        threads.add(
+          ConversationThread.fromJson(json, fallbackInstanceId: instanceId),
+        );
+      } catch (_) {
+        // Keep a malformed historical row from hiding the rest of the inbox.
+      }
+    }
+    final stableThreads = List<ConversationThread>.unmodifiable(threads);
+    _conversationThreadCache[instanceId] = stableThreads;
+    return stableThreads;
+  }
+
   Future<Map<String, dynamic>> _loadConversationThreadsForInstance(
     int instanceId, {
     required bool syncDirectory,
