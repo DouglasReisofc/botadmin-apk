@@ -1,41 +1,58 @@
 import 'dart:async';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-
 import '../../core/api_client.dart';
 import '../../core/botadmin_cached_image.dart';
 import '../../core/wa_theme.dart';
+import '../../models/admin_support.dart';
 import '../../models/chat_message.dart';
 import '../../models/conversation_thread.dart';
 import '../chat/chat_screen.dart';
+import 'admin_conversation_inbox.dart';
 
-/// Superadmin view of the WhatsApp number connected to the administrative
-/// Meta account. The message body is the exact [ChatScreen] used by the user
-/// dashboard; this widget only supplies an administrative instance picker and
-/// its existing conversation index.
 class AdminInstanceConversationsWorkspace extends ConsumerStatefulWidget {
-  const AdminInstanceConversationsWorkspace({super.key});
-
+  const AdminInstanceConversationsWorkspace({
+    super.key,
+    required this.supportThreads,
+    required this.selectedSupportThread,
+    required this.onSelectSupport,
+    required this.onRefreshSupport,
+    required this.supportConversationBuilder,
+    required this.supportThreadBuilder,
+  });
+  final AsyncValue<List<AdminSupportThreadEntry>> supportThreads;
+  final AdminSupportThreadEntry? selectedSupportThread;
+  final ValueChanged<AdminSupportThreadEntry?> onSelectSupport;
+  final Future<void> Function() onRefreshSupport;
+  final Widget Function(AdminSupportThreadEntry entry, Widget? leading)
+  supportConversationBuilder;
+  final Widget Function(
+    AdminSupportThreadEntry entry,
+    bool selected,
+    VoidCallback onTap,
+    AdminInboxConversation conversation,
+  )
+  supportThreadBuilder;
   @override
   ConsumerState<AdminInstanceConversationsWorkspace> createState() =>
-      _AdminInstanceConversationsWorkspaceState();
+      AdminInstanceConversationsWorkspaceState();
 }
 
-class _AdminInstanceConversationsWorkspaceState
+class AdminInstanceConversationsWorkspaceState
     extends ConsumerState<AdminInstanceConversationsWorkspace>
     with WidgetsBindingObserver {
   final _search = TextEditingController();
   Timer? _refreshTimer;
   List<_MetaConversationInstance> _instances = const [];
-  List<ConversationThread> _threads = const [];
-  ConversationThread? _selected;
-  int? _instanceId;
+  final Map<int, List<ConversationThread>> _threads = {};
+  AdminInboxChannel? _selected;
+  String? _source;
   String _filter = 'all';
   String _query = '';
   bool _loadingInstances = true;
   bool _loadingThreads = false;
   Object? _error;
+  Object? _instanceError;
 
   @override
   void initState() {
@@ -43,8 +60,8 @@ class _AdminInstanceConversationsWorkspaceState
     WidgetsBinding.instance.addObserver(this);
     unawaited(_loadInstances());
     _refreshTimer = Timer.periodic(const Duration(seconds: 10), (_) {
-      if (_instanceId != null && !_loadingThreads) {
-        unawaited(_loadThreads(silent: true));
+      if (!_loadingInstances && !_loadingThreads) {
+        unawaited(_refresh(silent: true));
       }
     });
   }
@@ -59,190 +76,246 @@ class _AdminInstanceConversationsWorkspaceState
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed && _instanceId != null) {
-      unawaited(_loadThreads(silent: true));
-    }
+    if (state == AppLifecycleState.resumed) unawaited(_refresh(silent: true));
+  }
+
+  bool closeConversation() {
+    if (_activeChannel == null) return false;
+    widget.onSelectSupport(null);
+    setState(() => _selected = null);
+    return true;
+  }
+
+  AdminInboxChannel? get _activeChannel {
+    final support = widget.selectedSupportThread;
+    if (support != null) return AdminInboxChannel.support(support);
+    return _selected?.whatsapp == null ? null : _selected;
+  }
+
+  List<AdminInboxConversation> get _inbox => buildAdminConversationInbox([
+    for (final support
+        in widget.supportThreads.value ?? const <AdminSupportThreadEntry>[])
+      AdminInboxChannel.support(support),
+    for (final instance in _instances)
+      for (final thread
+          in _threads[instance.instanceId] ?? const <ConversationThread>[])
+        AdminInboxChannel.whatsapp(thread, instance.label),
+  ]);
+  void _selectChannel(AdminInboxChannel channel) {
+    widget.onSelectSupport(channel.support);
+    setState(() => _selected = channel);
   }
 
   Future<void> _loadInstances() async {
-    setState(() {
-      _loadingInstances = true;
-      _error = null;
-    });
-    try {
-      final json = await ref
-          .read(apiClientProvider)
-          .getJson('/api/meta/connection');
-      final rows = <_MetaConversationInstance>[];
-      final knownIds = <int>{};
-      for (final raw
-          in (json['connections'] as List? ?? const []).whereType<Map>()) {
-        final meta = _MetaConversationInstance.fromJson(raw);
-        if (meta.connected &&
-            meta.instanceId > 0 &&
-            knownIds.add(meta.instanceId)) {
-          rows.add(meta);
-        }
-        final peerId = raw['coexistencePeerId'] ?? raw['meshPeerId'];
-        final coexistencePeerId = peerId is num
-            ? peerId.toInt()
-            : int.tryParse('$peerId');
-        if (meta.connected &&
-            coexistencePeerId != null &&
-            coexistencePeerId > 0 &&
-            knownIds.add(coexistencePeerId)) {
-          rows.add(
-            _MetaConversationInstance(
-              instanceId: coexistencePeerId,
-              label: '${meta.label} · Bot coexistente',
-              connected: true,
-              isCoexistenceBot: true,
-            ),
-          );
-        }
-      }
-      if (!mounted) return;
-      final preferredId = (json['connection'] as Map?)?['instanceId'];
-      final preferred = preferredId is num
-          ? preferredId.toInt()
-          : int.tryParse('$preferredId');
-      final keepCurrent = rows.any((row) => row.instanceId == _instanceId);
-      final coexistenceBotId = rows
-          .where((row) => row.isCoexistenceBot)
-          .firstOrNull
-          ?.instanceId;
-      final initial = keepCurrent
-          ? _instanceId
-          : coexistenceBotId ??
-                (rows.any((row) => row.instanceId == preferred)
-                    ? preferred
-                    : rows.firstOrNull?.instanceId);
-      setState(() {
-        _instances = rows;
-        _instanceId = initial;
-        _loadingInstances = false;
-      });
-      if (initial != null) await _loadThreads();
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _loadingInstances = false;
-        _error = error;
-      });
-    }
-  }
-
-  Future<void> _loadThreads({bool silent = false}) async {
-    final instanceId = _instanceId;
-    if (instanceId == null) return;
-    if (!silent) setState(() => _loadingThreads = true);
-    try {
-      final rows = await ref
-          .read(apiClientProvider)
-          .loadConversationThreadsForInstance(instanceId, syncDirectory: true);
-      if (!mounted || instanceId != _instanceId) return;
-      final selectedKey = _selected == null ? null : _threadKey(_selected!);
-      final nextSelected = selectedKey == null
-          ? null
-          : rows.where((item) => _threadKey(item) == selectedKey).firstOrNull;
-      setState(() {
-        _threads = rows;
-        _selected = nextSelected ?? _selected;
-        _error = null;
-      });
-    } catch (error) {
-      if (!mounted || instanceId != _instanceId) return;
-      setState(() => _error = error);
-    } finally {
-      if (mounted && instanceId == _instanceId && !silent) {
-        setState(() => _loadingThreads = false);
+    if (!mounted) return;
+    setState(() => _loadingInstances = true);
+    final api = ref.read(apiClientProvider);
+    Object? loadError;
+    final directories = await Future.wait([
+      api.getJson('/api/meta/connection').catchError((Object error) {
+        loadError = error;
+        return <String, dynamic>{};
+      }),
+      api.getJson('/api/bot-instances?refreshStatus=0').catchError((
+        Object error,
+      ) {
+        loadError = error;
+        return <String, dynamic>{};
+      }),
+    ]);
+    if (!mounted) return;
+    final rows = <int, _MetaConversationInstance>{};
+    final metaPhones = <String>{};
+    for (final raw
+        in (directories[0]['connections'] as List? ?? const [])
+            .whereType<Map>()) {
+      final meta = _MetaConversationInstance.fromJson(raw);
+      if (meta.instanceId <= 0) continue;
+      rows[meta.instanceId] = meta;
+      final phone = '${raw['displayPhoneNumber'] ?? ''}'.replaceAll(
+        RegExp(r'\D'),
+        '',
+      );
+      if (phone.isNotEmpty) metaPhones.add(phone);
+      final peer = raw['coexistencePeerId'] ?? raw['meshPeerId'];
+      final peerId = peer is num ? peer.toInt() : int.tryParse('$peer');
+      if (peerId != null && peerId > 0) {
+        rows.putIfAbsent(
+          peerId,
+          () => _MetaConversationInstance(
+            instanceId: peerId,
+            label: 'Bot · $phone',
+            connected: false,
+            isCoexistenceBot: true,
+          ),
+        );
       }
     }
-  }
-
-  void _selectInstance(int? id) {
-    if (id == null || id == _instanceId) return;
+    for (final raw
+        in (directories[1]['instances'] as List? ?? const [])
+            .whereType<Map>()) {
+      final id = raw['id'] is num
+          ? (raw['id'] as num).toInt()
+          : int.tryParse('${raw['id']}');
+      if (id == null || id <= 0) continue;
+      final phone = '${raw['phone'] ?? ''}'.replaceAll(RegExp(r'\D'), '');
+      final isBot =
+          raw['purpose'] == 'admin_system' ||
+          rows[id]?.isCoexistenceBot == true;
+      if (!isBot && (!metaPhones.contains(phone) || rows.containsKey(id))) {
+        continue;
+      }
+      rows[id] = _MetaConversationInstance(
+        instanceId: id,
+        label: 'Bot · ${phone.isEmpty ? raw['name'] ?? '#$id' : phone}',
+        connected: const ['connected', 'conectado'].contains(
+          '${raw['sessionStatus'] ?? raw['session_status']}'.toLowerCase(),
+        ),
+        isCoexistenceBot: true,
+      );
+    }
     setState(() {
-      _instanceId = id;
-      _threads = const [];
-      _selected = null;
-      _error = null;
+      if (loadError != null) {
+        for (final existing in _instances) {
+          rows.putIfAbsent(existing.instanceId, () => existing);
+        }
+      }
+      _instances = rows.values.toList();
+      if (_source != null &&
+          _source != 'support' &&
+          !_instances.any((row) => _source == 'instance:${row.instanceId}')) {
+        _source = null;
+      }
+      _loadingInstances = false;
+      _instanceError = loadError;
     });
-    unawaited(_loadThreads());
+    await _loadThreads();
   }
 
-  List<ConversationThread> get _visibleThreads {
-    final normalized = _query.trim().toLowerCase();
-    return _threads
-        .where((thread) {
-          if (!thread.isSafeConversationListItem) return false;
-          final matchesFilter = switch (_filter) {
-            'unread' => thread.unreadCount > 0,
-            'groups' => thread.isGroup,
-            'private' => thread.isContact,
-            'pinned' => thread.pinned,
-            'archived' => thread.archived,
-            _ => true,
-          };
-          if (!matchesFilter) return false;
-          if (normalized.isEmpty) return true;
-          return '${thread.title} ${thread.phone ?? ''} ${thread.lastMessage}'
-              .toLowerCase()
-              .contains(normalized);
-        })
-        .toList(growable: false)
-      ..sort((a, b) {
-        if (a.pinned != b.pinned) return a.pinned ? -1 : 1;
-        return b.lastActivity.compareTo(a.lastActivity);
-      });
+  Future<void> _loadThreads() async {
+    if (_loadingThreads || !mounted) return;
+    setState(() => _loadingThreads = true);
+    Object? loadError;
+    await Future.wait(
+      _instances.map((instance) async {
+        try {
+          final rows = await ref
+              .read(apiClientProvider)
+              .loadConversationThreadsForInstance(instance.instanceId);
+          if (mounted) setState(() => _threads[instance.instanceId] = rows);
+        } catch (error) {
+          loadError = error;
+        }
+      }),
+    );
+    if (!mounted) return;
+    setState(() {
+      _loadingThreads = false;
+      _error = loadError;
+      final selected = _selected?.whatsapp;
+      if (selected != null) {
+        final updated =
+            (_threads[selected.instanceId] ?? const <ConversationThread>[])
+                .where((thread) => _threadKey(thread) == _threadKey(selected))
+                .firstOrNull;
+        if (updated != null) {
+          _selected = AdminInboxChannel.whatsapp(updated, _selected!.label);
+        }
+      }
+    });
+  }
+
+  Future<void> _refresh({bool silent = false}) async {
+    await Future.wait([
+      widget.onRefreshSupport().catchError((Object error) {
+        if (mounted) setState(() => _error = error);
+      }),
+      if (silent) _loadThreads() else _loadInstances(),
+    ]);
   }
 
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
-    final compact = MediaQuery.sizeOf(context).width < 820;
-    if (_loadingInstances) {
-      return const Center(child: CircularProgressIndicator());
-    }
-    if (_instances.isEmpty) {
-      return _NoMetaConversationConnection(onRetry: _loadInstances);
-    }
-    final list = _buildListPane(context, wa);
-    if (compact && _selected != null) {
-      return _buildChat(
-        _selected!,
-        leading: IconButton(
-          tooltip: 'Voltar para conversas',
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => setState(() => _selected = null),
-        ),
-      );
-    }
-    return Row(
-      children: [
-        SizedBox(
-          width: compact ? MediaQuery.sizeOf(context).width : 390,
-          child: list,
-        ),
-        if (!compact)
-          Expanded(
-            child: _selected == null
-                ? _AdminConversationEmpty(
-                    instance: _instances.firstWhere(
-                      (row) => row.instanceId == _instanceId,
+    final inbox = _inbox;
+    final active = _activeChannel;
+    final conversation = inbox
+        .where(
+          (item) => item.channels.any((channel) => channel.key == active?.key),
+        )
+        .firstOrNull;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final compact = constraints.maxWidth < 820;
+        final leading = compact
+            ? IconButton(
+                tooltip: 'Voltar para conversas',
+                icon: const Icon(Icons.arrow_back_rounded),
+                onPressed: closeConversation,
+              )
+            : null;
+        final pane = active == null
+            ? const _AdminConversationEmpty()
+            : Column(
+                children: [
+                  if (conversation != null && conversation.channels.length > 1)
+                    Container(
+                      width: double.infinity,
+                      color: wa.panel,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 4,
+                        children: [
+                          for (final channel in conversation.channels)
+                            ChoiceChip(
+                              label: Text(channel.label),
+                              selected: channel.key == active.key,
+                              onSelected: (_) => _selectChannel(channel),
+                            ),
+                        ],
+                      ),
                     ),
-                  )
-                : _buildChat(_selected!),
-          ),
-      ],
+                  Expanded(
+                    child: active.support != null
+                        ? widget.supportConversationBuilder(
+                            active.support!,
+                            leading,
+                          )
+                        : _buildChat(active.whatsapp!, leading: leading),
+                  ),
+                ],
+              );
+        if (compact && active != null) return pane;
+        final list = _buildListPane(context, wa, inbox, conversation);
+        return Row(
+          children: [
+            if (compact)
+              Expanded(child: list)
+            else
+              SizedBox(width: 400, child: list),
+            if (!compact) Expanded(child: pane),
+          ],
+        );
+      },
     );
   }
 
-  Widget _buildListPane(BuildContext context, WaTheme wa) {
-    final visible = _visibleThreads;
-    final selectedInstance = _instances.firstWhere(
-      (row) => row.instanceId == _instanceId,
-    );
+  Widget _buildListPane(
+    BuildContext context,
+    WaTheme wa,
+    List<AdminInboxConversation> inbox,
+    AdminInboxConversation? selected,
+  ) {
+    final visible = inbox
+        .where(
+          (item) =>
+              item.matches(query: _query, filter: _filter, source: _source),
+        )
+        .toList();
     return DecoratedBox(
       decoration: BoxDecoration(
         color: wa.panel,
@@ -254,29 +327,21 @@ class _AdminInstanceConversationsWorkspaceState
             padding: const EdgeInsets.fromLTRB(18, 16, 12, 10),
             child: Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: wa.accentSoft,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Icon(Icons.forum_rounded, color: wa.accent),
-                ),
-                const SizedBox(width: 10),
+                Icon(Icons.forum_rounded, color: wa.accent),
+                const SizedBox(width: 12),
                 const Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Conversas do WhatsApp',
+                        'Conversas',
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          fontSize: 16,
+                          fontSize: 18,
                         ),
                       ),
                       Text(
-                        'Instância da API Meta do painel',
+                        'Suporte · Meta · Bot',
                         style: TextStyle(fontSize: 12),
                       ),
                     ],
@@ -284,7 +349,7 @@ class _AdminInstanceConversationsWorkspaceState
                 ),
                 IconButton(
                   tooltip: 'Atualizar conversas',
-                  onPressed: _loadingThreads ? null : () => _loadThreads(),
+                  onPressed: _loadingThreads ? null : () => _refresh(),
                   icon: const Icon(Icons.refresh_rounded),
                 ),
               ],
@@ -292,22 +357,36 @@ class _AdminInstanceConversationsWorkspaceState
           ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: DropdownButtonFormField<int>(
-              initialValue: _instanceId,
+            child: DropdownButtonFormField<String>(
+              key: ValueKey('source:${_source ?? 'all'}:${_instances.length}'),
+              initialValue: _source ?? 'all',
               isExpanded: true,
               decoration: const InputDecoration(
-                labelText: 'Número conectado',
-                prefixIcon: Icon(Icons.verified_outlined),
+                labelText: 'Canal',
+                prefixIcon: Icon(Icons.hub_outlined),
               ),
-              items: _instances
-                  .map(
-                    (item) => DropdownMenuItem(
-                      value: item.instanceId,
-                      child: Text(item.label, overflow: TextOverflow.ellipsis),
+              items: [
+                const DropdownMenuItem(
+                  value: 'all',
+                  child: Text('Todos os canais'),
+                ),
+                const DropdownMenuItem(
+                  value: 'support',
+                  child: Text('Suporte'),
+                ),
+                for (final instance in _instances)
+                  DropdownMenuItem(
+                    value: 'instance:${instance.instanceId}',
+                    child: Text(
+                      '${instance.label}${instance.connected ? '' : ' · offline'}',
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  )
-                  .toList(growable: false),
-              onChanged: _selectInstance,
+                  ),
+              ],
+              onChanged: (value) => setState(() {
+                _source = value == 'all' ? null : value;
+                _filter = 'all';
+              }),
             ),
           ),
           Padding(
@@ -316,7 +395,7 @@ class _AdminInstanceConversationsWorkspaceState
               controller: _search,
               onChanged: (value) => setState(() => _query = value),
               decoration: InputDecoration(
-                hintText: 'Pesquisar conversa',
+                hintText: 'Pesquisar nome, e-mail ou WhatsApp',
                 prefixIcon: const Icon(Icons.search_rounded),
                 suffixIcon: _query.isEmpty
                     ? null
@@ -344,6 +423,14 @@ class _AdminInstanceConversationsWorkspaceState
                   ('groups', 'Grupos'),
                   ('pinned', 'Fixadas'),
                   ('archived', 'Arquivadas'),
+                  ('open', 'Abertos'),
+                  ('closed', 'Fechados'),
+                  ('human', 'Humano'),
+                  ('bot', 'Bot'),
+                  ('subscription_active', 'Assinatura ativa'),
+                  ('subscription_inactive', 'Sem assinatura'),
+                  ('account_active', 'Conta ativa'),
+                  ('account_blocked', 'Conta bloqueada'),
                 ])
                   Padding(
                     padding: const EdgeInsets.only(right: 7),
@@ -356,26 +443,76 @@ class _AdminInstanceConversationsWorkspaceState
               ],
             ),
           ),
-          if (_loadingThreads) const LinearProgressIndicator(minHeight: 2),
-          if (_error != null)
-            _ConversationLoadWarning(error: _error!, onRetry: _loadThreads),
+          if (_loadingThreads ||
+              _loadingInstances ||
+              widget.supportThreads.isLoading)
+            const LinearProgressIndicator(minHeight: 2),
+          if (_error != null ||
+              _instanceError != null ||
+              widget.supportThreads.hasError)
+            _ConversationLoadWarning(
+              error: _error ?? _instanceError ?? widget.supportThreads.error!,
+              onRetry: _refresh,
+            ),
           Expanded(
             child: visible.isEmpty
                 ? _ConversationListEmpty(
-                    label: selectedInstance.label,
+                    label: 'os canais selecionados',
                     hasSearch: _query.isNotEmpty || _filter != 'all',
                   )
                 : RefreshIndicator(
-                    onRefresh: _loadThreads,
+                    onRefresh: _refresh,
                     child: ListView.builder(
                       physics: const AlwaysScrollableScrollPhysics(),
                       itemCount: visible.length,
                       itemBuilder: (context, index) {
-                        final thread = visible[index];
-                        return _ConversationTile(
-                          thread: thread,
-                          selected: _threadKey(thread) == _threadKey(_selected),
-                          onTap: () => setState(() => _selected = thread),
+                        final item = visible[index];
+                        final support = item.channels
+                            .where((channel) => channel.support != null)
+                            .firstOrNull
+                            ?.support;
+                        final preferred = _source == null
+                            ? item.latest
+                            : item.channels
+                                  .where(
+                                    (channel) => channel.support != null
+                                        ? _source == 'support'
+                                        : _source ==
+                                              'instance:${channel.whatsapp!.instanceId}',
+                                  )
+                                  .first;
+                        void open() => _selectChannel(preferred);
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (support != null)
+                              widget.supportThreadBuilder(
+                                support,
+                                selected?.key == item.key,
+                                open,
+                                item,
+                              )
+                            else
+                              _ConversationTile(
+                                thread: item.latest.whatsapp!.copyWith(
+                                  unreadCount: item.unreadCount,
+                                ),
+                                selected: selected?.key == item.key,
+                                onTap: open,
+                              ),
+                            Padding(
+                              padding: const EdgeInsets.fromLTRB(78, 0, 16, 6),
+                              child: Text(
+                                item.labels,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: wa.accent,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ),
+                          ],
                         );
                       },
                     ),
@@ -387,6 +524,7 @@ class _AdminInstanceConversationsWorkspaceState
   }
 
   Widget _buildChat(ConversationThread thread, {Widget? leading}) => ChatScreen(
+    key: ValueKey('whatsapp:${_threadKey(thread)}'),
     thread: thread,
     leading: leading,
     onOpenThreadJid: (jid) => _openThread(jid),
@@ -394,27 +532,30 @@ class _AdminInstanceConversationsWorkspaceState
     onOpenContact: (ChatContactCard contact) =>
         _openThread(contact.whatsappJid, title: contact.displayName),
   );
-
   void _openThread(String jid, {String? title}) {
     final clean = jid.trim();
-    if (clean.isEmpty || _instanceId == null) return;
-    final existing = _threads
+    final active = _activeChannel;
+    final instanceId = active?.whatsapp?.instanceId;
+    if (clean.isEmpty || instanceId == null) return;
+    final existing = (_threads[instanceId] ?? const <ConversationThread>[])
         .where((thread) => thread.chatJid == clean)
         .firstOrNull;
-    setState(
-      () => _selected =
-          existing ??
-          ConversationThread(
-            instanceId: _instanceId!,
-            chatJid: clean,
-            title: title?.trim().isNotEmpty == true
-                ? title!.trim()
-                : clean.split('@').first,
-            lastMessage: '',
-            lastActivity: DateTime.now(),
-            unreadCount: 0,
-            chatType: clean.endsWith('@g.us') ? 'group' : 'contact',
-          ),
+    _selectChannel(
+      AdminInboxChannel.whatsapp(
+        existing ??
+            ConversationThread(
+              instanceId: instanceId,
+              chatJid: clean,
+              title: title?.trim().isNotEmpty == true
+                  ? title!.trim()
+                  : clean.split('@').first,
+              lastMessage: '',
+              lastActivity: DateTime.now(),
+              unreadCount: 0,
+              chatType: clean.endsWith('@g.us') ? 'group' : 'contact',
+            ),
+        active!.label,
+      ),
     );
   }
 }
@@ -439,9 +580,8 @@ class _MetaConversationInstance {
     final fallback = '${row['phoneNumberId'] ?? ''}'.trim();
     return _MetaConversationInstance(
       instanceId: instanceId,
-      label: phone.isNotEmpty
-          ? phone
-          : (fallback.isNotEmpty ? fallback : 'Perfil Meta #$instanceId'),
+      label:
+          'Meta · ${phone.isNotEmpty ? phone : (fallback.isNotEmpty ? fallback : '#$instanceId')}',
       connected: '${row['status']}'.toLowerCase() == 'connected',
     );
   }
@@ -585,37 +725,8 @@ String _threadTime(DateTime value) {
   return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}';
 }
 
-class _NoMetaConversationConnection extends StatelessWidget {
-  const _NoMetaConversationConnection({required this.onRetry});
-  final Future<void> Function() onRetry;
-  @override
-  Widget build(BuildContext context) => Center(
-    child: Padding(
-      padding: const EdgeInsets.all(28),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.mark_chat_unread_outlined, size: 48),
-          const SizedBox(height: 12),
-          const Text(
-            'Conecte o WhatsApp do painel à Meta para acessar as conversas.',
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          OutlinedButton.icon(
-            onPressed: onRetry,
-            icon: const Icon(Icons.refresh_rounded),
-            label: const Text('Verificar novamente'),
-          ),
-        ],
-      ),
-    ),
-  );
-}
-
 class _AdminConversationEmpty extends StatelessWidget {
-  const _AdminConversationEmpty({required this.instance});
-  final _MetaConversationInstance instance;
+  const _AdminConversationEmpty();
   @override
   Widget build(BuildContext context) => Center(
     child: Column(
@@ -623,14 +734,12 @@ class _AdminConversationEmpty extends StatelessWidget {
       children: [
         const Icon(Icons.forum_outlined, size: 52),
         const SizedBox(height: 12),
-        Text(
-          'Selecione uma conversa de ${instance.label}.',
-          style: const TextStyle(fontWeight: FontWeight.w700),
+        const Text(
+          'Selecione uma conversa.',
+          style: TextStyle(fontWeight: FontWeight.w700),
         ),
         const SizedBox(height: 4),
-        const Text(
-          'O atendimento usa a mesma tela e o mesmo histórico do painel do usuário.',
-        ),
+        const Text('Suporte, Meta e Bot em um só lugar.'),
       ],
     ),
   );

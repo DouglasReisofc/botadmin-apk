@@ -30,6 +30,9 @@ import '../chat/media_local_file.dart';
 import '../chat/chat_screen.dart';
 import 'admin_instance_conversations_workspace.dart';
 
+final _adminConversationsKey =
+    GlobalKey<AdminInstanceConversationsWorkspaceState>();
+
 enum AdminPanelSection {
   support,
   conversations,
@@ -730,9 +733,10 @@ class AdminSectionController extends Notifier<AdminPanelSection> {
   final List<AdminPanelSection> _history = <AdminPanelSection>[];
 
   @override
-  AdminPanelSection build() => AdminPanelSection.support;
+  AdminPanelSection build() => AdminPanelSection.conversations;
 
   void select(AdminPanelSection section, {bool recordHistory = true}) {
+    if (section == AdminPanelSection.support) section = AdminPanelSection.conversations;
     if (state == section) return;
     if (recordHistory) {
       _history.add(state);
@@ -784,8 +788,8 @@ class AdminDashboardShell extends ConsumerWidget {
     });
 
     final content = switch (section) {
-      AdminPanelSection.support => const _AdminSupportWorkspace(),
-      AdminPanelSection.conversations => const AdminInstanceConversationsWorkspace(),
+      AdminPanelSection.support || AdminPanelSection.conversations =>
+        const _AdminSupportWorkspace(),
       AdminPanelSection.users => _AdminRecordsWorkspace(
         title: 'Usuários',
         subtitle: 'Clientes, assinaturas e acesso.',
@@ -1234,17 +1238,16 @@ void _handleAdminBack(BuildContext context, WidgetRef ref) {
   }
 
   final section = ref.read(adminSectionProvider);
-  if (section == AdminPanelSection.support &&
-      ref.read(selectedAdminSupportThreadProvider) != null) {
-    ref.read(selectedAdminSupportThreadProvider.notifier).select(null);
+  if ((section == AdminPanelSection.conversations || section == AdminPanelSection.support) &&
+      _adminConversationsKey.currentState?.closeConversation() == true) {
     return;
   }
 
   final sectionController = ref.read(adminSectionProvider.notifier);
   if (sectionController.selectPrevious()) return;
 
-  if (section != AdminPanelSection.support) {
-    sectionController.select(AdminPanelSection.support, recordHistory: false);
+  if (section != AdminPanelSection.conversations) {
+    sectionController.select(AdminPanelSection.conversations, recordHistory: false);
   }
 }
 
@@ -1322,11 +1325,6 @@ class _RailButton {
 }
 
 const _adminNavItems = [
-  _RailButton(
-    AdminPanelSection.support,
-    Icons.support_agent_outlined,
-    'Suporte',
-  ),
   _RailButton(
     AdminPanelSection.conversations,
     Icons.forum_outlined,
@@ -1566,234 +1564,33 @@ class _AdminMobileNavItem extends StatelessWidget {
   }
 }
 
-class _AdminSupportWorkspace extends ConsumerStatefulWidget {
+class _AdminSupportWorkspace extends ConsumerWidget {
   const _AdminSupportWorkspace();
 
   @override
-  ConsumerState<_AdminSupportWorkspace> createState() =>
-      _AdminSupportWorkspaceState();
-}
-
-class _AdminSupportWorkspaceState
-    extends ConsumerState<_AdminSupportWorkspace> {
-  final _searchController = TextEditingController();
-  var _query = '';
-  var _filter = 'all';
-
-  @override
-  void dispose() {
-    _searchController.dispose();
-    super.dispose();
-  }
-
-  List<AdminSupportThreadEntry> _filterThreads(
-    List<AdminSupportThreadEntry> items,
-  ) {
-    final normalized = _query.trim().toLowerCase();
-    return items
-        .where((entry) {
-          final matchesFilter = switch (_filter) {
-            'subscription_active' => entry.user.hasActiveSubscription,
-            'subscription_inactive' => !entry.user.hasActiveSubscription,
-            'account_active' => entry.user.isActive,
-            'account_blocked' => !entry.user.isActive,
-            'open' => entry.thread.isOpen,
-            'closed' => !entry.thread.isOpen,
-            'human' => entry.thread.isHuman,
-            'bot' => !entry.thread.isHuman,
-            _ => true,
-          };
-          if (!matchesFilter || normalized.isEmpty) return matchesFilter;
-          return [
-            entry.displayName,
-            entry.user.name,
-            entry.user.email,
-            entry.user.whatsappNumber,
-            entry.thread.displayWhatsappId,
-            entry.thread.whatsappId,
-            entry.thread.customerName,
-            entry.thread.profileName,
-          ].whereType<String>().any(
-            (value) => value.toLowerCase().contains(normalized),
-          );
-        })
-        .toList(growable: false);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final wa = WaTheme.of(context);
-    final compact = MediaQuery.sizeOf(context).width < 760;
-    final threads = ref.watch(adminSupportThreadsProvider);
-    final selected = ref.watch(selectedAdminSupportThreadProvider);
-
-    Widget buildListPane() {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          color: wa.panel,
-          border: Border(
-            right: compact ? BorderSide.none : BorderSide(color: wa.border),
-          ),
-        ),
-        child: Column(
-          children: [
-            _AdminPanelHeader(
-              title: 'Atendimentos',
-              subtitle: 'Conversas de suporte dos usuários',
-              actions: [
-                IconButton(
-                  tooltip: 'Atualizar',
-                  onPressed: () => ref.invalidate(adminSupportThreadsProvider),
-                  icon: const Icon(Icons.refresh),
-                ),
-              ],
-            ),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 8, 18, 12),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) => setState(() => _query = value),
-                decoration: InputDecoration(
-                  hintText: 'Pesquisar por nome, e-mail ou WhatsApp',
-                  prefixIcon: const Icon(Icons.search),
-                  suffixIcon: _query.isEmpty
-                      ? null
-                      : IconButton(
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() => _query = '');
-                          },
-                          icon: const Icon(Icons.close),
-                        ),
-                  fillColor: wa.searchBg,
-                ),
-              ),
-            ),
-            SizedBox(
-              height: 45,
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.fromLTRB(18, 0, 18, 8),
-                children: [
-                  for (final option in const [
-                    _AdminRecordFilter(value: 'all', label: 'Todos'),
-                    _AdminRecordFilter(
-                      value: 'subscription_active',
-                      label: 'Assinatura ativa',
-                    ),
-                    _AdminRecordFilter(
-                      value: 'subscription_inactive',
-                      label: 'Sem assinatura',
-                    ),
-                    _AdminRecordFilter(value: 'open', label: 'Abertos'),
-                    _AdminRecordFilter(value: 'closed', label: 'Fechados'),
-                    _AdminRecordFilter(value: 'human', label: 'Humano'),
-                    _AdminRecordFilter(value: 'bot', label: 'Bot'),
-                    _AdminRecordFilter(
-                      value: 'account_active',
-                      label: 'Conta ativa',
-                    ),
-                    _AdminRecordFilter(
-                      value: 'account_blocked',
-                      label: 'Conta bloqueada',
-                    ),
-                  ]) ...[
-                    ChoiceChip(
-                      label: Text(option.label),
-                      selected: _filter == option.value,
-                      onSelected: (_) => setState(() => _filter = option.value),
-                    ),
-                    const SizedBox(width: 8),
-                  ],
-                ],
-              ),
-            ),
-            Expanded(
-              child: threads.when(
-                data: (items) {
-                  final filtered = _filterThreads(items);
-                  if (!compact && filtered.isNotEmpty && selected == null) {
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      ref
-                          .read(selectedAdminSupportThreadProvider.notifier)
-                          .select(filtered.first);
-                    });
-                  }
-                  if (filtered.isEmpty) {
-                    return const _EmptyListMessage(
-                      icon: Icons.support_agent_outlined,
-                      text: 'Nenhum atendimento encontrado.',
-                    );
-                  }
-                  return Scrollbar(
-                    child: RefreshIndicator(
-                      onRefresh: () async =>
-                          ref.invalidate(adminSupportThreadsProvider),
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.only(bottom: 20),
-                        itemCount: filtered.length + 1,
-                        itemBuilder: (context, index) {
-                          if (index == filtered.length) {
-                            return _AdminListFooter(
-                              count: filtered.length,
-                              singular: 'atendimento',
-                            );
-                          }
-                          final entry = filtered[index];
-                          return _SupportThreadTile(
-                            entry: entry,
-                            selected: selected?.key == entry.key,
-                            onTap: () => ref
-                                .read(
-                                  selectedAdminSupportThreadProvider.notifier,
-                                )
-                                .select(entry),
-                            onLongPress: () =>
-                                _openSupportUserActions(context, ref, entry),
-                          );
-                        },
-                      ),
-                    ),
-                  );
-                },
-                error: (error, _) => _ErrorState(
-                  message: error.toString(),
-                  onRetry: () => ref.invalidate(adminSupportThreadsProvider),
-                ),
-                loading: () => const Center(child: CircularProgressIndicator()),
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    if (compact) {
-      if (selected != null) {
-        return _SupportConversationPane(
-          entry: selected,
-          leading: IconButton(
-            tooltip: 'Voltar',
-            onPressed: () => ref
-                .read(selectedAdminSupportThreadProvider.notifier)
-                .select(null),
-            icon: const Icon(Icons.arrow_back_rounded),
-          ),
-        );
-      }
-      return buildListPane();
-    }
-
-    return Row(
-      children: [
-        SizedBox(width: 430, child: buildListPane()),
-        Expanded(
-          child: selected == null
-              ? const _AdminEmptyConversation()
-              : _SupportConversationPane(entry: selected),
-        ),
-      ],
+  Widget build(BuildContext context, WidgetRef ref) {
+    return AdminInstanceConversationsWorkspace(
+      key: _adminConversationsKey,
+      supportThreads: ref.watch(adminSupportThreadsProvider),
+      selectedSupportThread: ref.watch(selectedAdminSupportThreadProvider),
+      onSelectSupport: (entry) => ref
+          .read(selectedAdminSupportThreadProvider.notifier).select(entry),
+      onRefreshSupport: () async {
+        ref.invalidate(adminSupportThreadsProvider);
+        await ref.read(adminSupportThreadsProvider.future);
+      },
+      supportConversationBuilder: (entry, leading) =>
+          _SupportConversationPane(entry: entry, leading: leading),
+      supportThreadBuilder: (entry, selected, onTap, conversation) => _SupportThreadTile(
+        entry: entry,
+        selected: selected,
+        onTap: onTap,
+        onLongPress: () => _openSupportUserActions(context, ref, entry),
+        lastActivity: conversation.lastActivity,
+        preview: conversation.latest.support?.subtitle ??
+            conversation.latest.whatsapp!.previewText,
+        unreadCount: conversation.unreadCount,
+      ),
     );
   }
 }
@@ -1804,17 +1601,23 @@ class _SupportThreadTile extends StatelessWidget {
     required this.selected,
     required this.onTap,
     required this.onLongPress,
+    required this.lastActivity,
+    required this.preview,
+    required this.unreadCount,
   });
 
   final AdminSupportThreadEntry entry;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onLongPress;
+  final DateTime lastActivity;
+  final String preview;
+  final int unreadCount;
 
   @override
   Widget build(BuildContext context) {
     final wa = WaTheme.of(context);
-    final time = _formatThreadTime(entry.thread.lastMessageAt);
+    final time = _formatThreadTime(lastActivity.toIso8601String());
     return Material(
       color: selected ? wa.selectedRow : wa.panel,
       child: InkWell(
@@ -1859,7 +1662,7 @@ class _SupportThreadTile extends StatelessWidget {
                       children: [
                         Expanded(
                           child: Text(
-                            entry.subtitle,
+                            preview,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
@@ -1868,7 +1671,7 @@ class _SupportThreadTile extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (entry.thread.unreadCount > 0) ...[
+                        if (unreadCount > 0) ...[
                           const SizedBox(width: 8),
                           Container(
                             constraints: const BoxConstraints(minWidth: 22),
@@ -1881,9 +1684,9 @@ class _SupportThreadTile extends StatelessWidget {
                               borderRadius: BorderRadius.circular(999),
                             ),
                             child: Text(
-                              entry.thread.unreadCount > 99
+                              unreadCount > 99
                                   ? '99+'
-                                  : '${entry.thread.unreadCount}',
+                                  : '$unreadCount',
                               textAlign: TextAlign.center,
                               style: TextStyle(
                                 color: Colors.white,
@@ -12046,39 +11849,6 @@ class _AdminListFooter extends StatelessWidget {
   }
 }
 
-class _AdminEmptyConversation extends StatelessWidget {
-  const _AdminEmptyConversation();
-
-  @override
-  Widget build(BuildContext context) {
-    final wa = WaTheme.of(context);
-    return ColoredBox(
-      color: wa.contentBg,
-      child: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.support_agent_outlined, size: 76, color: wa.icon),
-            const SizedBox(height: 20),
-            Text(
-              'Selecione um atendimento',
-              style: TextStyle(
-                color: wa.textPrimary,
-                fontSize: 28,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Responda usuários e gerencie o modo bot/humano pelo painel admin Flutter.',
-              style: TextStyle(color: wa.textSecondary),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ErrorState extends StatelessWidget {
   const _ErrorState({required this.message, required this.onRetry});
