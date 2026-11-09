@@ -3,15 +3,15 @@
   "android": {
     "platform": "android",
     "type": "apk",
-    "fileName": "botadmin-0.1.365-371-android-release.apk",
-    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.365-botadmin371/botadmin-0.1.365-371-android-release.apk",
-    "sizeBytes": 100956905,
-    "updatedAt": "2026-11-09T04:20:36Z",
+    "fileName": "botadmin-0.1.366-372-android-release.apk",
+    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.366-botadmin372/botadmin-0.1.366-372-android-release.apk",
+    "sizeBytes": 101055297,
+    "updatedAt": "2026-11-09T10:20:34Z",
     "buildType": "release",
-    "versionName": "0.1.365",
-    "versionCode": 371,
+    "versionName": "0.1.366",
+    "versionCode": 372,
     "minVersionCode": 325,
-    "details": "Correção do perfil Meta entre app e navegador, retorno ao Android e página responsiva com arte 3D."
+    "details": "Conversas da instância Meta no superadmin, com a mesma experiência completa do chat de suporte e coexistência com o Bot."
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
