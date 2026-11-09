@@ -178,24 +178,24 @@ const injectNativeAppOpen = (html: string, deepLink: string) => {
   <script>
     (function () {
       try {
-        if (window.location.hash === "#web") return;
-        var key = "ba-native-app-open-attempt";
-        var now = Date.now();
-        var last = Number(sessionStorage.getItem(key) || "0");
-        if (last && now - last < 30000) return;
-        sessionStorage.setItem(key, String(now));
+        if (window.location.hash === "#web" || document.getElementById("botadmin-native-app-notice")) return;
         var deepLink = ${payload};
         var parsed = new URL(deepLink);
         var fallback = new URL(window.location.href);
-        // Keep the browser fallback out of the visible query string. The hash
-        // also prevents a second native-open attempt without cache state.
-        fallback.search = "";
-        fallback.hash = "web";
+        fallback.searchParams.set("web", "1");
         var intentPath = parsed.host + parsed.pathname + parsed.search;
         var link = "intent://" + intentPath + "#Intent;scheme=botadmin;package=com.botadmin.shop;S.browser_fallback_url=" + encodeURIComponent(fallback.href) + ";end";
-        setTimeout(function () {
-          window.location.href = link;
-        }, 350);
+        var style = document.createElement("style");
+        style.textContent = "#botadmin-native-app-notice{position:fixed;z-index:2147483647;left:16px;right:16px;bottom:18px;display:flex;align-items:center;gap:14px;padding:16px 18px;border:1px solid rgba(16,185,129,.25);border-radius:18px;background:#fff;color:#102a24;box-shadow:0 16px 45px rgba(15,23,42,.2);font:600 14px/1.35 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}#botadmin-native-app-notice strong{display:block;font-size:15px;margin-bottom:3px}#botadmin-native-app-notice p{margin:0;color:#55706a;font-weight:500}#botadmin-native-app-notice button{border:0;border-radius:11px;padding:11px 14px;white-space:nowrap;font:700 13px system-ui;cursor:pointer}#botadmin-native-app-notice .ba-open{background:#10b981;color:#fff}#botadmin-native-app-notice .ba-dismiss{background:#ecfdf5;color:#047857}@media(max-width:560px){#botadmin-native-app-notice{left:10px;right:10px;bottom:10px;align-items:flex-start;flex-wrap:wrap}#botadmin-native-app-notice .ba-copy{flex:1 1 100%}#botadmin-native-app-notice button{flex:1}}";
+        document.head.appendChild(style);
+        var notice = document.createElement("aside");
+        notice.id = "botadmin-native-app-notice";
+        notice.setAttribute("role", "dialog");
+        notice.setAttribute("aria-label", "Aplicativo Android do BotAdmin");
+        notice.innerHTML = "<div class=\"ba-copy\"><strong>Use o BotAdmin no Android</strong><p>Você pode continuar no site ou abrir o aplicativo quando quiser.</p></div><button class=\"ba-dismiss\" type=\"button\">Continuar no site</button><button class=\"ba-open\" type=\"button\">Usar aplicativo Android</button>";
+        notice.querySelector(".ba-dismiss").addEventListener("click", function(){ notice.remove(); });
+        notice.querySelector(".ba-open").addEventListener("click", function(){ window.location.href = link; });
+        (document.body || document.documentElement).appendChild(notice);
       } catch (e) {}
     })();
   </script>`;
