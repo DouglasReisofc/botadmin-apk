@@ -3,17 +3,17 @@
   "android": {
     "platform": "android",
     "type": "apk",
-    "fileName": "botadmin-0.1.347-353-android-release.apk",
-    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.347-botadmin353/botadmin-0.1.347-353-android-release.apk",
-    "sizeBytes": 98044465,
-    "updatedAt": "2026-11-08T00:00:00.000Z",
+    "fileName": "botadmin-0.1.363-369-android-release.apk",
+    "url": "https://github.com/DouglasReisofc/botadmin-apk/releases/download/v0.1.363-botadmin369/botadmin-0.1.363-369-android-release.apk",
+    "sizeBytes": 99505365,
+    "updatedAt": "2026-11-09T01:29:54Z",
     "buildType": "release",
-    "versionName": "0.1.347",
-    "versionCode": 353,
+    "versionName": "0.1.363",
+    "versionCode": 369,
     "minVersionCode": 325,
-    "details": "Seletor automático de links e listas M3U para videochamadas, organizado por TV ao vivo, filmes e séries."
+    "details": "Correções do fluxo Meta e atualização remota do APK."
   },
   "preferredIosMode": "file",
   "preferredWindowsMode": "file",
-  "details": "BotAdmin Android 0.1.347 (353): seleção automática de fontes de vídeo e listas M3U no painel de chamadas."
+  "details": "Menu lateral colorido, sino no topo e botão Sair vermelho."
 }
