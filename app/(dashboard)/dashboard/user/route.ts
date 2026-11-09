@@ -183,8 +183,10 @@ const injectNativeAppOpen = (html: string, deepLink: string) => {
         var parsed = new URL(deepLink);
         var fallback = new URL(window.location.href);
         fallback.searchParams.set("web", "1");
-        var intentPath = parsed.host + parsed.pathname + parsed.search;
-        var link = "intent://" + intentPath + "#Intent;scheme=botadmin;package=com.botadmin.shop;S.browser_fallback_url=" + encodeURIComponent(fallback.href) + ";end";
+        // Go straight to the native scheme. An intent:// wrapper can leave a
+        // blank Custom Tab loading forever on some Chrome/Android versions.
+        // If no BotAdmin handler exists, return to the web panel instead.
+        var link = deepLink;
         var style = document.createElement("style");
         style.textContent = "#botadmin-native-app-notice{position:fixed;z-index:2147483647;left:16px;right:16px;bottom:18px;display:flex;align-items:center;gap:14px;padding:16px 18px;border:1px solid rgba(16,185,129,.25);border-radius:18px;background:#fff;color:#102a24;box-shadow:0 16px 45px rgba(15,23,42,.2);font:600 14px/1.35 system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif}#botadmin-native-app-notice strong{display:block;font-size:15px;margin-bottom:3px}#botadmin-native-app-notice p{margin:0;color:#55706a;font-weight:500}#botadmin-native-app-notice button{border:0;border-radius:11px;padding:11px 14px;white-space:nowrap;font:700 13px system-ui;cursor:pointer}#botadmin-native-app-notice .ba-open{background:#10b981;color:#fff}#botadmin-native-app-notice .ba-dismiss{background:#ecfdf5;color:#047857}@media(max-width:560px){#botadmin-native-app-notice{left:10px;right:10px;bottom:10px;align-items:flex-start;flex-wrap:wrap}#botadmin-native-app-notice .ba-copy{flex:1 1 100%}#botadmin-native-app-notice button{flex:1}}";
         document.head.appendChild(style);
@@ -194,7 +196,12 @@ const injectNativeAppOpen = (html: string, deepLink: string) => {
         notice.setAttribute("aria-label", "Aplicativo Android do BotAdmin");
         notice.innerHTML = "<div class=\"ba-copy\"><strong>Use o BotAdmin no Android</strong><p>Você pode continuar no site ou abrir o aplicativo quando quiser.</p></div><button class=\"ba-dismiss\" type=\"button\">Continuar no site</button><button class=\"ba-open\" type=\"button\">Usar aplicativo Android</button>";
         notice.querySelector(".ba-dismiss").addEventListener("click", function(){ notice.remove(); });
-        notice.querySelector(".ba-open").addEventListener("click", function(){ window.location.href = link; });
+        notice.querySelector(".ba-open").addEventListener("click", function(){
+          window.location.href = link;
+          setTimeout(function(){
+            if (document.visibilityState === "visible") window.location.href = fallback.href;
+          }, 1400);
+        });
         (document.body || document.documentElement).appendChild(notice);
       } catch (e) {}
     })();
